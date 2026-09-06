@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Bank Accounts · Pheral{% endblock %}
+{% block page_title %}Bank Accounts{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-md px-4 pb-10 pt-4 md:pt-6">
+
+    <div class="mb-5 flex items-center justify-between">
+        <div class="flex items-center gap-2 md:hidden">
+            <a href="{% url 'wallet' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink">
+                <i data-lucide="chevron-left" class="h-5 w-5"></i>
+            </a>
+            <h1 class="text-2xl font-bold tracking-tight text-ink">Bank Accounts</h1>
+        </div>
+        <a href="{% url 'add_bank_account' %}"
+           class="flex shrink-0 items-center gap-1.5 rounded-full bg-accent-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-600 md:ml-auto">
+            <i data-lucide="plus" class="h-4 w-4"></i> Add
+        </a>
+    </div>
+
+    {% if accounts %}
+        <div class="space-y-3">
+            {% for account in accounts %}
+                <div class="rounded-2xl border border-line bg-white p-4">
+                    <div class="flex items-start gap-3">
+                        <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-50 text-accent-600">
+                            <i data-lucide="landmark" class="h-5 w-5"></i>
+                        </span>
+
+                        <div class="min-w-0 flex-1">
+                            <p class="truncate text-sm font-semibold text-ink">{{ account.account_name }}</p>
+                            <p class="truncate text-xs text-muted">{{ account.bank_name }}</p>
+                        </div>
+
+                        {% if forloop.first %}
+                            <span class="shrink-0 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-600">
+                                Default
+                            </span>
+                        {% endif %}
+                    </div>
+
+                    <!-- Copyable account number -->
+                    <button type="button"
+                            onclick="copyToClipboard('{{ account.account_number }}', this)"
+                            class="copy-target mt-3 flex w-full items-center gap-2 rounded-xl bg-surface px-3 py-2.5 text-left transition hover:bg-line/60"
+                            aria-label="Copy account number">
+                        <span class="min-w-0 flex-1 truncate font-mono text-[13px] tracking-wide text-ink">
+                            {{ account.account_number }}
+                        </span>
+                        <i data-lucide="copy" class="copy-icon h-4 w-4 shrink-0 text-muted"></i>
+                    </button>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line bg-surface py-16 text-center">
+            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-accent-50">
+                <i data-lucide="landmark" class="h-7 w-7 text-accent-500"></i>
+            </div>
+            <p class="text-sm font-semibold text-ink">No bank accounts yet</p>
+            <p class="max-w-xs text-sm text-muted">Add a bank account so you can withdraw your Pheral balance.</p>
+            <a href="{% url 'add_bank_account' %}"
+               class="mt-2 rounded-full bg-accent-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-600">
+                Add bank account
+            </a>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Copy toast -->
+<div id="copy-toast"
+     class="pointer-events-none fixed bottom-24 left-1/2 z-50 -translate-x-1/2 translate-y-2 rounded-full bg-ink px-4 py-2 text-xs font-medium text-white opacity-0 md:bottom-8"
+     role="status" aria-live="polite" style="transition: opacity 0.2s ease, transform 0.2s ease;">
+    Copied to clipboard
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let toastTimeout = null;
+
+    function showCopyToast() {
+        const toast = document.getElementById('copy-toast');
+        clearTimeout(toastTimeout);
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateX(-50%) translateY(0)';
+        toastTimeout = setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(-50%) translateY(8px)';
+        }, 1500);
+    }
+
+    function flashCopiedIcon(button) {
+        const icon = button.querySelector('.copy-icon');
+        if (!icon) return;
+        icon.setAttribute('data-lucide', 'check');
+        icon.classList.add('text-emerald-600');
+        lucide.createIcons();
+        setTimeout(() => {
+            icon.setAttribute('data-lucide', 'copy');
+            icon.classList.remove('text-emerald-600');
+            lucide.createIcons();
+        }, 1200);
+    }
+
+    function copyToClipboard(text, button) {
+        const done = () => {
+            showCopyToast();
+            if (button) flashCopiedIcon(button);
+        };
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+        } else {
+            fallbackCopy(text, done);
+        }
+    }
+
+    function fallbackCopy(text, done) {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        try {
+            document.execCommand('copy');
+            done();
+        } catch (err) {}
+        document.body.removeChild(textarea);
+    }
+</script>
+{% endblock %}

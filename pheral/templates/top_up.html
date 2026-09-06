@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Top up · Pheral{% endblock %}
+{% block page_title %}Top up wallet{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-lg px-4 py-4" x-data="{ amount: '' }">
+
+    <h1 class="text-2xl font-bold tracking-tight text-ink md:hidden">Top up</h1>
+
+    {% if wallet %}
+        <div class="mt-4 rounded-2xl bg-accent-500 p-5 text-white">
+            <p class="text-sm text-white/80">Current balance</p>
+            <p class="mt-1 text-2xl font-bold tracking-tight">{{ currency.symbol }}{{ wallet.balance|floatformat:2 }}</p>
+        </div>
+    {% endif %}
+
+    {% if transaction %}
+        <!-- Pending top-up acknowledgement (dev/no-provider flow) -->
+        <div class="mt-5 flex flex-col items-center gap-3 rounded-2xl border border-line p-6 text-center">
+            <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50">
+                <i data-lucide="clock" class="h-6 w-6 text-accent-500"></i>
+            </div>
+            <p class="text-base font-semibold text-ink">Top-up initiated</p>
+            <p class="text-sm text-muted">
+                {{ currency.symbol }}{{ transaction.amount|floatformat:2 }} is pending confirmation.
+                Reference: <span class="font-medium text-ink">{{ transaction.reference }}</span>
+            </p>
+            <a href="{% url 'wallet' %}" class="mt-2 rounded-full bg-accent-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-600">
+                Back to wallet
+            </a>
+        </div>
+    {% else %}
+        <form method="post" action="{% url 'top_up' %}" class="mt-5 space-y-5">
+            {% csrf_token %}
+
+            <div>
+                <label class="mb-1.5 block text-sm font-medium text-ink">Amount to add</label>
+                <div class="flex items-center gap-2 rounded-2xl border border-line bg-white px-4 py-3 focus-within:border-accent-400 focus-within:ring-2 focus-within:ring-accent-100">
+                    <span class="text-lg font-semibold text-muted">{{ currency.symbol }}</span>
+                    <input type="number" name="amount" x-model="amount" step="0.01" min="0.01" required placeholder="0.00"
+                           class="w-full bg-transparent text-lg font-semibold text-ink placeholder-muted focus:outline-none">
+                    <span class="shrink-0 text-xs font-medium text-muted">{{ currency.code }}</span>
+                </div>
+            </div>
+
+            <!-- Quick amounts -->
+            <div class="flex flex-wrap gap-2">
+                <button type="button" @click="amount = '1000'" class="rounded-full border border-line px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface">{{ currency.symbol }}1,000</button>
+                <button type="button" @click="amount = '2000'" class="rounded-full border border-line px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface">{{ currency.symbol }}2,000</button>
+                <button type="button" @click="amount = '5000'" class="rounded-full border border-line px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface">{{ currency.symbol }}5,000</button>
+                <button type="button" @click="amount = '10000'" class="rounded-full border border-line px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface">{{ currency.symbol }}10,000</button>
+            </div>
+
+            <button type="submit" :disabled="!amount || parseFloat(amount) <= 0"
+                    class="flex w-full items-center justify-center gap-1.5 rounded-full bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
+                <i data-lucide="arrow-down-to-line" class="h-4 w-4"></i> Continue to payment
+            </button>
+
+            <p class="flex items-center justify-center gap-1.5 text-center text-xs text-muted">
+                <i data-lucide="shield-check" class="h-3.5 w-3.5"></i> Secured by Paystack
+            </p>
+        </form>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block title %}Add member · {{ conversation.name|default:"Group" }}{% endblock %}
+{% block page_title %}Add member{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-lg px-4 py-4">
+
+    <div class="flex items-center gap-2">
+        <a href="{% url 'group_chat' conversation_id=conversation.id %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink md:hidden" aria-label="Back">
+            <i data-lucide="chevron-left" class="h-5 w-5"></i>
+        </a>
+        <h1 class="text-2xl font-bold tracking-tight text-ink md:hidden">Add to {{ conversation.name|default:"group" }}</h1>
+    </div>
+
+    <!-- Search -->
+    <form method="get" action="{% url 'group_add_member' conversation_id=conversation.id %}" class="mt-4">
+        <div class="flex items-center gap-2 rounded-2xl bg-surface px-4 py-2.5">
+            <i data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></i>
+            <input type="text" name="q" value="{{ query }}" placeholder="Search your contacts" autocomplete="off"
+                   class="w-full bg-transparent text-sm text-ink placeholder-muted focus:outline-none">
+        </div>
+    </form>
+
+    <!-- Add by username directly -->
+    <form method="post" action="{% url 'group_add_member' conversation_id=conversation.id %}" class="mt-3 flex items-center gap-2">
+        {% csrf_token %}
+        <input type="text" name="username" placeholder="Or type an exact username"
+               class="w-full rounded-full border border-line bg-white px-4 py-2.5 text-sm text-ink placeholder-muted focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100">
+        <button type="submit" class="shrink-0 rounded-full bg-accent-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-600">
+            Add
+        </button>
+    </form>
+
+    {% if contacts %}
+        <p class="px-1 pb-2 pt-6 text-xs font-semibold uppercase tracking-wide text-muted">Your contacts</p>
+        <div class="divide-y divide-line">
+            {% for contact in contacts %}
+                <div class="-mx-2 flex items-center gap-3 rounded-2xl px-2 py-3">
+                    {% if contact.contact_user.avatar %}
+                        <img src="{{ contact.contact_user.avatar.url }}" alt="" class="h-11 w-11 shrink-0 rounded-full object-cover">
+                    {% else %}
+                        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-100 text-sm font-semibold text-accent-700">
+                            {{ contact.contact_user.username|first|upper }}
+                        </div>
+                    {% endif %}
+                    <div class="min-w-0 flex-1">
+                        <p class="truncate text-[15px] font-semibold text-ink">
+                            {{ contact.nickname|default:contact.contact_user.display_name|default:contact.contact_user.username }}
+                        </p>
+                        <p class="truncate text-sm text-muted">@{{ contact.contact_user.username }}</p>
+                    </div>
+                    <form method="post" action="{% url 'group_add_member' conversation_id=conversation.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="username" value="{{ contact.contact_user.username }}">
+                        <button type="submit" class="shrink-0 rounded-full bg-accent-50 px-4 py-2 text-sm font-semibold text-accent-700 transition hover:bg-accent-100">
+                            Add
+                        </button>
+                    </form>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="flex flex-col items-center gap-3 px-4 py-16 text-center">
+            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-accent-50">
+                <i data-lucide="users" class="h-7 w-7 text-accent-500"></i>
+            </div>
+            <p class="text-base font-semibold text-ink">
+                {% if query %}No contacts match "{{ query }}"{% else %}Everyone in your contacts is already here{% endif %}
+            </p>
+            <p class="max-w-xs text-sm text-muted">You can still add someone by typing their exact username above.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

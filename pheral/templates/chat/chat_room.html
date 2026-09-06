@@ -1,0 +1,1114 @@
+
+{% extends "base.html" %}
+
+{% block title %}Chat · Pheral{% endblock %}
+
+{% block content %}
+
+<div
+    x-data="{
+        message: '',
+        attachmentOpen: false,
+        moreOpen: false,
+        showPayment: false,
+        recording: false,
+
+        sendMessage() {
+            if (!this.message.trim()) return;
+
+            document.getElementById('message-form').submit();
+        }
+    }"
+    class="mx-auto flex w-full max-w-3xl flex-col"
+>
+
+
+    <!-- =====================================================
+         CHAT HEADER
+    ====================================================== -->
+
+    <div
+        class="
+            sticky
+            top-14
+            z-30
+            -mx-4
+            mb-3
+            border-b
+            border-white/[0.06]
+            bg-[#0b0b0f]/95
+            px-4
+            py-2.5
+            backdrop-blur-xl
+            sm:-mx-6
+            sm:px-6
+            lg:top-16
+            lg:mx-0
+            lg:px-0
+        "
+    >
+
+        <div class="flex items-center gap-3">
+
+
+            <!-- Back -->
+
+            <a
+                href="{% url 'chat_list' %}"
+                class="
+                    flex
+                    h-8
+                    w-8
+                    shrink-0
+                    items-center
+                    justify-center
+                    rounded-lg
+                    text-slate-500
+                    hover:bg-white/[0.05]
+                    hover:text-white
+                "
+                aria-label="Back to chats"
+            >
+
+                <i
+                    data-lucide="arrow-left"
+                    class="h-4 w-4"
+                ></i>
+
+            </a>
+
+
+            <!-- Avatar -->
+
+            <div class="relative shrink-0">
+
+                <div
+                    class="
+                        flex
+                        h-9
+                        w-9
+                        items-center
+                        justify-center
+                        rounded-full
+                        bg-white/[0.07]
+                        text-xs
+                        font-semibold
+                        text-slate-300
+                    "
+                >
+                    A
+                </div>
+
+                <span
+                    class="
+                        absolute
+                        bottom-0
+                        right-0
+                        h-2.5
+                        w-2.5
+                        rounded-full
+                        border-2
+                        border-[#0b0b0f]
+                        bg-emerald-500
+                    "
+                ></span>
+
+            </div>
+
+
+            <!-- User -->
+
+            <a
+                href="#"
+                class="min-w-0 flex-1"
+            >
+
+                <p class="truncate text-xs font-semibold text-white">
+                    Alex Morgan
+                </p>
+
+                <p class="mt-0.5 text-[9px] text-emerald-400">
+                    Online
+                </p>
+
+            </a>
+
+
+            <!-- Header actions -->
+
+            <button
+                type="button"
+                class="
+                    flex
+                    h-8
+                    w-8
+                    items-center
+                    justify-center
+                    rounded-lg
+                    text-slate-500
+                    hover:bg-white/[0.05]
+                    hover:text-white
+                "
+                aria-label="Search conversation"
+            >
+
+                <i
+                    data-lucide="search"
+                    class="h-4 w-4"
+                ></i>
+
+            </button>
+
+
+            <div class="relative">
+
+                <button
+                    type="button"
+                    @click="moreOpen = !moreOpen"
+                    class="
+                        flex
+                        h-8
+                        w-8
+                        items-center
+                        justify-center
+                        rounded-lg
+                        text-slate-500
+                        hover:bg-white/[0.05]
+                        hover:text-white
+                    "
+                    aria-label="Conversation options"
+                >
+
+                    <i
+                        data-lucide="more-vertical"
+                        class="h-4 w-4"
+                    ></i>
+
+                </button>
+
+
+                <div
+                    x-cloak
+                    x-show="moreOpen"
+                    x-transition.opacity
+                    @click.outside="moreOpen = false"
+                    class="
+                        absolute
+                        right-0
+                        top-9
+                        z-50
+                        w-44
+                        rounded-xl
+                        border
+                        border-white/[0.08]
+                        bg-[#15151a]
+                        p-1
+                        shadow-2xl
+                    "
+                >
+
+                    <button
+                        class="
+                            flex
+                            w-full
+                            items-center
+                            gap-2.5
+                            rounded-lg
+                            px-3
+                            py-2.5
+                            text-left
+                            text-[10px]
+                            text-slate-400
+                            hover:bg-white/[0.05]
+                            hover:text-white
+                        "
+                    >
+
+                        <i
+                            data-lucide="user-round"
+                            class="h-3.5 w-3.5"
+                        ></i>
+
+                        View profile
+
+                    </button>
+
+
+                    <button
+                        class="
+                            flex
+                            w-full
+                            items-center
+                            gap-2.5
+                            rounded-lg
+                            px-3
+                            py-2.5
+                            text-left
+                            text-[10px]
+                            text-slate-400
+                            hover:bg-white/[0.05]
+                            hover:text-white
+                        "
+                    >
+
+                        <i
+                            data-lucide="bell-off"
+                            class="h-3.5 w-3.5"
+                        ></i>
+
+                        Mute
+
+                    </button>
+
+
+                    <button
+                        class="
+                            flex
+                            w-full
+                            items-center
+                            gap-2.5
+                            rounded-lg
+                            px-3
+                            py-2.5
+                            text-left
+                            text-[10px]
+                            text-red-400
+                            hover:bg-red-500/10
+                        "
+                    >
+
+                        <i
+                            data-lucide="ban"
+                            class="h-3.5 w-3.5"
+                        ></i>
+
+                        Block
+
+                    </button>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- =====================================================
+         MESSAGES
+    ====================================================== -->
+
+    <div class="flex flex-1 flex-col space-y-4 pb-32">
+
+
+        <!-- Date -->
+
+        <div class="flex items-center justify-center py-2">
+
+            <span
+                class="
+                    rounded-full
+                    bg-white/[0.04]
+                    px-2.5
+                    py-1
+                    text-[9px]
+                    font-medium
+                    text-slate-600
+                "
+            >
+                Today
+            </span>
+
+        </div>
+
+
+
+        <!-- =================================================
+             RECEIVED MESSAGE
+        ================================================== -->
+
+        <div class="flex items-end gap-2">
+
+            <div
+                class="
+                    flex
+                    h-7
+                    w-7
+                    shrink-0
+                    items-center
+                    justify-center
+                    rounded-full
+                    bg-white/[0.06]
+                    text-[9px]
+                    font-semibold
+                    text-slate-400
+                "
+            >
+                A
+            </div>
+
+
+            <div class="max-w-[78%]">
+
+                <div
+                    class="
+                        rounded-2xl
+                        rounded-bl-md
+                        border
+                        border-white/[0.06]
+                        bg-[#15151a]
+                        px-3.5
+                        py-2.5
+                    "
+                >
+
+                    <p class="text-[12px] leading-5 text-slate-300">
+                        Hey, how's the new Pheral build coming?
+                    </p>
+
+                </div>
+
+
+                <p class="mt-1 px-1 text-[8px] text-slate-700">
+                    8:42 PM
+                </p>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- =================================================
+             SENT MESSAGE
+        ================================================== -->
+
+        <div class="flex justify-end">
+
+            <div class="max-w-[78%]">
+
+                <div
+                    class="
+                        rounded-2xl
+                        rounded-br-md
+                        bg-pher​al-600
+                        px-3.5
+                        py-2.5
+                    "
+                >
+
+                    <p class="text-[12px] leading-5 text-white">
+                        It's coming together nicely. I'm working on the
+                        payment flow now.
+                    </p>
+
+                </div>
+
+
+                <div class="mt-1 flex items-center justify-end gap-1 px-1">
+
+                    <span class="text-[8px] text-slate-700">
+                        8:43 PM
+                    </span>
+
+                    <i
+                        data-lucide="check-check"
+                        class="h-3 w-3 text-pher​al-400"
+                    ></i>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- =================================================
+             PAYMENT RECEIPT
+        ================================================== -->
+
+        <div class="flex justify-end">
+
+            <div class="w-full max-w-[290px]">
+
+                <div
+                    class="
+                        overflow-hidden
+                        rounded-2xl
+                        rounded-br-md
+                        border
+                        border-pher​al-500/20
+                        bg-[#15151a]
+                    "
+                >
+
+                    <!-- Receipt header -->
+
+                    <div
+                        class="
+                            flex
+                            items-center
+                            justify-between
+                            border-b
+                            border-white/[0.06]
+                            px-3.5
+                            py-3
+                        "
+                    >
+
+                        <div class="flex items-center gap-2">
+
+                            <div
+                                class="
+                                    flex
+                                    h-7
+                                    w-7
+                                    items-center
+                                    justify-center
+                                    rounded-lg
+                                    bg-pher​al-500/10
+                                "
+                            >
+
+                                <i
+                                    data-lucide="arrow-up-right"
+                                    class="h-3.5 w-3.5 text-pher​al-400"
+                                ></i>
+
+                            </div>
+
+
+                            <div>
+
+                                <p class="text-[10px] font-semibold text-white">
+                                    Payment sent
+                                </p>
+
+                                <p class="text-[8px] text-slate-600">
+                                    Pheral payment
+                                </p>
+
+                            </div>
+
+                        </div>
+
+
+                        <span
+                            class="
+                                rounded-full
+                                bg-emerald-500/10
+                                px-2
+                                py-1
+                                text-[8px]
+                                font-medium
+                                text-emerald-400
+                            "
+                        >
+                            Completed
+                        </span>
+
+                    </div>
+
+
+                    <!-- Amount -->
+
+                    <div class="px-3.5 py-4">
+
+                        <p class="text-[9px] text-slate-600">
+                            Amount
+                        </p>
+
+                        <p class="mt-1 text-xl font-semibold tracking-tight text-white">
+                            $20.00
+                        </p>
+
+                    </div>
+
+
+                    <!-- Details -->
+
+                    <div
+                        class="
+                            grid
+                            grid-cols-2
+                            border-t
+                            border-white/[0.06]
+                        "
+                    >
+
+                        <div class="border-r border-white/[0.06] px-3.5 py-2.5">
+
+                            <p class="text-[8px] text-slate-600">
+                                To
+                            </p>
+
+                            <p class="mt-1 truncate text-[9px] font-medium text-slate-300">
+                                @alexmorgan
+                            </p>
+
+                        </div>
+
+
+                        <div class="px-3.5 py-2.5">
+
+                            <p class="text-[8px] text-slate-600">
+                                Reference
+                            </p>
+
+                            <p class="mt-1 truncate text-[9px] font-medium text-slate-300">
+                                PH-8A21F
+                            </p>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- Receipt -->
+
+                    <a
+                        href="#"
+                        class="
+                            flex
+                            items-center
+                            justify-center
+                            gap-1.5
+                            border-t
+                            border-white/[0.06]
+                            px-3.5
+                            py-2.5
+                            text-[9px]
+                            font-medium
+                            text-pher​al-400
+                            hover:bg-white/[0.025]
+                        "
+                    >
+
+                        View receipt
+
+                        <i
+                            data-lucide="arrow-up-right"
+                            class="h-3 w-3"
+                        ></i>
+
+                    </a>
+
+                </div>
+
+
+                <div class="mt-1 flex items-center justify-end gap-1 px-1">
+
+                    <span class="text-[8px] text-slate-700">
+                        8:45 PM
+                    </span>
+
+                    <i
+                        data-lucide="check-check"
+                        class="h-3 w-3 text-pher​al-400"
+                    ></i>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- =================================================
+             RECEIVED MESSAGE
+        ================================================== -->
+
+        <div class="flex items-end gap-2">
+
+            <div
+                class="
+                    flex
+                    h-7
+                    w-7
+                    shrink-0
+                    items-center
+                    justify-center
+                    rounded-full
+                    bg-white/[0.06]
+                    text-[9px]
+                    font-semibold
+                    text-slate-400
+                "
+            >
+                A
+            </div>
+
+
+            <div class="max-w-[78%]">
+
+                <div
+                    class="
+                        rounded-2xl
+                        rounded-bl-md
+                        border
+                        border-white/[0.06]
+                        bg-[#15151a]
+                        px-3.5
+                        py-2.5
+                    "
+                >
+
+                    <p class="text-[12px] leading-5 text-slate-300">
+                        Nice. Send me the details when you're ready.
+                    </p>
+
+                </div>
+
+
+                <p class="mt-1 px-1 text-[8px] text-slate-700">
+                    8:47 PM
+                </p>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- =====================================================
+         MESSAGE COMPOSER
+    ====================================================== -->
+
+    <div
+        class="
+            fixed
+            inset-x-0
+            bottom-0
+            z-40
+            border-t
+            border-white/[0.06]
+            bg-[#0b0b0f]/95
+            backdrop-blur-xl
+            lg:sticky
+            lg:bottom-0
+            lg:border
+            lg:border-white/[0.07]
+            lg:rounded-xl
+            lg:bg-[#111116]
+        "
+    >
+
+        <div
+            class="
+                safe-bottom
+                mx-auto
+                max-w-3xl
+                px-3
+                py-2.5
+                lg:px-3
+            "
+        >
+
+            <form
+                id="message-form"
+                method="post"
+                action="{% url 'send_message' conversation_id %}"
+                enctype="multipart/form-data"
+            >
+
+                {% csrf_token %}
+
+
+                <div class="flex items-end gap-2">
+
+
+                    <!-- Attachment -->
+
+                    <div class="relative shrink-0">
+
+                        <button
+                            type="button"
+                            @click="attachmentOpen = !attachmentOpen"
+                            class="
+                                flex
+                                h-9
+                                w-9
+                                items-center
+                                justify-center
+                                rounded-lg
+                                text-slate-500
+                                hover:bg-white/[0.05]
+                                hover:text-slate-300
+                            "
+                            aria-label="Attachments"
+                        >
+
+                            <i
+                                data-lucide="plus"
+                                class="h-4 w-4"
+                            ></i>
+
+                        </button>
+
+
+                        <!-- Attachment menu -->
+
+                        <div
+                            x-cloak
+                            x-show="attachmentOpen"
+                            x-transition.opacity
+                            @click.outside="attachmentOpen = false"
+                            class="
+                                absolute
+                                bottom-11
+                                left-0
+                                w-44
+                                rounded-xl
+                                border
+                                border-white/[0.08]
+                                bg-[#15151a]
+                                p-1
+                                shadow-2xl
+                            "
+                        >
+
+                            <label
+                                class="
+                                    flex
+                                    cursor-pointer
+                                    items-center
+                                    gap-2.5
+                                    rounded-lg
+                                    px-3
+                                    py-2.5
+                                    text-[10px]
+                                    text-slate-400
+                                    hover:bg-white/[0.05]
+                                    hover:text-white
+                                "
+                            >
+
+                                <i
+                                    data-lucide="image"
+                                    class="h-4 w-4"
+                                ></i>
+
+                                Photo / video
+
+                                <input
+                                    type="file"
+                                    name="media"
+                                    accept="image/*,video/*"
+                                    class="hidden"
+                                >
+
+                            </label>
+
+
+                            <button
+                                type="button"
+                                @click="attachmentOpen = false; showPayment = true"
+                                class="
+                                    flex
+                                    w-full
+                                    items-center
+                                    gap-2.5
+                                    rounded-lg
+                                    px-3
+                                    py-2.5
+                                    text-[10px]
+                                    text-slate-400
+                                    hover:bg-white/[0.05]
+                                    hover:text-white
+                                "
+                            >
+
+                                <i
+                                    data-lucide="banknote"
+                                    class="h-4 w-4"
+                                ></i>
+
+                                Send money
+
+                            </button>
+
+
+                            <button
+                                type="button"
+                                class="
+                                    flex
+                                    w-full
+                                    items-center
+                                    gap-2.5
+                                    rounded-lg
+                                    px-3
+                                    py-2.5
+                                    text-[10px]
+                                    text-slate-400
+                                    hover:bg-white/[0.05]
+                                    hover:text-white
+                                "
+                            >
+
+                                <i
+                                    data-lucide="file"
+                                    class="h-4 w-4"
+                                ></i>
+
+                                Document
+
+                            </button>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <!-- Message -->
+
+                    <div class="relative flex-1">
+
+                        <textarea
+                            name="content"
+                            x-model="message"
+                            rows="1"
+                            placeholder="Message..."
+                            @keydown.enter.prevent="if (!$event.shiftKey) sendMessage()"
+                            class="
+                                max-h-28
+                                min-h-9
+                                w-full
+                                resize-none
+                                rounded-xl
+                                border
+                                border-white/[0.07]
+                                bg-[#15151a]
+                                px-3
+                                py-2.5
+                                text-[12px]
+                                leading-5
+                                text-white
+                                outline-none
+                                placeholder:text-slate-600
+                                focus:border-pher​al-500/40
+                                focus:ring-1
+                                focus:ring-pher​al-500/20
+                            "
+                        ></textarea>
+
+                    </div>
+
+
+
+                    <!-- Send -->
+
+                    <button
+                        type="button"
+                        @click="sendMessage()"
+                        class="
+                            flex
+                            h-9
+                            w-9
+                            shrink-0
+                            items-center
+                            justify-center
+                            rounded-xl
+                            bg-pher​al-600
+                            text-white
+                            transition
+                            hover:bg-pher​al-500
+                            active:scale-[0.96]
+                        "
+                        aria-label="Send message"
+                    >
+
+                        <i
+                            data-lucide="send"
+                            class="h-4 w-4"
+                        ></i>
+
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- =====================================================
+         PAYMENT MODAL
+    ====================================================== -->
+
+    <div
+        x-cloak
+        x-show="showPayment"
+        x-transition.opacity
+        class="
+            fixed
+            inset-0
+            z-[100]
+            flex
+            items-end
+            justify-center
+            bg-black/70
+            p-0
+            sm:items-center
+            sm:p-4
+        "
+    >
+
+        <div
+            x-show="showPayment"
+            x-transition
+            @click.outside="showPayment = false"
+            class="
+                w-full
+                max-w-sm
+                rounded-t-2xl
+                border
+                border-white/[0.08]
+                bg-[#111116]
+                p-5
+                shadow-2xl
+                sm:rounded-2xl
+            "
+        >
+
+            <div class="flex items-center justify-between">
+
+                <div>
+
+                    <p class="text-sm font-semibold text-white">
+                        Send money
+                    </p>
+
+                    <p class="mt-0.5 text-[10px] text-slate-500">
+                        Pay @alexmorgan directly.
+                    </p>
+
+                </div>
+
+
+                <button
+                    type="button"
+                    @click="showPayment = false"
+                    class="
+                        flex
+                        h-8
+                        w-8
+                        items-center
+                        justify-center
+                        rounded-lg
+                        text-slate-500
+                        hover:bg-white/[0.05]
+                        hover:text-white
+                    "
+                >
+
+                    <i
+                        data-lucide="x"
+                        class="h-4 w-4"
+                    ></i>
+
+                </button>
+
+            </div>
+
+
+            <div class="mt-5">
+
+                <label class="text-[10px] font-medium text-slate-500">
+                    Amount
+                </label>
+
+                <div class="mt-1.5 flex items-center">
+
+                    <span class="mr-2 text-sm text-slate-500">
+                        $
+                    </span>
+
+                    <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="0.00"
+                        class="
+                            w-full
+                            border-b
+                            border-white/[0.08]
+                            bg-transparent
+                            py-2
+                            text-2xl
+                            font-semibold
+                            text-white
+                            outline-none
+                            placeholder:text-slate-700
+                            focus:border-pher​al-500/50
+                        "
+                    >
+
+                </div>
+
+            </div>
+
+
+            <button
+                type="button"
+                @click="showPayment = false"
+                class="
+                    mt-6
+                    flex
+                    w-full
+                    items-center
+                    justify-center
+                    gap-2
+                    rounded-xl
+                    bg-pher​al-600
+                    py-3
+                    text-xs
+                    font-medium
+                    text-white
+                    transition
+                    hover:bg-pher​al-500
+                "
+            >
+
+                <i
+                    data-lucide="send"
+                    class="h-4 w-4"
+                ></i>
+
+                Continue
+
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}
+
+
+{% block extra_scripts %}
+
+<script>
+
+    document.addEventListener("DOMContentLoaded", () => {
+
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+
+    });
+
+</script>
+
+{% endblock %}

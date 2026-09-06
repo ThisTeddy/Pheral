@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Search · Pheral{% endblock %}
+{% block page_title %}Search{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl px-4 pt-4 md:pt-6">
+
+    <form method="get" action="{% url 'search' %}" class="mb-5 flex items-center gap-2 rounded-2xl bg-surface px-4 py-2.5">
+        <i data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></i>
+        <input type="text" name="q" value="{{ query }}" placeholder="Search by name, username or phone"
+               autocomplete="off" autofocus
+               class="w-full bg-transparent text-sm text-ink placeholder-muted focus:outline-none">
+        {% if query %}
+        <a href="{% url 'search' %}" class="shrink-0 rounded-full p-1 text-muted hover:bg-line" aria-label="Clear search">
+            <i data-lucide="x" class="h-4 w-4"></i>
+        </a>
+        {% endif %}
+    </form>
+
+    {% if not query %}
+        <div class="flex flex-col items-center gap-3 py-20 text-center">
+            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-accent-50">
+                <i data-lucide="search" class="h-7 w-7 text-accent-500"></i>
+            </div>
+            <p class="text-base font-semibold text-ink">Find people on Pheral</p>
+            <p class="max-w-xs text-sm text-muted">Search by username, name or phone number to chat, pay or hire someone.</p>
+        </div>
+
+    {% elif users %}
+        {% with count=users|length %}
+        <p class="mb-2 px-1 text-xs font-medium uppercase tracking-wide text-muted">
+            {{ count }} result{{ count|pluralize }}
+        </p>
+        {% endwith %}
+
+        <div class="divide-y divide-line">
+            {% for u in users %}
+                <div class="flex items-center gap-3 py-3">
+                    <a href="{% url 'profile_user' username=u.username %}" class="relative shrink-0">
+                        {% if u.avatar %}
+                            <img src="{{ u.avatar.url }}" alt="" class="h-12 w-12 rounded-full object-cover">
+                        {% else %}
+                            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-accent-100 text-accent-700">
+                                <span class="text-base font-semibold">{{ u.username|first|upper }}</span>
+                            </div>
+                        {% endif %}
+                        {% if u.is_online %}
+                            <span class="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white"></span>
+                        {% endif %}
+                    </a>
+
+                    <a href="{% url 'profile_user' username=u.username %}" class="min-w-0 flex-1">
+                        <p class="truncate text-[15px] font-semibold text-ink">{{ u.display_name|default:u.username }}</p>
+                        <p class="truncate text-sm text-muted">@{{ u.username }}{% if u.phone_number %} · {{ u.phone_number }}{% endif %}</p>
+                    </a>
+
+                    <div class="flex shrink-0 items-center gap-1.5">
+                        <a href="{% url 'start_chat' username=u.username %}"
+                           class="rounded-full p-2 text-accent-600 transition hover:bg-accent-50" aria-label="Message {{ u.username }}">
+                            <i data-lucide="message-circle" class="h-4 w-4"></i>
+                        </a>
+                        <form method="post" action="{% url 'add_contact' username=u.username %}">
+                            {% csrf_token %}
+                            <button type="submit" class="rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink" aria-label="Add {{ u.username }} to contacts">
+                                <i data-lucide="user-plus" class="h-4 w-4"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+    {% else %}
+        <div class="flex flex-col items-center gap-3 py-20 text-center">
+            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-surface">
+                <i data-lucide="user-x" class="h-7 w-7 text-muted"></i>
+            </div>
+            <p class="text-base font-semibold text-ink">No results for “{{ query }}”</p>
+            <p class="max-w-xs text-sm text-muted">Try a different username, name or phone number.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

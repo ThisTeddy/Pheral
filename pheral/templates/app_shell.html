@@ -1,0 +1,504 @@
+
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Pheral{% endblock %}
+
+{% block header %}
+<header
+    class="sticky top-0 z-50 border-b border-zinc-100/80 bg-white/90 backdrop-blur-xl"
+>
+    <div class="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+
+        <!-- Left -->
+        <div class="flex items-center gap-3">
+
+            <!-- Mobile menu -->
+            <button
+                type="button"
+                @click="$dispatch('open-sidebar')"
+                class="flex h-10 w-10 items-center justify-center rounded-full text-zinc-600 transition hover:bg-zinc-100 active:scale-95 lg:hidden"
+                aria-label="Open menu"
+            >
+                <i data-lucide="menu" class="h-[19px] w-[19px]"></i>
+            </button>
+
+            <!-- Logo -->
+            <a
+                href="{% url 'home' %}"
+                class="group flex items-center gap-2.5"
+            >
+                <img
+                    src="{% static 'images/logo.png' %}"
+                    alt="Pheral"
+                    class="h-8 w-8 object-contain transition-transform duration-300 group-hover:scale-105"
+                >
+
+                <span class="text-[17px] font-semibold tracking-[-0.035em]">
+                    Pheral
+                </span>
+            </a>
+
+        </div>
+
+
+        <!-- Center -->
+        <div class="hidden absolute left-1/2 -translate-x-1/2 md:block">
+            {% block header_title %}
+                <span class="text-sm font-medium text-zinc-500">
+                    Pheral
+                </span>
+            {% endblock %}
+        </div>
+
+
+        <!-- Right -->
+        <div class="flex items-center gap-1">
+
+            {% block header_actions %}
+
+            <a
+                href="{% url 'search_users' %}"
+                class="flex h-10 w-10 items-center justify-center rounded-full text-zinc-600 transition hover:bg-zinc-100 active:scale-95"
+                aria-label="Search"
+            >
+                <i data-lucide="search" class="h-[18px] w-[18px]"></i>
+            </a>
+
+            <a
+                href="{% url 'notifications' %}"
+                class="relative flex h-10 w-10 items-center justify-center rounded-full text-zinc-600 transition hover:bg-zinc-100 active:scale-95"
+                aria-label="Notifications"
+            >
+                <i data-lucide="bell" class="h-[18px] w-[18px]"></i>
+
+                {% if unread_notification_count %}
+                    <span
+                        class="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-purple-600 ring-2 ring-white"
+                    ></span>
+                {% endif %}
+            </a>
+
+            {% endblock %}
+
+        </div>
+    </div>
+</header>
+{% endblock %}
+
+
+{% block content %}
+
+<div
+    x-data="{
+        sidebar: false,
+
+        openSidebar() {
+            this.sidebar = true
+            document.body.classList.add('overflow-hidden')
+        },
+
+        closeSidebar() {
+            this.sidebar = false
+            document.body.classList.remove('overflow-hidden')
+        }
+    }"
+
+    @open-sidebar.window="openSidebar()"
+    @keydown.escape.window="closeSidebar()"
+
+    class="min-h-[calc(100vh-4rem)]"
+>
+
+
+    <!-- =========================================================
+         MOBILE SIDEBAR OVERLAY
+    ========================================================== -->
+
+    <div
+        x-show="sidebar"
+        x-cloak
+        class="fixed inset-0 z-[90] lg:hidden"
+    >
+
+        <!-- Backdrop -->
+        <div
+            x-show="sidebar"
+            x-transition:enter="transition-opacity duration-200"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition-opacity duration-150"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"
+
+            @click="closeSidebar()"
+
+            class="absolute inset-0 bg-zinc-950/30 backdrop-blur-[2px]"
+        ></div>
+
+
+        <!-- Drawer -->
+        <aside
+            x-show="sidebar"
+            x-transition:enter="transition ease-out duration-300"
+            x-transition:enter-start="-translate-x-full"
+            x-transition:enter-end="translate-x-0"
+            x-transition:leave="transition ease-in duration-200"
+            x-transition:leave-start="translate-x-0"
+            x-transition:leave-end="-translate-x-full"
+
+            class="absolute inset-y-0 left-0 flex w-[84%] max-w-sm flex-col bg-white shadow-2xl"
+        >
+
+            <!-- Drawer header -->
+            <div class="flex h-20 items-center justify-between border-b border-zinc-100 px-5">
+
+                <a
+                    href="{% url 'my_profile' %}"
+                    @click="closeSidebar()"
+                    class="flex items-center gap-3"
+                >
+                    {% if request.user.avatar_url %}
+                        <img
+                            src="{{ request.user.avatar_url }}"
+                            alt=""
+                            class="h-10 w-10 rounded-full object-cover"
+                        >
+                    {% else %}
+                        <div
+                            class="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100 text-sm font-semibold text-purple-700"
+                        >
+                            {{ request.user.display_name|default:request.user.username|slice:":1"|upper }}
+                        </div>
+                    {% endif %}
+
+                    <div class="min-w-0">
+                        <p class="truncate text-sm font-semibold text-zinc-900">
+                            {{ request.user.display_name|default:request.user.username }}
+                        </p>
+
+                        <p class="truncate text-xs text-zinc-400">
+                            @{{ request.user.username }}
+                        </p>
+                    </div>
+                </a>
+
+                <button
+                    @click="closeSidebar()"
+                    class="flex h-9 w-9 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100"
+                >
+                    <i data-lucide="x" class="h-5 w-5"></i>
+                </button>
+
+            </div>
+
+
+            <!-- Drawer navigation -->
+            <nav class="flex-1 overflow-y-auto px-3 py-4">
+
+                <p class="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                    Pheral
+                </p>
+
+                <div class="space-y-1">
+
+                    <a
+                        href="{% url 'chat_list' %}"
+                        @click="closeSidebar()"
+                        class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                    >
+                        <i data-lucide="message-circle" class="h-[18px] w-[18px] text-zinc-500"></i>
+                        Chat
+                    </a>
+
+                    <a
+                        href="{% url 'home' %}"
+                        @click="closeSidebar()"
+                        class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                    >
+                        <i data-lucide="house" class="h-[18px] w-[18px] text-zinc-500"></i>
+                        Home
+                    </a>
+
+                    <a
+                        href="{% url 'feed' %}"
+                        @click="closeSidebar()"
+                        class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                    >
+                        <i data-lucide="sparkles" class="h-[18px] w-[18px] text-zinc-500"></i>
+                        Scroll
+                    </a>
+
+                    <a
+                        href="{% url 'wallet' %}"
+                        @click="closeSidebar()"
+                        class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                    >
+                        <i data-lucide="wallet" class="h-[18px] w-[18px] text-zinc-500"></i>
+                        Wallet
+                    </a>
+
+                    <a
+                        href="{% url 'my_profile' %}"
+                        @click="closeSidebar()"
+                        class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                    >
+                        <i data-lucide="user-round" class="h-[18px] w-[18px] text-zinc-500"></i>
+                        Profile
+                    </a>
+
+                </div>
+
+
+                <div class="my-5 h-px bg-zinc-100"></div>
+
+
+                <p class="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                    Tools
+                </p>
+
+                <div class="space-y-1">
+
+                    <a
+                        href="{% url 'pay' %}"
+                        @click="closeSidebar()"
+                        class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                    >
+                        <i data-lucide="send" class="h-[18px] w-[18px] text-zinc-500"></i>
+                        Pay
+                    </a>
+
+                    <a
+                        href="{% url 'global_pay' %}"
+                        @click="closeSidebar()"
+                        class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                    >
+                        <i data-lucide="globe-2" class="h-[18px] w-[18px] text-zinc-500"></i>
+                        Global Pay
+                    </a>
+
+                    <a
+                        href="{% url 'hire_dashboard' %}"
+                        @click="closeSidebar()"
+                        class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                    >
+                        <i data-lucide="briefcase-business" class="h-[18px] w-[18px] text-zinc-500"></i>
+                        Hire
+                    </a>
+
+                    <a
+                        href="{% url 'agent' %}"
+                        @click="closeSidebar()"
+                        class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-zinc-700 transition hover:bg-zinc-50"
+                    >
+                        <i data-lucide="bot" class="h-[18px] w-[18px] text-zinc-500"></i>
+                        Agent
+                    </a>
+
+                </div>
+
+            </nav>
+
+
+            <!-- Drawer footer -->
+            <div class="border-t border-zinc-100 p-3">
+
+                <a
+                    href="{% url 'settings' %}"
+                    @click="closeSidebar()"
+                    class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-zinc-600 hover:bg-zinc-50"
+                >
+                    <i data-lucide="settings-2" class="h-[18px] w-[18px]"></i>
+                    Settings
+                </a>
+
+                <a
+                    href="{% url 'logout' %}"
+                    class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-red-500 hover:bg-red-50"
+                >
+                    <i data-lucide="log-out" class="h-[18px] w-[18px]"></i>
+                    Log out
+                </a>
+
+            </div>
+
+        </aside>
+    </div>
+
+
+    <!-- =========================================================
+         DESKTOP LAYOUT
+    ========================================================== -->
+
+    <div class="mx-auto flex w-full max-w-7xl">
+
+        <!-- Desktop sidebar -->
+        <aside
+            class="sticky top-16 hidden h-[calc(100vh-4rem)] w-60 shrink-0 border-r border-zinc-100 lg:block"
+        >
+            <nav class="flex h-full flex-col px-3 py-5">
+
+                <div class="space-y-1">
+
+                    {% with nav_class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition" %}
+
+                    <a
+                        href="{% url 'chat_list' %}"
+                        class="{{ nav_class }} text-zinc-700 hover:bg-zinc-50"
+                    >
+                        <i data-lucide="message-circle" class="h-[18px] w-[18px]"></i>
+                        Chat
+                    </a>
+
+                    <a
+                        href="{% url 'home' %}"
+                        class="{{ nav_class }} text-zinc-700 hover:bg-zinc-50"
+                    >
+                        <i data-lucide="house" class="h-[18px] w-[18px]"></i>
+                        Home
+                    </a>
+
+                    <a
+                        href="{% url 'feed' %}"
+                        class="{{ nav_class }} text-zinc-700 hover:bg-zinc-50"
+                    >
+                        <i data-lucide="sparkles" class="h-[18px] w-[18px]"></i>
+                        Scroll
+                    </a>
+
+                    <a
+                        href="{% url 'wallet' %}"
+                        class="{{ nav_class }} text-zinc-700 hover:bg-zinc-50"
+                    >
+                        <i data-lucide="wallet" class="h-[18px] w-[18px]"></i>
+                        Wallet
+                    </a>
+
+                    <a
+                        href="{% url 'my_profile' %}"
+                        class="{{ nav_class }} text-zinc-700 hover:bg-zinc-50"
+                    >
+                        <i data-lucide="user-round" class="h-[18px] w-[18px]"></i>
+                        Profile
+                    </a>
+
+                    {% endwith %}
+
+                </div>
+
+
+                <div class="mt-6 border-t border-zinc-100 pt-5">
+
+                    <p class="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                        More
+                    </p>
+
+                    <div class="space-y-1">
+
+                        <a
+                            href="{% url 'global_pay' %}"
+                            class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-zinc-600 hover:bg-zinc-50"
+                        >
+                            <i data-lucide="globe-2" class="h-[18px] w-[18px]"></i>
+                            Global Pay
+                        </a>
+
+                        <a
+                            href="{% url 'hire_dashboard' %}"
+                            class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-zinc-600 hover:bg-zinc-50"
+                        >
+                            <i data-lucide="briefcase-business" class="h-[18px] w-[18px]"></i>
+                            Hire
+                        </a>
+
+                        <a
+                            href="{% url 'agent' %}"
+                            class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-zinc-600 hover:bg-zinc-50"
+                        >
+                            <i data-lucide="bot" class="h-[18px] w-[18px]"></i>
+                            Agent
+                        </a>
+
+                    </div>
+                </div>
+
+
+                <div class="mt-auto border-t border-zinc-100 pt-4">
+
+                    <a
+                        href="{% url 'settings' %}"
+                        class="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-zinc-500 hover:bg-zinc-50"
+                    >
+                        <i data-lucide="settings-2" class="h-[18px] w-[18px]"></i>
+                        Settings
+                    </a>
+
+                </div>
+
+            </nav>
+        </aside>
+
+
+        <!-- Page content -->
+        <section class="min-w-0 flex-1">
+            {% block app_content %}{% endblock %}
+        </section>
+
+    </div>
+
+
+    <!-- =========================================================
+         MOBILE BOTTOM NAVIGATION
+    ========================================================== -->
+
+    <nav
+        class="fixed inset-x-0 bottom-0 z-50 border-t border-zinc-100 bg-white/95 px-2 pb-[env(safe-area-inset-bottom)] pt-1.5 backdrop-blur-xl lg:hidden"
+    >
+        <div class="mx-auto flex h-14 max-w-md items-center justify-around">
+
+            <a
+                href="{% url 'chat_list' %}"
+                class="group flex min-w-[58px] flex-col items-center justify-center gap-1 text-zinc-400 transition active:scale-95"
+            >
+                <i data-lucide="message-circle" class="h-[19px] w-[19px]"></i>
+                <span class="text-[9px] font-medium">Chat</span>
+            </a>
+
+            <a
+                href="{% url 'home' %}"
+                class="group flex min-w-[58px] flex-col items-center justify-center gap-1 text-zinc-400 transition active:scale-95"
+            >
+                <i data-lucide="house" class="h-[19px] w-[19px]"></i>
+                <span class="text-[9px] font-medium">Home</span>
+            </a>
+
+            <a
+                href="{% url 'feed' %}"
+                class="group flex min-w-[58px] flex-col items-center justify-center gap-1 text-zinc-400 transition active:scale-95"
+            >
+                <i data-lucide="sparkles" class="h-[19px] w-[19px]"></i>
+                <span class="text-[9px] font-medium">Scroll</span>
+            </a>
+
+            <a
+                href="{% url 'wallet' %}"
+                class="group flex min-w-[58px] flex-col items-center justify-center gap-1 text-zinc-400 transition active:scale-95"
+            >
+                <i data-lucide="wallet" class="h-[19px] w-[19px]"></i>
+                <span class="text-[9px] font-medium">Wallet</span>
+            </a>
+
+            <a
+                href="{% url 'my_profile' %}"
+                class="group flex min-w-[58px] flex-col items-center justify-center gap-1 text-zinc-400 transition active:scale-95"
+            >
+                <i data-lucide="user-round" class="h-[19px] w-[19px]"></i>
+                <span class="text-[9px] font-medium">Profile</span>
+            </a>
+
+        </div>
+    </nav>
+
+</div>
+
+{% endblock %}

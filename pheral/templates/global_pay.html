@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Global Pay · Pheral{% endblock %}
+{% block page_title %}Global Pay{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-md px-4 pb-10 pt-4 md:pt-6">
+
+    <div class="mb-5 flex items-center gap-2 md:hidden">
+        <a href="{% url 'wallet' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink">
+            <i data-lucide="chevron-left" class="h-5 w-5"></i>
+        </a>
+        <h1 class="text-2xl font-bold tracking-tight text-ink">Global Pay</h1>
+    </div>
+
+    <div class="mb-5 rounded-2xl border border-line bg-surface p-4 text-sm text-muted">
+        Send money to any Pheral user, anywhere. Enter their username to get started.
+    </div>
+
+    <form method="post" class="rounded-2xl border border-line bg-white p-5">
+        {% csrf_token %}
+
+        <label class="mb-2 block text-sm font-semibold text-ink">Recipient's username</label>
+
+        <div class="mb-1 flex items-center gap-2 rounded-2xl bg-surface px-4 py-3">
+            <span class="text-muted">@</span>
+            <input
+                type="text" name="username" required autocomplete="off" autocapitalize="none"
+                placeholder="username"
+                class="w-full bg-transparent text-sm text-ink placeholder-muted focus:outline-none">
+        </div>
+
+        <p class="mb-5 mt-2 text-xs text-muted">
+            Don't know their username? Try
+            <a href="{% url 'search' %}" class="font-medium text-accent-600 hover:underline">searching</a>
+            or check your
+            <a href="{% url 'contacts' %}" class="font-medium text-accent-600 hover:underline">contacts</a>.
+        </p>
+
+        <button type="submit"
+                class="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600">
+            <i data-lucide="arrow-right" class="h-4 w-4"></i>
+            Continue
+        </button>
+    </form>
+
+    {% if currencies %}
+        <div class="mt-6">
+            <p class="mb-2 text-sm font-semibold text-ink">Supported currencies</p>
+            <div class="flex flex-wrap gap-2">
+                {% for c in currencies %}
+                    <span class="rounded-full border border-line bg-white px-3 py-1.5 text-xs font-medium text-muted">
+                        {{ c.symbol }} {{ c.code }}
+                    </span>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

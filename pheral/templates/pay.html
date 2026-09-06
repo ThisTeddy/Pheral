@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Pay {{ recipient.username }} — Pheral{% endblock %}
+
+{% block content %}
+
+<div class="pheral-container pheral-safe-top">
+
+    <!-- ============================================================
+         HEADER
+    ============================================================ -->
+
+    <div class="flex items-center gap-3 mb-8">
+
+        
+        <a    href="{% url 'profile_user' recipient.username %}"
+            class="pheral-press w-10 h-10 flex items-center justify-center rounded-full bg-white border border-line shrink-0"
+            aria-label="Back"
+        >
+            <svg class="w-5 h-5 text-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m15 18-6-6 6-6"/>
+            </svg>
+        </a>
+
+        <h1 class="font-bold text-ink text-lg">
+            Pay
+        </h1>
+
+    </div>
+
+
+    <!-- ============================================================
+         RECIPIENT
+    ============================================================ -->
+
+    <div class="flex flex-col items-center text-center mb-8">
+
+        <span class="pheral-avatar w-20 h-20 mb-3">
+
+            {% if recipient.avatar %}
+                <img src="{{ recipient.avatar.url }}" alt="" class="w-full h-full object-cover">
+            {% else %}
+                <div class="w-full h-full flex items-center justify-center bg-pheral-500 text-white text-2xl font-bold">
+                    {{ recipient.first_name|default:recipient.username|slice:":1"|upper }}
+                </div>
+            {% endif %}
+
+        </span>
+
+        <p class="font-semibold text-ink">
+            {{ recipient.display_name|default:recipient.username }}
+        </p>
+
+        <p class="text-sm text-pheral-text-secondary">
+            @{{ recipient.username }}
+        </p>
+
+    </div>
+
+
+    <!-- ============================================================
+         AMOUNT + FORM
+    ============================================================ -->
+
+    <form method="post" id="pay-form">
+        {% csrf_token %}
+
+        <div class="flex flex-col items-center mb-8">
+
+            <div class="flex items-start gap-1 mb-2">
+
+                <span class="pheral-figure text-4xl text-pheral-text-secondary mt-2">
+                    {{ currency.symbol }}
+                </span>
+
+                <input
+                    type="text"
+                    inputmode="decimal"
+                    name="amount"
+                    id="amount-input"
+                    placeholder="0.00"
+                    autocomplete="off"
+                    class="pheral-figure text-6xl text-ink bg-transparent text-center w-[240px] focus:outline-none placeholder:text-line"
+                    required
+                >
+
+            </div>
+
+            <p class="text-sm text-pheral-text-secondary" id="balance-hint">
+                {{ currency.code }}
+            </p>
+
+        </div>
+
+        <div class="mb-6">
+
+            <input
+                type="text"
+                name="description"
+                maxlength="255"
+                placeholder="What's this for? (optional)"
+                class="
+                    w-full
+                    px-4 py-3.5
+                    rounded-2xl
+                    bg-white
+                    border border-line
+                    text-sm text-ink
+                    placeholder:text-pheral-text-secondary
+                    focus:outline-none focus:ring-2 focus:ring-pheral-500/30
+                "
+            >
+
+        </div>
+
+        <!-- QUICK AMOUNTS -->
+        <div class="flex gap-2 mb-8">
+
+            {% for quick in "1000,5000,10000,20000"|make_list %}{% endfor %}
+
+            <button type="button" class="quick-amount pheral-press flex-1 py-2.5 rounded-full bg-mist text-pheral-600 text-sm font-semibold" data-amount="1000">
+                {{ currency.symbol }}1,000
+            </button>
+
+            <button type="button" class="quick-amount pheral-press flex-1 py-2.5 rounded-full bg-mist text-pheral-600 text-sm font-semibold" data-amount="5000">
+                {{ currency.symbol }}5,000
+            </button>
+
+            <button type="button" class="quick-amount pheral-press flex-1 py-2.5 rounded-full bg-mist text-pheral-600 text-sm font-semibold" data-amount="10000">
+                {{ currency.symbol }}10,000
+            </button>
+
+        </div>
+
+        <button
+            type="submit"
+            class="pheral-press w-full py-4 rounded-2xl bg-ink text-white font-semibold"
+        >
+            Send payment
+        </button>
+
+    </form>
+
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+
+    document.querySelectorAll(".quick-amount").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+            document.getElementById("amount-input").value = this.dataset.amount;
+        });
+    });
+
+</script>
+{% endblock %}

@@ -1,0 +1,1714 @@
+
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    >
+
+    <meta name="theme-color" content="#ffffff">
+    <meta name="description" content="Pheral — Chat. Pay. Hire.">
+
+    <title>Pheral — Chat. Pay. Hire.</title>
+
+    <!-- Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Alpine -->
+    <script
+        defer
+        src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+
+    <!-- Lucide -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: [
+                            "Inter",
+                            "ui-sans-serif",
+                            "system-ui",
+                            "sans-serif"
+                        ],
+                    },
+
+                    colors: {
+                        pheral: "#7C3AED",
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body
+    class="min-h-screen bg-white text-zinc-950 antialiased"
+    x-data="{ menuOpen: false }"
+>
+
+    <!-- =========================================================
+         NAVIGATION
+    ========================================================== -->
+
+    <header class="fixed inset-x-0 top-0 z-50">
+
+        <div class="mx-auto max-w-7xl px-5 pt-4 sm:px-8">
+
+            <nav
+                class="
+                    flex h-14 items-center justify-between
+                    border border-zinc-200/80
+                    bg-white/90
+                    px-4
+                    shadow-sm
+                    backdrop-blur-xl
+                    sm:px-5
+                "
+            >
+
+                <!-- LOGO -->
+
+                <a
+                    href="{% url 'landing' %}"
+                    class="flex items-center gap-2.5"
+                >
+
+                    <img
+                        src="{% static 'images/pheral-logo.png' %}"
+                        alt="Pheral"
+                        class="h-8 w-8 object-contain"
+                    >
+
+                    <span class="text-[15px] font-semibold tracking-tight">
+                        Pheral
+                    </span>
+
+                </a>
+
+
+                <!-- DESKTOP NAV -->
+
+                <div class="hidden items-center gap-7 md:flex">
+
+                    <a
+                        href="#product"
+                        class="
+                            text-[13px] font-medium text-zinc-500
+                            transition hover:text-zinc-950
+                        "
+                    >
+                        Product
+                    </a>
+
+                    <a
+                        href="#chat"
+                        class="
+                            text-[13px] font-medium text-zinc-500
+                            transition hover:text-zinc-950
+                        "
+                    >
+                        Chat
+                    </a>
+
+                    <a
+                        href="#pay"
+                        class="
+                            text-[13px] font-medium text-zinc-500
+                            transition hover:text-zinc-950
+                        "
+                    >
+                        Pay
+                    </a>
+
+                    <a
+                        href="#hire"
+                        class="
+                            text-[13px] font-medium text-zinc-500
+                            transition hover:text-zinc-950
+                        "
+                    >
+                        Hire
+                    </a>
+
+                </div>
+
+
+                <!-- ACTIONS -->
+
+                <div class="hidden items-center gap-2 md:flex">
+
+                    <a
+                        href="{% url 'login' %}"
+                        class="
+                            px-3 py-2
+                            text-[13px] font-medium
+                            text-zinc-600
+                            transition hover:text-zinc-950
+                        "
+                    >
+                        Log in
+                    </a>
+
+                    <a
+                        href="{% url 'register' %}"
+                        class="
+                            rounded-xl
+                            bg-zinc-950
+                            px-4 py-2.5
+                            text-[13px] font-semibold
+                            text-white
+                            transition
+                            hover:bg-zinc-800
+                            active:scale-[.98]
+                        "
+                    >
+                        Get started
+                    </a>
+
+                </div>
+
+
+                <!-- MOBILE BUTTON -->
+
+                <button
+                    type="button"
+                    @click="menuOpen = !menuOpen"
+                    class="
+                        flex h-9 w-9 items-center justify-center
+                        text-zinc-700
+                        md:hidden
+                    "
+                    aria-label="Open menu"
+                >
+
+                    <i
+                        x-show="!menuOpen"
+                        data-lucide="menu"
+                        class="h-5 w-5"
+                    ></i>
+
+                    <i
+                        x-show="menuOpen"
+                        data-lucide="x"
+                        class="h-5 w-5"
+                    ></i>
+
+                </button>
+
+            </nav>
+
+
+            <!-- MOBILE MENU -->
+
+            <div
+                x-show="menuOpen"
+                x-transition
+                @click.outside="menuOpen = false"
+                class="
+                    mt-2
+                    border border-zinc-200
+                    bg-white
+                    p-3
+                    shadow-xl
+                    md:hidden
+                "
+            >
+
+                <div class="space-y-1">
+
+                    <a
+                        @click="menuOpen = false"
+                        href="#product"
+                        class="
+                            block px-3 py-3
+                            text-sm font-medium
+                            text-zinc-700
+                            hover:bg-zinc-50
+                        "
+                    >
+                        Product
+                    </a>
+
+                    <a
+                        @click="menuOpen = false"
+                        href="#chat"
+                        class="
+                            block px-3 py-3
+                            text-sm font-medium
+                            text-zinc-700
+                            hover:bg-zinc-50
+                        "
+                    >
+                        Chat
+                    </a>
+
+                    <a
+                        @click="menuOpen = false"
+                        href="#pay"
+                        class="
+                            block px-3 py-3
+                            text-sm font-medium
+                            text-zinc-700
+                            hover:bg-zinc-50
+                        "
+                    >
+                        Pay
+                    </a>
+
+                    <a
+                        @click="menuOpen = false"
+                        href="#hire"
+                        class="
+                            block px-3 py-3
+                            text-sm font-medium
+                            text-zinc-700
+                            hover:bg-zinc-50
+                        "
+                    >
+                        Hire
+                    </a>
+
+                    <div class="my-2 border-t border-zinc-100"></div>
+
+                    <a
+                        href="{% url 'login' %}"
+                        class="
+                            block px-3 py-3
+                            text-sm font-medium
+                            text-zinc-700
+                        "
+                    >
+                        Log in
+                    </a>
+
+                    <a
+                        href="{% url 'register' %}"
+                        class="
+                            block
+                            bg-zinc-950
+                            px-3 py-3
+                            text-center
+                            text-sm font-semibold
+                            text-white
+                        "
+                    >
+                        Get started
+                    </a>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </header>
+
+
+    <!-- =========================================================
+         HERO
+    ========================================================== -->
+
+    <main>
+
+        <section
+            id="product"
+            class="
+                relative
+                overflow-hidden
+                px-5
+                pb-20
+                pt-36
+                sm:px-8
+                sm:pb-28
+                sm:pt-44
+            "
+        >
+
+            <!-- Very subtle background -->
+
+            <div
+                class="
+                    pointer-events-none
+                    absolute
+                    left-1/2
+                    top-24
+                    h-[500px]
+                    w-[500px]
+                    -translate-x-1/2
+                    rounded-full
+                    bg-violet-100/50
+                    blur-3xl
+                "
+            ></div>
+
+
+            <div class="relative mx-auto max-w-5xl text-center">
+
+                <div
+                    class="
+                        mb-7
+                        inline-flex
+                        items-center
+                        gap-2
+                        border
+                        border-zinc-200
+                        bg-white
+                        px-3
+                        py-1.5
+                        text-[11px]
+                        font-medium
+                        text-zinc-500
+                        shadow-sm
+                    "
+                >
+
+                    <span
+                        class="h-1.5 w-1.5 rounded-full bg-violet-600"
+                    ></span>
+
+                    The social layer for everyday life
+
+                </div>
+
+
+                <h1
+                    class="
+                        mx-auto
+                        max-w-4xl
+                        text-[44px]
+                        font-semibold
+                        leading-[1.02]
+                        tracking-[-0.045em]
+                        text-zinc-950
+                        sm:text-6xl
+                        lg:text-7xl
+                    "
+                >
+                    Chat.
+                    <span class="text-violet-600">Pay.</span>
+                    Hire.
+                </h1>
+
+
+                <p
+                    class="
+                        mx-auto
+                        mt-6
+                        max-w-xl
+                        text-[15px]
+                        leading-7
+                        text-zinc-500
+                        sm:text-base
+                    "
+                >
+                    Talk to people, send money and get things done —
+                    without leaving the conversation.
+                </p>
+
+
+                <div
+                    class="
+                        mt-8
+                        flex
+                        flex-col
+                        items-center
+                        justify-center
+                        gap-3
+                        sm:flex-row
+                    "
+                >
+
+                    <a
+                        href="{% url 'register' %}"
+                        class="
+                            flex
+                            w-full
+                            items-center
+                            justify-center
+                            gap-2
+                            rounded-xl
+                            bg-zinc-950
+                            px-6
+                            py-3.5
+                            text-sm
+                            font-semibold
+                            text-white
+                            shadow-lg
+                            shadow-zinc-950/10
+                            transition
+                            hover:bg-zinc-800
+                            active:scale-[.98]
+                            sm:w-auto
+                        "
+                    >
+                        Start using Pheral
+
+                        <i
+                            data-lucide="arrow-up-right"
+                            class="h-4 w-4"
+                        ></i>
+
+                    </a>
+
+
+                    <a
+                        href="#chat"
+                        class="
+                            flex
+                            w-full
+                            items-center
+                            justify-center
+                            gap-2
+                            rounded-xl
+                            border
+                            border-zinc-200
+                            bg-white
+                            px-6
+                            py-3.5
+                            text-sm
+                            font-semibold
+                            text-zinc-800
+                            transition
+                            hover:border-zinc-300
+                            hover:bg-zinc-50
+                            sm:w-auto
+                        "
+                    >
+                        See how it works
+
+                        <i
+                            data-lucide="arrow-down"
+                            class="h-4 w-4"
+                        ></i>
+
+                    </a>
+
+                </div>
+
+            </div>
+
+
+            <!-- =====================================================
+                 PRODUCT PREVIEW
+            ====================================================== -->
+
+            <div class="relative mx-auto mt-16 max-w-5xl sm:mt-20">
+
+                <div
+                    class="
+                        overflow-hidden
+                        border
+                        border-zinc-200
+                        bg-zinc-50
+                        shadow-2xl
+                        shadow-zinc-900/10
+                    "
+                >
+
+                    <!-- Browser bar -->
+
+                    <div
+                        class="
+                            flex
+                            h-11
+                            items-center
+                            justify-between
+                            border-b
+                            border-zinc-200
+                            bg-white
+                            px-4
+                        "
+                    >
+
+                        <div class="flex gap-1.5">
+
+                            <span class="h-2.5 w-2.5 rounded-full bg-zinc-200"></span>
+                            <span class="h-2.5 w-2.5 rounded-full bg-zinc-200"></span>
+                            <span class="h-2.5 w-2.5 rounded-full bg-zinc-200"></span>
+
+                        </div>
+
+                        <span
+                            class="
+                                text-[10px]
+                                font-medium
+                                text-zinc-400
+                            "
+                        >
+                            pheral.app
+                        </span>
+
+                        <div class="w-12"></div>
+
+                    </div>
+
+
+                    <!-- App -->
+
+                    <div
+                        class="
+                            grid
+                            min-h-[470px]
+                            grid-cols-1
+                            md:grid-cols-[210px_1fr]
+                        "
+                    >
+
+                        <!-- Sidebar -->
+
+                        <aside
+                            class="
+                                hidden
+                                border-r
+                                border-zinc-200
+                                bg-white
+                                p-4
+                                md:block
+                            "
+                        >
+
+                            <div class="mb-7 flex items-center gap-2">
+
+                                <img
+                                    src="{% static 'images/pheral-logo.png' %}"
+                                    alt="Pheral"
+                                    class="h-7 w-7 object-contain"
+                                >
+
+                                <span class="text-sm font-semibold">
+                                    Pheral
+                                </span>
+
+                            </div>
+
+
+                            <div class="space-y-1">
+
+                                <div
+                                    class="
+                                        flex
+                                        items-center
+                                        gap-3
+                                        rounded-lg
+                                        bg-violet-50
+                                        px-3
+                                        py-2.5
+                                        text-[12px]
+                                        font-medium
+                                        text-violet-700
+                                    "
+                                >
+
+                                    <i
+                                        data-lucide="message-circle"
+                                        class="h-4 w-4"
+                                    ></i>
+
+                                    Chats
+
+                                </div>
+
+
+                                <div
+                                    class="
+                                        flex
+                                        items-center
+                                        gap-3
+                                        px-3
+                                        py-2.5
+                                        text-[12px]
+                                        text-zinc-500
+                                    "
+                                >
+
+                                    <i
+                                        data-lucide="house"
+                                        class="h-4 w-4"
+                                    ></i>
+
+                                    Home
+
+                                </div>
+
+
+                                <div
+                                    class="
+                                        flex
+                                        items-center
+                                        gap-3
+                                        px-3
+                                        py-2.5
+                                        text-[12px]
+                                        text-zinc-500
+                                    "
+                                >
+
+                                    <i
+                                        data-lucide="wallet"
+                                        class="h-4 w-4"
+                                    ></i>
+
+                                    Wallet
+
+                                </div>
+
+
+                                <div
+                                    class="
+                                        flex
+                                        items-center
+                                        gap-3
+                                        px-3
+                                        py-2.5
+                                        text-[12px]
+                                        text-zinc-500
+                                    "
+                                >
+
+                                    <i
+                                        data-lucide="user-round"
+                                        class="h-4 w-4"
+                                    ></i>
+
+                                    Profile
+
+                                </div>
+
+                            </div>
+
+                        </aside>
+
+
+                        <!-- Chat area -->
+
+                        <div class="bg-zinc-50">
+
+                            <div
+                                class="
+                                    flex
+                                    h-16
+                                    items-center
+                                    justify-between
+                                    border-b
+                                    border-zinc-200
+                                    bg-white
+                                    px-5
+                                "
+                            >
+
+                                <div class="flex items-center gap-3">
+
+                                    <div
+                                        class="
+                                            flex
+                                            h-9
+                                            w-9
+                                            items-center
+                                            justify-center
+                                            rounded-full
+                                            bg-violet-100
+                                            text-xs
+                                            font-semibold
+                                            text-violet-700
+                                        "
+                                    >
+                                        S
+                                    </div>
+
+                                    <div>
+
+                                        <p class="text-[12px] font-semibold">
+                                            Sarah
+                                        </p>
+
+                                        <p class="text-[10px] text-zinc-400">
+                                            online
+                                        </p>
+
+                                    </div>
+
+                                </div>
+
+
+                                <button
+                                    class="
+                                        flex
+                                        h-8
+                                        w-8
+                                        items-center
+                                        justify-center
+                                        text-zinc-400
+                                    "
+                                >
+
+                                    <i
+                                        data-lucide="more-horizontal"
+                                        class="h-4 w-4"
+                                    ></i>
+
+                                </button>
+
+                            </div>
+
+
+                            <div
+                                class="
+                                    flex
+                                    h-[405px]
+                                    flex-col
+                                    justify-end
+                                    gap-3
+                                    overflow-hidden
+                                    p-5
+                                "
+                            >
+
+                                <div class="flex justify-start">
+
+                                    <div
+                                        class="
+                                            max-w-[75%]
+                                            bg-white
+                                            px-4
+                                            py-3
+                                            text-[12px]
+                                            leading-5
+                                            text-zinc-700
+                                            shadow-sm
+                                        "
+                                    >
+                                        Are you still coming today?
+                                    </div>
+
+                                </div>
+
+
+                                <div class="flex justify-end">
+
+                                    <div
+                                        class="
+                                            max-w-[75%]
+                                            bg-zinc-950
+                                            px-4
+                                            py-3
+                                            text-[12px]
+                                            leading-5
+                                            text-white
+                                        "
+                                    >
+                                        Yeah. I'll be there around 5.
+                                    </div>
+
+                                </div>
+
+
+                                <div class="flex justify-start">
+
+                                    <div
+                                        class="
+                                            max-w-[75%]
+                                            bg-white
+                                            px-4
+                                            py-3
+                                            text-[12px]
+                                            leading-5
+                                            text-zinc-700
+                                            shadow-sm
+                                        "
+                                    >
+                                        Perfect 👌
+                                    </div>
+
+                                </div>
+
+
+                                <!-- Payment -->
+
+                                <div class="flex justify-end">
+
+                                    <div
+                                        class="
+                                            w-56
+                                            overflow-hidden
+                                            border
+                                            border-violet-200
+                                            bg-white
+                                            shadow-sm
+                                        "
+                                    >
+
+                                        <div
+                                            class="
+                                                flex
+                                                items-center
+                                                gap-2
+                                                border-b
+                                                border-violet-100
+                                                bg-violet-50
+                                                px-3
+                                                py-2.5
+                                            "
+                                        >
+
+                                            <i
+                                                data-lucide="arrow-up-right"
+                                                class="h-3.5 w-3.5 text-violet-600"
+                                            ></i>
+
+                                            <span
+                                                class="
+                                                    text-[10px]
+                                                    font-semibold
+                                                    text-violet-700
+                                                "
+                                            >
+                                                Payment sent
+                                            </span>
+
+                                        </div>
+
+
+                                        <div class="p-4">
+
+                                            <p
+                                                class="
+                                                    text-lg
+                                                    font-semibold
+                                                    tracking-tight
+                                                "
+                                            >
+                                                ₦2,000
+                                            </p>
+
+                                            <p
+                                                class="
+                                                    mt-1
+                                                    text-[10px]
+                                                    text-zinc-400
+                                                "
+                                            >
+                                                to Sarah
+                                            </p>
+
+                                        </div>
+
+                                    </div>
+
+                                </div>
+
+
+                                <!-- Composer -->
+
+                                <div
+                                    class="
+                                        mt-2
+                                        flex
+                                        items-center
+                                        gap-2
+                                        border
+                                        border-zinc-200
+                                        bg-white
+                                        p-2
+                                    "
+                                >
+
+                                    <button
+                                        class="
+                                            flex
+                                            h-8
+                                            w-8
+                                            items-center
+                                            justify-center
+                                            text-zinc-400
+                                        "
+                                    >
+
+                                        <i
+                                            data-lucide="plus"
+                                            class="h-4 w-4"
+                                        ></i>
+
+                                    </button>
+
+
+                                    <span
+                                        class="
+                                            flex-1
+                                            text-[11px]
+                                            text-zinc-400
+                                        "
+                                    >
+                                        Message Sarah...
+                                    </span>
+
+
+                                    <button
+                                        class="
+                                            flex
+                                            h-8
+                                            w-8
+                                            items-center
+                                            justify-center
+                                            rounded-lg
+                                            bg-zinc-950
+                                            text-white
+                                        "
+                                    >
+
+                                        <i
+                                            data-lucide="arrow-up"
+                                            class="h-4 w-4"
+                                        ></i>
+
+                                    </button>
+
+                                </div>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =========================================================
+             CHAT
+        ========================================================== -->
+
+        <section
+            id="chat"
+            class="
+                border-t
+                border-zinc-100
+                px-5
+                py-24
+                sm:px-8
+                sm:py-32
+            "
+        >
+
+            <div
+                class="
+                    mx-auto
+                    grid
+                    max-w-6xl
+                    items-center
+                    gap-12
+                    lg:grid-cols-2
+                "
+            >
+
+                <div>
+
+                    <p
+                        class="
+                            mb-4
+                            text-[11px]
+                            font-semibold
+                            uppercase
+                            tracking-[0.16em]
+                            text-violet-600
+                        "
+                    >
+                        Chat
+                    </p>
+
+
+                    <h2
+                        class="
+                            max-w-lg
+                            text-3xl
+                            font-semibold
+                            tracking-[-0.03em]
+                            sm:text-4xl
+                        "
+                    >
+                        Your conversations are where things happen.
+                    </h2>
+
+
+                    <p
+                        class="
+                            mt-5
+                            max-w-md
+                            text-sm
+                            leading-7
+                            text-zinc-500
+                        "
+                    >
+                        Message friends, clients and people you work with.
+                        Then pay or hire them without breaking the flow.
+                    </p>
+
+                </div>
+
+
+                <div
+                    class="
+                        border
+                        border-zinc-200
+                        bg-zinc-50
+                        p-4
+                        shadow-sm
+                    "
+                >
+
+                    <div
+                        class="
+                            flex
+                            items-center
+                            justify-between
+                            border-b
+                            border-zinc-200
+                            pb-4
+                        "
+                    >
+
+                        <span class="text-xs font-semibold">
+                            Messages
+                        </span>
+
+                        <i
+                            data-lucide="search"
+                            class="h-4 w-4 text-zinc-400"
+                        ></i>
+
+                    </div>
+
+
+                    <div class="divide-y divide-zinc-200">
+
+                        <div class="flex items-center gap-3 py-4">
+
+                            <div
+                                class="
+                                    flex
+                                    h-10
+                                    w-10
+                                    items-center
+                                    justify-center
+                                    rounded-full
+                                    bg-zinc-200
+                                    text-xs
+                                    font-semibold
+                                "
+                            >
+                                T
+                            </div>
+
+                            <div class="min-w-0 flex-1">
+
+                                <p class="text-xs font-semibold">
+                                    Teddy
+                                </p>
+
+                                <p
+                                    class="
+                                        mt-1
+                                        truncate
+                                        text-[11px]
+                                        text-zinc-400
+                                    "
+                                >
+                                    Payment received
+                                </p>
+
+                            </div>
+
+                            <span class="text-[9px] text-zinc-400">
+                                2m
+                            </span>
+
+                        </div>
+
+
+                        <div class="flex items-center gap-3 py-4">
+
+                            <div
+                                class="
+                                    flex
+                                    h-10
+                                    w-10
+                                    items-center
+                                    justify-center
+                                    rounded-full
+                                    bg-violet-100
+                                    text-xs
+                                    font-semibold
+                                    text-violet-700
+                                "
+                            >
+                                A
+                            </div>
+
+                            <div class="min-w-0 flex-1">
+
+                                <p class="text-xs font-semibold">
+                                    Amanda
+                                </p>
+
+                                <p
+                                    class="
+                                        mt-1
+                                        truncate
+                                        text-[11px]
+                                        text-zinc-400
+                                    "
+                                >
+                                    Can you send that file?
+                                </p>
+
+                            </div>
+
+                            <span class="text-[9px] text-zinc-400">
+                                12m
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =========================================================
+             PAY
+        ========================================================== -->
+
+        <section
+            id="pay"
+            class="
+                bg-zinc-950
+                px-5
+                py-24
+                text-white
+                sm:px-8
+                sm:py-32
+            "
+        >
+
+            <div
+                class="
+                    mx-auto
+                    grid
+                    max-w-6xl
+                    items-center
+                    gap-12
+                    lg:grid-cols-2
+                "
+            >
+
+                <div
+                    class="
+                        order-2
+                        border
+                        border-white/10
+                        bg-white/[0.04]
+                        p-5
+                        lg:order-1
+                    "
+                >
+
+                    <div class="flex items-center justify-between">
+
+                        <span class="text-xs font-semibold">
+                            Wallet
+                        </span>
+
+                        <i
+                            data-lucide="wallet"
+                            class="h-4 w-4 text-white/40"
+                        ></i>
+
+                    </div>
+
+
+                    <div class="mt-10">
+
+                        <p class="text-[10px] text-white/40">
+                            Available balance
+                        </p>
+
+                        <p
+                            class="
+                                mt-2
+                                text-3xl
+                                font-semibold
+                                tracking-[-0.03em]
+                            "
+                        >
+                            ₦84,250.00
+                        </p>
+
+                    </div>
+
+
+                    <div class="mt-8 flex gap-2">
+
+                        <button
+                            class="
+                                flex
+                                flex-1
+                                items-center
+                                justify-center
+                                gap-2
+                                bg-white
+                                px-4
+                                py-3
+                                text-xs
+                                font-semibold
+                                text-zinc-950
+                            "
+                        >
+
+                            <i
+                                data-lucide="arrow-up-right"
+                                class="h-4 w-4"
+                            ></i>
+
+                            Pay
+
+                        </button>
+
+
+                        <button
+                            class="
+                                flex
+                                flex-1
+                                items-center
+                                justify-center
+                                gap-2
+                                border
+                                border-white/10
+                                px-4
+                                py-3
+                                text-xs
+                                font-semibold
+                            "
+                        >
+
+                            <i
+                                data-lucide="plus"
+                                class="h-4 w-4"
+                            ></i>
+
+                            Top up
+
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <div class="order-1 lg:order-2">
+
+                    <p
+                        class="
+                            mb-4
+                            text-[11px]
+                            font-semibold
+                            uppercase
+                            tracking-[0.16em]
+                            text-violet-400
+                        "
+                    >
+                        Pay
+                    </p>
+
+
+                    <h2
+                        class="
+                            max-w-lg
+                            text-3xl
+                            font-semibold
+                            tracking-[-0.03em]
+                            sm:text-4xl
+                        "
+                    >
+                        Money belongs inside the conversation.
+                    </h2>
+
+
+                    <p
+                        class="
+                            mt-5
+                            max-w-md
+                            text-sm
+                            leading-7
+                            text-white/50
+                        "
+                    >
+                        Send money to another Pheral user without asking
+                        for an account number. Every payment comes with
+                        a receipt.
+                    </p>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =========================================================
+             HIRE
+        ========================================================== -->
+
+        <section
+            id="hire"
+            class="
+                px-5
+                py-24
+                sm:px-8
+                sm:py-32
+            "
+        >
+
+            <div class="mx-auto max-w-6xl">
+
+                <div class="max-w-xl">
+
+                    <p
+                        class="
+                            mb-4
+                            text-[11px]
+                            font-semibold
+                            uppercase
+                            tracking-[0.16em]
+                            text-violet-600
+                        "
+                    >
+                        Hire
+                    </p>
+
+
+                    <h2
+                        class="
+                            text-3xl
+                            font-semibold
+                            tracking-[-0.03em]
+                            sm:text-4xl
+                        "
+                    >
+                        Need someone to get it done?
+                    </h2>
+
+
+                    <p
+                        class="
+                            mt-5
+                            text-sm
+                            leading-7
+                            text-zinc-500
+                        "
+                    >
+                        Discover people, view their profiles and hire them
+                        directly from Pheral.
+                    </p>
+
+                </div>
+
+
+                <div
+                    class="
+                        mt-12
+                        grid
+                        gap-3
+                        sm:grid-cols-3
+                    "
+                >
+
+                    <div class="border border-zinc-200 p-5">
+
+                        <div
+                            class="
+                                flex
+                                h-10
+                                w-10
+                                items-center
+                                justify-center
+                                bg-violet-50
+                                text-violet-600
+                            "
+                        >
+
+                            <i
+                                data-lucide="user-search"
+                                class="h-5 w-5"
+                            ></i>
+
+                        </div>
+
+
+                        <h3 class="mt-6 text-sm font-semibold">
+                            Find people
+                        </h3>
+
+
+                        <p
+                            class="
+                                mt-2
+                                text-xs
+                                leading-6
+                                text-zinc-500
+                            "
+                        >
+                            Search for people and discover what they do.
+                        </p>
+
+                    </div>
+
+
+                    <div class="border border-zinc-200 p-5">
+
+                        <div
+                            class="
+                                flex
+                                h-10
+                                w-10
+                                items-center
+                                justify-center
+                                bg-violet-50
+                                text-violet-600
+                            "
+                        >
+
+                            <i
+                                data-lucide="briefcase-business"
+                                class="h-5 w-5"
+                            ></i>
+
+                        </div>
+
+
+                        <h3 class="mt-6 text-sm font-semibold">
+                            Hire
+                        </h3>
+
+
+                        <p
+                            class="
+                                mt-2
+                                text-xs
+                                leading-6
+                                text-zinc-500
+                            "
+                        >
+                            Send a hire request with your title and budget.
+                        </p>
+
+                    </div>
+
+
+                    <div class="border border-zinc-200 p-5">
+
+                        <div
+                            class="
+                                flex
+                                h-10
+                                w-10
+                                items-center
+                                justify-center
+                                bg-violet-50
+                                text-violet-600
+                            "
+                        >
+
+                            <i
+                                data-lucide="circle-check"
+                                class="h-5 w-5"
+                            ></i>
+
+                        </div>
+
+
+                        <h3 class="mt-6 text-sm font-semibold">
+                            Get it done
+                        </h3>
+
+
+                        <p
+                            class="
+                                mt-2
+                                text-xs
+                                leading-6
+                                text-zinc-500
+                            "
+                        >
+                            Keep the conversation and payment in one place.
+                        </p>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =========================================================
+             FINAL CTA
+        ========================================================== -->
+
+        <section class="px-5 pb-20 sm:px-8 sm:pb-28">
+
+            <div
+                class="
+                    mx-auto
+                    max-w-6xl
+                    overflow-hidden
+                    bg-violet-600
+                    px-6
+                    py-14
+                    text-white
+                    sm:px-12
+                    sm:py-20
+                "
+            >
+
+                <div class="max-w-2xl">
+
+                    <p class="text-xs font-medium text-white/60">
+                        PHERAL
+                    </p>
+
+
+                    <h2
+                        class="
+                            mt-4
+                            text-3xl
+                            font-semibold
+                            tracking-[-0.03em]
+                            sm:text-5xl
+                        "
+                    >
+                        One place.
+                        <br>
+                        Everything between people.
+                    </h2>
+
+
+                    <a
+                        href="{% url 'register' %}"
+                        class="
+                            mt-8
+                            inline-flex
+                            items-center
+                            gap-2
+                            bg-white
+                            px-5
+                            py-3.5
+                            text-sm
+                            font-semibold
+                            text-zinc-950
+                            transition
+                            hover:bg-zinc-100
+                        "
+                    >
+
+                        Create your account
+
+                        <i
+                            data-lucide="arrow-up-right"
+                            class="h-4 w-4"
+                        ></i>
+
+                    </a>
+
+                </div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <!-- =========================================================
+         FOOTER
+    ========================================================== -->
+
+    <footer
+        class="
+            border-t
+            border-zinc-100
+            px-5
+            py-8
+            sm:px-8
+        "
+    >
+
+        <div
+            class="
+                mx-auto
+                flex
+                max-w-6xl
+                flex-col
+                gap-4
+                sm:flex-row
+                sm:items-center
+                sm:justify-between
+            "
+        >
+
+            <div class="flex items-center gap-2">
+
+                <img
+                    src="{% static 'images/pheral-logo.png' %}"
+                    alt="Pheral"
+                    class="h-6 w-6 object-contain"
+                >
+
+                <span class="text-xs font-semibold">
+                    Pheral
+                </span>
+
+            </div>
+
+
+            <p class="text-[11px] text-zinc-400">
+                Chat. Pay. Hire.
+            </p>
+
+        </div>
+
+    </footer>
+
+
+    <!-- =========================================================
+         LUCIDE INITIALIZATION
+    ========================================================== -->
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            lucide.createIcons();
+        });
+
+        document.addEventListener("alpine:initialized", function () {
+            lucide.createIcons();
+        });
+    </script>
+
+</body>
+</html>

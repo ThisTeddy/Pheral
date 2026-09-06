@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Post a job · Pheral{% endblock %}
+{% block page_title %}Post a job{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-lg px-4 py-4" x-data="{ title: '', description: '', budget: '' }">
+
+    <div class="flex items-center justify-between">
+        <a href="{% url 'hire' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink" aria-label="Cancel">
+            <i data-lucide="x" class="h-5 w-5"></i>
+        </a>
+        <h1 class="text-base font-semibold text-ink">Post a job</h1>
+        <span class="w-8"></span>
+    </div>
+
+    <form method="post" action="{% url 'create_hire_job' %}" class="mt-4 space-y-5">
+        {% csrf_token %}
+
+        <!-- Title -->
+        <div>
+            <label class="mb-1.5 block text-sm font-medium text-ink">Job title</label>
+            <input type="text" name="title" x-model="title" required maxlength="200" placeholder="e.g. Fix my WordPress site"
+                   class="w-full rounded-2xl border border-line bg-white px-4 py-2.5 text-sm text-ink placeholder-muted focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100">
+        </div>
+
+        <!-- Description -->
+        <div>
+            <label class="mb-1.5 block text-sm font-medium text-ink">Description</label>
+            <textarea name="description" x-model="description" rows="5" maxlength="5000" placeholder="What needs to be done, timeline, and any requirements"
+                      class="w-full resize-none rounded-2xl border border-line bg-white px-4 py-2.5 text-sm text-ink placeholder-muted focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100"></textarea>
+            <p class="mt-1 text-right text-xs text-muted" x-text="description.length + ' / 5000'"></p>
+        </div>
+
+        <!-- Budget + currency -->
+        <div>
+            <label class="mb-1.5 block text-sm font-medium text-ink">Budget</label>
+            <div class="flex items-center gap-2">
+                <div class="flex flex-1 items-center gap-2 rounded-2xl border border-line bg-white px-4 py-3 focus-within:border-accent-400 focus-within:ring-2 focus-within:ring-accent-100">
+                    <input type="number" name="budget" x-model="budget" step="0.01" min="0.01" required placeholder="0.00"
+                           class="w-full bg-transparent text-sm font-medium text-ink placeholder-muted focus:outline-none">
+                </div>
+                <select name="currency" required
+                        class="shrink-0 rounded-2xl border border-line bg-white px-3 py-3 text-sm text-ink focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100">
+                    {% for currency in currencies %}
+                        <option value="{{ currency.id }}">{{ currency.code }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <p class="rounded-2xl bg-surface px-4 py-3 text-xs text-muted">
+            Your job will be visible to everyone on Pheral until you mark it as filled or cancel it.
+        </p>
+
+        <button type="submit" :disabled="!title.trim() || !budget"
+                class="w-full rounded-full bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
+            Post job
+        </button>
+    </form>
+</div>
+{% endblock %}

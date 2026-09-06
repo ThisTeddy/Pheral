@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Groups · Pheral{% endblock %}
+{% block page_title %}Groups{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl">
+
+    <div class="flex items-center justify-between px-4 pt-4">
+        <h1 class="text-2xl font-bold tracking-tight text-ink md:hidden">Groups</h1>
+        <p class="hidden text-sm text-muted md:block">Groups you're a member of</p>
+        <a href="{% url 'group_create' %}"
+           class="hidden items-center gap-1.5 rounded-full bg-accent-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-600 md:inline-flex">
+            <i data-lucide="plus" class="h-4 w-4"></i> New group
+        </a>
+    </div>
+
+    {% if groups %}
+        <div class="divide-y divide-line px-4 py-4">
+            {% for group in groups %}
+                <a href="{% url 'group_chat' conversation_id=group.id %}"
+                   class="-mx-2 flex items-center gap-3 rounded-2xl px-2 py-3 transition hover:bg-surface">
+                    {% if group.avatar %}
+                        <img src="{{ group.avatar.url }}" alt="" class="h-[52px] w-[52px] shrink-0 rounded-full object-cover">
+                    {% else %}
+                        <div class="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full bg-accent-100 text-accent-700">
+                            <i data-lucide="users" class="h-6 w-6"></i>
+                        </div>
+                    {% endif %}
+                    <div class="min-w-0 flex-1">
+                        <p class="truncate text-[15px] font-semibold text-ink">{{ group.name|default:"Group" }}</p>
+                        <p class="truncate text-sm text-muted">
+                            {{ group.participants.count }} member{{ group.participants.count|pluralize }}
+                            {% if group.description %} · {{ group.description }}{% endif %}
+                        </p>
+                    </div>
+                    <span class="shrink-0 text-xs text-muted">{{ group.updated_at|timesince }} ago</span>
+                </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="flex flex-col items-center gap-3 px-4 py-20 text-center">
+            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-accent-50">
+                <i data-lucide="users" class="h-7 w-7 text-accent-500"></i>
+            </div>
+            <p class="text-base font-semibold text-ink">No groups yet</p>
+            <p class="max-w-xs text-sm text-muted">Create a group to chat and split payments with more than one person at once.</p>
+            <a href="{% url 'group_create' %}" class="mt-2 rounded-full bg-accent-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-600">
+                Create a group
+            </a>
+        </div>
+    {% endif %}
+</div>
+
+<a href="{% url 'group_create' %}"
+   class="fixed bottom-24 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-accent-500 text-white shadow-lg transition hover:bg-accent-600 md:hidden"
+   aria-label="New group">
+    <i data-lucide="users" class="h-6 w-6"></i>
+</a>
+{% endblock %}

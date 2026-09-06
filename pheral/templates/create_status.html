@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}New status · Pheral{% endblock %}
+{% block page_title %}New status{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-lg px-4 pt-4 md:pt-6"
+     x-data="{ text: '', mediaUrl: null, mediaType: null, fileName: '' }">
+
+    <div class="mb-4 flex items-center justify-between md:hidden">
+        <a href="{% url 'status_list' %}" class="rounded-full p-2 text-muted hover:bg-surface hover:text-ink">
+            <i data-lucide="x" class="h-5 w-5"></i>
+        </a>
+        <p class="text-base font-semibold text-ink">New status</p>
+        <span class="w-9"></span>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" action="{% url 'create_status' %}" class="space-y-4 pb-8">
+        {% csrf_token %}
+
+        <!-- Preview -->
+        <div class="relative overflow-hidden rounded-3xl"
+             :class="mediaUrl ? 'aspect-[9/16] bg-black' : 'aspect-[9/16] flex items-center justify-center bg-gradient-to-br from-accent-500 to-accent-700 p-6'">
+
+            <template x-if="mediaType === 'image' && mediaUrl">
+                <img :src="mediaUrl" alt="" class="h-full w-full object-cover">
+            </template>
+            <template x-if="mediaType === 'video' && mediaUrl">
+                <video :src="mediaUrl" class="h-full w-full object-cover" controls></video>
+            </template>
+            <template x-if="!mediaUrl">
+                <p class="max-h-full overflow-hidden whitespace-pre-wrap break-words text-center text-xl font-semibold text-white"
+                   x-text="text || 'Type a status…'"></p>
+            </template>
+
+            <button type="button" x-show="mediaUrl" x-cloak
+                    @click="mediaUrl = null; mediaType = null; fileName = ''; $refs.mediaInput.value = '';"
+                    class="absolute right-3 top-3 rounded-full bg-black/50 p-1.5 text-white" aria-label="Remove media">
+                <i data-lucide="x" class="h-4 w-4"></i>
+            </button>
+        </div>
+
+        <!-- Caption -->
+        <div>
+            <textarea name="text" x-model="text" maxlength="1000" rows="3" placeholder="Add a caption…"
+                      class="w-full resize-none rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-accent-200"></textarea>
+            <p class="mt-1 text-right text-xs text-muted" x-text="text.length + ' / 1000'"></p>
+        </div>
+
+        <!-- Media picker -->
+        <label class="flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-line px-4 py-3 text-sm text-muted transition hover:bg-surface">
+            <i data-lucide="image-plus" class="h-5 w-5 shrink-0"></i>
+            <span x-text="fileName || 'Add a photo or video (optional)'" class="truncate"></span>
+            <input type="file" name="media" x-ref="mediaInput" accept="image/*,video/*" class="hidden"
+                   @change="
+                       const file = $event.target.files[0];
+                       if (!file) { mediaUrl = null; mediaType = null; fileName = ''; return; }
+                       fileName = file.name;
+                       mediaType = file.type.startsWith('video/') ? 'video' : 'image';
+                       mediaUrl = URL.createObjectURL(file);
+                   ">
+        </label>
+
+        <p class="text-center text-xs text-muted">Your status disappears after 24 hours.</p>
+
+        <div class="flex gap-2">
+            <a href="{% url 'status_list' %}"
+               class="flex-1 rounded-full border border-line px-4 py-3 text-center text-sm font-semibold text-ink transition hover:bg-surface">
+                Cancel
+            </a>
+            <button type="submit" :disabled="!text.trim() && !mediaUrl"
+                    :class="(!text.trim() && !mediaUrl) ? 'opacity-40 cursor-not-allowed' : 'hover:bg-accent-600'"
+                    class="flex-1 rounded-full bg-accent-500 px-4 py-3 text-center text-sm font-semibold text-white transition">
+                Post status
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

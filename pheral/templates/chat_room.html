@@ -1,0 +1,537 @@
+{% extends "base.html" %}
+
+{% block title %}Chat · Pheral{% endblock %}
+
+{% block content %}
+
+<div class="mx-auto flex h-[calc(100dvh-7.5rem)] w-full max-w-3xl flex-col">
+
+    <!-- =====================================================
+         CHAT HEADER
+    ====================================================== -->
+
+    <header
+        class="
+            sticky
+            top-0
+            z-20
+            flex
+            shrink-0
+            items-center
+            gap-3
+            border-b
+            border-zinc-100
+            bg-white/95
+            px-4
+            py-3
+            backdrop-blur-xl
+            sm:px-6
+        "
+    >
+
+        <!-- BACK -->
+
+        <a
+            href="{% url 'chat_list' %}"
+            class="
+                flex
+                h-9
+                w-9
+                shrink-0
+                items-center
+                justify-center
+                text-zinc-600
+                transition
+                hover:bg-zinc-50
+                active:scale-95
+            "
+        >
+
+            <i
+                data-lucide="arrow-left"
+                class="h-[18px] w-[18px]"
+            ></i>
+
+        </a>
+
+
+        <!-- AVATAR -->
+
+        <div
+            class="
+                relative
+                h-10
+                w-10
+                shrink-0
+                overflow-hidden
+                rounded-full
+                bg-zinc-100
+            "
+        >
+
+            {% if other_user.profile.avatar %}
+
+                <img
+                    src="{{ other_user.profile.avatar.url }}"
+                    alt="{{ other_user.username }}"
+                    class="h-full w-full object-cover"
+                >
+
+            {% else %}
+
+                <div
+                    class="
+                        flex
+                        h-full
+                        w-full
+                        items-center
+                        justify-center
+                        text-sm
+                        font-semibold
+                        text-zinc-600
+                    "
+                >
+                    {{ other_user.username|first|upper }}
+                </div>
+
+            {% endif %}
+
+
+            {% if other_user.is_online %}
+
+                <span
+                    class="
+                        absolute
+                        bottom-0
+                        right-0
+                        h-2.5
+                        w-2.5
+                        rounded-full
+                        border-2
+                        border-white
+                        bg-emerald-500
+                    "
+                ></span>
+
+            {% endif %}
+
+        </div>
+
+
+        <!-- NAME -->
+
+        <div class="min-w-0 flex-1">
+
+            <h1
+                class="
+                    truncate
+                    text-sm
+                    font-semibold
+                    text-zinc-950
+                "
+            >
+                {{ other_user.username }}
+            </h1>
+
+            <p
+                class="
+                    mt-0.5
+                    text-[9px]
+                    text-zinc-400
+                "
+            >
+
+                {% if other_user.is_online %}
+                    Online
+                {% else %}
+                    Offline
+                {% endif %}
+
+            </p>
+
+        </div>
+
+
+        <!-- HEADER ACTION -->
+
+        <button
+            type="button"
+            class="
+                flex
+                h-9
+                w-9
+                items-center
+                justify-center
+                text-zinc-500
+                transition
+                hover:bg-zinc-50
+            "
+        >
+
+            <i
+                data-lucide="ellipsis"
+                class="h-[18px] w-[18px]"
+            ></i>
+
+        </button>
+
+    </header>
+
+
+    <!-- =====================================================
+         MESSAGES
+    ====================================================== -->
+
+    <main
+        id="message-container"
+        class="
+            flex-1
+            overflow-y-auto
+            px-4
+            py-6
+            sm:px-6
+        "
+    >
+
+        <div class="space-y-3">
+
+            {% for message in messages %}
+
+                {% if message.sender == request.user %}
+
+                    <!-- ==========================================
+                         MY MESSAGE
+                    =========================================== -->
+
+                    <div class="flex justify-end">
+
+                        <div class="max-w-[78%] sm:max-w-[65%]">
+
+                            <div
+                                class="
+                                    rounded-2xl
+                                    rounded-br-md
+                                    bg-zinc-950
+                                    px-4
+                                    py-2.5
+                                    text-[13px]
+                                    leading-5
+                                    text-white
+                                "
+                            >
+                                {{ message.content }}
+                            </div>
+
+
+                            <div class="mt-1 flex justify-end">
+
+                                <span
+                                    class="
+                                        text-[8px]
+                                        text-zinc-400
+                                    "
+                                >
+                                    {{ message.created_at|date:"H:i" }}
+                                </span>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                {% else %}
+
+                    <!-- ==========================================
+                         THEIR MESSAGE
+                    =========================================== -->
+
+                    <div class="flex items-end gap-2">
+
+                        <div
+                            class="
+                                flex
+                                h-7
+                                w-7
+                                shrink-0
+                                items-center
+                                justify-center
+                                overflow-hidden
+                                rounded-full
+                                bg-zinc-100
+                                text-[9px]
+                                font-semibold
+                                text-zinc-500
+                            "
+                        >
+
+                            {% if message.sender.profile.avatar %}
+
+                                <img
+                                    src="{{ message.sender.profile.avatar.url }}"
+                                    alt=""
+                                    class="h-full w-full object-cover"
+                                >
+
+                            {% else %}
+
+                                {{ message.sender.username|first|upper }}
+
+                            {% endif %}
+
+                        </div>
+
+
+                        <div class="max-w-[78%] sm:max-w-[65%]">
+
+                            <div
+                                class="
+                                    rounded-2xl
+                                    rounded-bl-md
+                                    bg-zinc-100
+                                    px-4
+                                    py-2.5
+                                    text-[13px]
+                                    leading-5
+                                    text-zinc-900
+                                "
+                            >
+                                {{ message.content }}
+                            </div>
+
+
+                            <div class="mt-1">
+
+                                <span
+                                    class="
+                                        text-[8px]
+                                        text-zinc-400
+                                    "
+                                >
+                                    {{ message.created_at|date:"H:i" }}
+                                </span>
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                {% endif %}
+
+            {% empty %}
+
+                <!-- EMPTY CHAT -->
+
+                <div
+                    class="
+                        flex
+                        min-h-[50vh]
+                        flex-col
+                        items-center
+                        justify-center
+                        text-center
+                    "
+                >
+
+                    <div
+                        class="
+                            flex
+                            h-14
+                            w-14
+                            items-center
+                            justify-center
+                            rounded-full
+                            bg-zinc-50
+                            text-zinc-400
+                        "
+                    >
+
+                        <i
+                            data-lucide="message-circle"
+                            class="h-6 w-6"
+                        ></i>
+
+                    </div>
+
+                    <h2
+                        class="
+                            mt-4
+                            text-sm
+                            font-semibold
+                            text-zinc-900
+                        "
+                    >
+                        Start the conversation
+                    </h2>
+
+                    <p
+                        class="
+                            mt-1
+                            max-w-xs
+                            text-[11px]
+                            leading-5
+                            text-zinc-400
+                        "
+                    >
+                        Send a message to {{ other_user.username }}.
+                    </p>
+
+                </div>
+
+            {% endfor %}
+
+        </div>
+
+    </main>
+
+
+    <!-- =====================================================
+         MESSAGE COMPOSER
+    ====================================================== -->
+
+    <footer
+        class="
+            sticky
+            bottom-0
+            shrink-0
+            border-t
+            border-zinc-100
+            bg-white/95
+            px-3
+            py-3
+            backdrop-blur-xl
+            sm:px-6
+        "
+    >
+
+        <form
+            method="POST"
+            action=""
+            class="
+                flex
+                items-end
+                gap-2
+            "
+        >
+
+            {% csrf_token %}
+
+
+            <!-- ATTACH -->
+
+            <button
+                type="button"
+                class="
+                    flex
+                    h-11
+                    w-11
+                    shrink-0
+                    items-center
+                    justify-center
+                    text-zinc-500
+                    transition
+                    hover:bg-zinc-50
+                "
+            >
+
+                <i
+                    data-lucide="plus"
+                    class="h-[18px] w-[18px]"
+                ></i>
+
+            </button>
+
+
+            <!-- INPUT -->
+
+            <div
+                class="
+                    flex
+                    min-h-11
+                    flex-1
+                    items-center
+                    border
+                    border-zinc-200
+                    bg-zinc-50
+                    px-3
+                    transition
+                    focus-within:border-zinc-400
+                    focus-within:bg-white
+                "
+            >
+
+                <input
+                    type="text"
+                    name="content"
+                    placeholder="Write a message..."
+                    autocomplete="off"
+                    class="
+                        w-full
+                        bg-transparent
+                        text-[13px]
+                        text-zinc-900
+                        outline-none
+                        placeholder:text-zinc-400
+                    "
+                >
+
+            </div>
+
+
+            <!-- SEND -->
+
+            <button
+                type="submit"
+                class="
+                    flex
+                    h-11
+                    w-11
+                    shrink-0
+                    items-center
+                    justify-center
+                    bg-zinc-950
+                    text-white
+                    transition
+                    hover:bg-zinc-800
+                    active:scale-95
+                "
+            >
+
+                <i
+                    data-lucide="arrow-up"
+                    class="h-[17px] w-[17px]"
+                ></i>
+
+            </button>
+
+        </form>
+
+    </footer>
+
+</div>
+
+{% endblock %}
+
+
+{% block extra_js %}
+
+<script>
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    if (typeof lucide !== "undefined") {
+        lucide.createIcons();
+    }
+
+    const container = document.getElementById("message-container");
+
+    if (container) {
+        container.scrollTop = container.scrollHeight;
+    }
+
+});
+
+</script>
+
+{% endblock %}

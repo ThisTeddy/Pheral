@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Withdraw · Pheral{% endblock %}
+{% block page_title %}Withdraw{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-md px-4 pb-10 pt-4 md:pt-6" x-data="{ amount: '', accountId: '{{ accounts.first.pk|default:"" }}' }">
+
+    <div class="mb-5 flex items-center gap-2 md:hidden">
+        <a href="{% url 'wallet' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink">
+            <i data-lucide="chevron-left" class="h-5 w-5"></i>
+        </a>
+        <h1 class="text-2xl font-bold tracking-tight text-ink">Withdraw</h1>
+    </div>
+
+    <!-- Available balance -->
+    {% if wallet %}
+        <div class="mb-6 rounded-3xl bg-gradient-to-br from-accent-600 via-accent-500 to-accent-400 p-5 text-white">
+            <p class="text-xs font-medium uppercase tracking-wide text-white/80">Available to withdraw</p>
+            <p class="mt-1 text-3xl font-extrabold tracking-tight">
+                {{ wallet.currency.symbol }}{{ wallet.balance|floatformat:2 }}
+            </p>
+        </div>
+    {% endif %}
+
+    {% if not accounts %}
+        <!-- No bank account yet -->
+        <div class="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line bg-surface py-12 text-center">
+            <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50">
+                <i data-lucide="landmark" class="h-6 w-6 text-accent-500"></i>
+            </div>
+            <p class="text-sm font-semibold text-ink">No bank account added</p>
+            <p class="max-w-xs text-sm text-muted">Add a bank account to withdraw your funds.</p>
+            <a href="{% url 'add_bank_account' %}"
+               class="mt-2 rounded-full bg-accent-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-600">
+                Add bank account
+            </a>
+        </div>
+    {% else %}
+        <form method="post" class="rounded-2xl border border-line bg-white p-5">
+            {% csrf_token %}
+
+            <!-- Amount -->
+            <label class="mb-2 block text-sm font-semibold text-ink">Amount</label>
+            <div class="mb-1 flex items-center gap-2 rounded-2xl bg-surface px-4 py-3">
+                <span class="text-lg font-semibold text-muted">{{ currency.symbol|default:"₦" }}</span>
+                <input
+                    type="number" name="amount" x-model="amount" step="0.01" min="1" required
+                    inputmode="decimal" placeholder="0.00"
+                    class="w-full bg-transparent text-2xl font-bold text-ink placeholder-line focus:outline-none">
+                <button type="button" @click="amount = '{{ wallet.balance|stringformat:"f" }}'"
+                        class="shrink-0 rounded-full bg-accent-50 px-3 py-1.5 text-xs font-semibold text-accent-600 transition hover:bg-accent-100">
+                    Max
+                </button>
+            </div>
+            <p class="mb-5 text-xs text-muted">
+                Available: {{ currency.symbol|default:"₦" }}{{ wallet.balance|floatformat:2 }}
+            </p>
+
+            <!-- Bank account picker -->
+            <div class="mb-2 flex items-center justify-between">
+                <label class="block text-sm font-semibold text-ink">Withdraw to</label>
+                <a href="{% url 'add_bank_account' %}" class="flex items-center gap-1 text-xs font-medium text-accent-600 hover:underline">
+                    <i data-lucide="plus" class="h-3.5 w-3.5"></i> Add new
+                </a>
+            </div>
+
+            <div class="mb-6 space-y-2">
+                {% for account in accounts %}
+                    <label class="flex cursor-pointer items-center gap-3 rounded-2xl border p-3.5 transition"
+                           :class="accountId === '{{ account.pk }}' ? 'border-accent-500 bg-accent-50' : 'border-line hover:bg-surface'">
+                        <input type="radio" name="bank_account" value="{{ account.pk }}"
+                               x-model="accountId" class="peer sr-only" {% if forloop.first %}checked{% endif %}>
+
+                        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-ink"
+                              :class="accountId === '{{ account.pk }}' ? 'ring-2 ring-accent-300' : 'border border-line'">
+                            <i data-lucide="landmark" class="h-4.5 w-4.5"></i>
+                        </span>
+
+                        <span class="min-w-0 flex-1">
+                            <span class="block truncate text-sm font-semibold text-ink">{{ account.account_name }}</span>
+                            <span class="block truncate text-xs text-muted">
+                                {{ account.bank_name }} · {{ account.account_number }}
+                            </span>
+                        </span>
+
+                        <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2"
+                              :class="accountId === '{{ account.pk }}' ? 'border-accent-500 bg-accent-500' : 'border-line'">
+                            <i x-show="accountId === '{{ account.pk }}'" data-lucide="check" class="h-3 w-3 text-white"></i>
+                        </span>
+                    </label>
+                {% endfor %}
+            </div>
+
+            <button type="submit"
+                    :disabled="!amount || Number(amount) <= 0 || !accountId"
+                    :class="(!amount || Number(amount) <= 0 || !accountId) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-accent-600'"
+                    class="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white transition">
+                <i data-lucide="arrow-up-from-line" class="h-4 w-4"></i>
+                Withdraw funds
+            </button>
+
+            <p class="mt-3 flex items-center justify-center gap-1.5 text-center text-xs text-muted">
+                <i data-lucide="clock" class="h-3.5 w-3.5"></i>
+                Withdrawals are usually processed within a few minutes
+            </p>
+        </form>
+    {% endif %}
+</div>
+{% endblock %}

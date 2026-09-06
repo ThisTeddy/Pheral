@@ -1,0 +1,610 @@
+{% extends "base.html" %}
+
+{% block title %}Pheral Agent{% endblock %}
+
+{% block content %}
+
+<div
+    x-data="{
+        message: '',
+        sending: false,
+
+        suggestions: [
+            'Check my balance',
+            'Send money',
+            'Find someone to hire',
+            'Show my recent activity'
+        ],
+
+        submit() {
+            if (!this.message.trim() || this.sending) return;
+
+            this.sending = true;
+
+            $nextTick(() => {
+                this.$refs.commandForm.submit();
+            });
+        }
+    }"
+    class="mx-auto flex min-h-[calc(100vh-150px)] w-full max-w-3xl flex-col px-4 sm:px-6 lg:px-8"
+>
+
+
+    <!-- =====================================================
+         AGENT HEADER
+    ====================================================== -->
+
+    <section class="border-b border-zinc-100 py-4">
+
+        <div class="flex items-center gap-3">
+
+            <!-- AGENT AVATAR -->
+
+            <div
+                class="
+                    relative
+                    flex
+                    h-11
+                    w-11
+                    shrink-0
+                    items-center
+                    justify-center
+                    rounded-full
+                    bg-zinc-950
+                    text-white
+                "
+            >
+
+                <i
+                    data-lucide="bot"
+                    class="h-[18px] w-[18px]"
+                ></i>
+
+                <span
+                    class="
+                        absolute
+                        bottom-0
+                        right-0
+                        h-3
+                        w-3
+                        rounded-full
+                        border-2
+                        border-white
+                        bg-emerald-500
+                    "
+                ></span>
+
+            </div>
+
+
+            <!-- IDENTITY -->
+
+            <div class="min-w-0 flex-1">
+
+                <div class="flex items-center gap-2">
+
+                    <h1
+                        class="
+                            text-sm
+                            font-semibold
+                            tracking-tight
+                            text-zinc-950
+                        "
+                    >
+                        Pheral Agent
+                    </h1>
+
+                    <span
+                        class="
+                            rounded-full
+                            bg-violet-50
+                            px-1.5
+                            py-0.5
+                            text-[8px]
+                            font-semibold
+                            uppercase
+                            tracking-wide
+                            text-violet-600
+                        "
+                    >
+                        AI
+                    </span>
+
+                </div>
+
+                <p
+                    class="
+                        mt-0.5
+                        text-[10px]
+                        text-zinc-400
+                    "
+                >
+                    Online · Ready to help
+                </p>
+
+            </div>
+
+
+            <!-- MORE -->
+
+            <button
+                type="button"
+                class="
+                    flex
+                    h-9
+                    w-9
+                    items-center
+                    justify-center
+                    text-zinc-400
+                    transition
+                    hover:bg-zinc-50
+                    hover:text-zinc-900
+                "
+            >
+
+                <i
+                    data-lucide="more-horizontal"
+                    class="h-4 w-4"
+                ></i>
+
+            </button>
+
+        </div>
+
+    </section>
+
+
+
+    <!-- =====================================================
+         CHAT AREA
+    ====================================================== -->
+
+    <main
+        class="
+            flex
+            flex-1
+            flex-col
+            justify-end
+            py-6
+        "
+    >
+
+        <!-- WELCOME -->
+
+        <div
+            class="
+                mx-auto
+                mb-8
+                max-w-md
+                text-center
+            "
+        >
+
+            <div
+                class="
+                    mx-auto
+                    flex
+                    h-14
+                    w-14
+                    items-center
+                    justify-center
+                    rounded-full
+                    bg-zinc-950
+                    text-white
+                "
+            >
+
+                <i
+                    data-lucide="sparkles"
+                    class="h-5 w-5"
+                ></i>
+
+            </div>
+
+
+            <h2
+                class="
+                    mt-5
+                    text-xl
+                    font-semibold
+                    tracking-tight
+                    text-zinc-950
+                "
+            >
+                What can I do for you?
+            </h2>
+
+            <p
+                class="
+                    mx-auto
+                    mt-2
+                    max-w-sm
+                    text-xs
+                    leading-5
+                    text-zinc-400
+                "
+            >
+                Ask me to move money, message someone,
+                find a service, hire people, or manage
+                things around Pheral.
+            </p>
+
+        </div>
+
+
+
+        <!-- =================================================
+             SUGGESTIONS
+        ================================================== -->
+
+        <div class="mb-6">
+
+            <div
+                class="
+                    flex
+                    gap-2
+                    overflow-x-auto
+                    pb-1
+                "
+            >
+
+                <template
+                    x-for="suggestion in suggestions"
+                    :key="suggestion"
+                >
+
+                    <button
+                        type="button"
+                        @click="message = suggestion"
+                        class="
+                            shrink-0
+                            rounded-full
+                            border
+                            border-zinc-200
+                            bg-white
+                            px-3
+                            py-2
+                            text-[10px]
+                            font-medium
+                            text-zinc-600
+                            transition
+                            hover:border-zinc-300
+                            hover:bg-zinc-50
+                            active:scale-95
+                        "
+                        x-text="suggestion"
+                    ></button>
+
+                </template>
+
+            </div>
+
+        </div>
+
+
+
+        <!-- =================================================
+             EXAMPLE COMMANDS
+        ================================================== -->
+
+        <div
+            class="
+                grid
+                grid-cols-2
+                gap-2
+                sm:grid-cols-4
+            "
+        >
+
+            <button
+                type="button"
+                @click="message = 'Check my wallet balance'"
+                class="
+                    group
+                    rounded-xl
+                    border
+                    border-zinc-100
+                    bg-zinc-50/60
+                    p-3
+                    text-left
+                    transition
+                    hover:border-zinc-200
+                    hover:bg-white
+                "
+            >
+
+                <i
+                    data-lucide="wallet"
+                    class="
+                        h-4
+                        w-4
+                        text-zinc-500
+                        transition
+                        group-hover:text-violet-600
+                    "
+                ></i>
+
+                <p
+                    class="
+                        mt-2
+                        text-[10px]
+                        font-medium
+                        text-zinc-700
+                    "
+                >
+                    Balance
+                </p>
+
+            </button>
+
+
+            <button
+                type="button"
+                @click="message = 'Send money to someone'"
+                class="
+                    group
+                    rounded-xl
+                    border
+                    border-zinc-100
+                    bg-zinc-50/60
+                    p-3
+                    text-left
+                    transition
+                    hover:border-zinc-200
+                    hover:bg-white
+                "
+            >
+
+                <i
+                    data-lucide="send"
+                    class="
+                        h-4
+                        w-4
+                        text-zinc-500
+                        transition
+                        group-hover:text-violet-600
+                    "
+                ></i>
+
+                <p
+                    class="
+                        mt-2
+                        text-[10px]
+                        font-medium
+                        text-zinc-700
+                    "
+                >
+                    Send money
+                </p>
+
+            </button>
+
+
+            <button
+                type="button"
+                @click="message = 'Help me find someone to hire'"
+                class="
+                    group
+                    rounded-xl
+                    border
+                    border-zinc-100
+                    bg-zinc-50/60
+                    p-3
+                    text-left
+                    transition
+                    hover:border-zinc-200
+                    hover:bg-white
+                "
+            >
+
+                <i
+                    data-lucide="briefcase-business"
+                    class="
+                        h-4
+                        w-4
+                        text-zinc-500
+                        transition
+                        group-hover:text-violet-600
+                    "
+                ></i>
+
+                <p
+                    class="
+                        mt-2
+                        text-[10px]
+                        font-medium
+                        text-zinc-700
+                    "
+                >
+                    Hire someone
+                </p>
+
+            </button>
+
+
+            <button
+                type="button"
+                @click="message = 'Show my recent activity'"
+                class="
+                    group
+                    rounded-xl
+                    border
+                    border-zinc-100
+                    bg-zinc-50/60
+                    p-3
+                    text-left
+                    transition
+                    hover:border-zinc-200
+                    hover:bg-white
+                "
+            >
+
+                <i
+                    data-lucide="activity"
+                    class="
+                        h-4
+                        w-4
+                        text-zinc-500
+                        transition
+                        group-hover:text-violet-600
+                    "
+                ></i>
+
+                <p
+                    class="
+                        mt-2
+                        text-[10px]
+                        font-medium
+                        text-zinc-700
+                    "
+                >
+                    Activity
+                </p>
+
+            </button>
+
+        </div>
+
+    </main>
+
+
+
+    <!-- =====================================================
+         COMMAND COMPOSER
+    ====================================================== -->
+
+    <section
+        class="
+            sticky
+            bottom-[76px]
+            bg-white
+            pb-3
+            pt-2
+            sm:bottom-0
+        "
+    >
+
+        <form
+            x-ref="commandForm"
+            method="POST"
+            action="{% url 'execute_agent_command' %}"
+            class="relative"
+        >
+
+            {% csrf_token %}
+
+            <div
+                class="
+                    flex
+                    items-center
+                    gap-2
+                    rounded-2xl
+                    border
+                    border-zinc-200
+                    bg-white
+                    p-1.5
+                    shadow-[0_4px_25px_rgba(0,0,0,0.05)]
+                    transition
+                    focus-within:border-zinc-400
+                "
+            >
+
+                <!-- INPUT -->
+
+                <input
+                    type="text"
+                    name="command"
+                    x-model="message"
+                    @keydown.enter.prevent="submit()"
+                    placeholder="Ask Pheral Agent..."
+                    autocomplete="off"
+                    class="
+                        min-w-0
+                        flex-1
+                        bg-transparent
+                        px-3
+                        py-2.5
+                        text-xs
+                        text-zinc-900
+                        outline-none
+                        placeholder:text-zinc-400
+                    "
+                >
+
+
+                <!-- SEND -->
+
+                <button
+                    type="button"
+                    @click="submit()"
+                    :disabled="!message.trim() || sending"
+                    class="
+                        flex
+                        h-9
+                        w-9
+                        shrink-0
+                        items-center
+                        justify-center
+                        rounded-xl
+                        bg-zinc-950
+                        text-white
+                        transition
+                        hover:bg-zinc-800
+                        active:scale-95
+                        disabled:cursor-not-allowed
+                        disabled:opacity-30
+                    "
+                >
+
+                    <i
+                        x-show="!sending"
+                        data-lucide="arrow-up"
+                        class="h-4 w-4"
+                    ></i>
+
+                    <i
+                        x-show="sending"
+                        data-lucide="loader-2"
+                        class="h-4 w-4 animate-spin"
+                    ></i>
+
+                </button>
+
+            </div>
+
+
+            <p
+                class="
+                    mt-2
+                    text-center
+                    text-[8px]
+                    text-zinc-400
+                "
+            >
+                Pheral Agent can perform actions on your behalf.
+            </p>
+
+        </form>
+
+    </section>
+
+</div>
+
+{% endblock %}
+
+
+{% block extra_js %}
+
+<script>
+
+document.addEventListener("DOMContentLoaded", () => {
+
+    if (typeof lucide !== "undefined") {
+        lucide.createIcons();
+    }
+
+});
+
+</script>
+
+{% endblock %}

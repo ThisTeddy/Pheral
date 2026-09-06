@@ -1,0 +1,572 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Pheral{% endblock %}
+
+{% block content %}
+
+<div class="min-h-screen bg-pheral-black text-pheral-text">
+
+    <div class="mx-auto w-full max-w-[980px] px-4 pb-28 pt-4 sm:px-6 md:pb-10">
+
+        <!-- =========================================================
+             HEADER
+        ========================================================== -->
+
+        <header class="flex items-center justify-between">
+
+            <a href="{% url 'home' %}" class="flex items-center gap-2.5">
+
+                <img
+                    src="{% static 'images/pheral-logo.png.png' %}"
+                    alt="Pheral"
+                    class="h-8 w-8"
+                >
+
+                <span class="text-[17px] font-bold tracking-[-0.03em]">
+                    Pheral
+                </span>
+
+            </a>
+
+
+            <div class="flex items-center gap-2">
+
+                <a
+                    href="{% url 'search' %}"
+                    aria-label="Search"
+                    class="flex h-9 w-9 items-center justify-center rounded-full text-pheral-text-secondary transition hover:bg-pheral-surface hover:text-pheral-text"
+                >
+                    <i data-lucide="search" class="h-[18px] w-[18px]"></i>
+                </a>
+
+
+                <a
+                    href="{% url 'notifications' %}"
+                    aria-label="Notifications"
+                    class="relative flex h-9 w-9 items-center justify-center rounded-full text-pheral-text-secondary transition hover:bg-pheral-surface hover:text-pheral-text"
+                >
+
+                    <i data-lucide="bell" class="h-[18px] w-[18px]"></i>
+
+                    {% if unread_notifications > 0 %}
+                        <span class="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-pheral-purple"></span>
+                    {% endif %}
+
+                </a>
+
+
+                <a
+                    href="{% url 'profile' %}"
+                    class="ml-1 h-9 w-9 overflow-hidden rounded-full bg-pheral-raised"
+                >
+
+                    {% if user.avatar %}
+
+                        <img
+                            src="{{ user.avatar.url }}"
+                            alt=""
+                            class="h-full w-full object-cover"
+                        >
+
+                    {% else %}
+
+                        <div class="flex h-full w-full items-center justify-center text-[11px] font-semibold">
+                            {{ user.first_name|default:user.username|slice:":1"|upper }}
+                        </div>
+
+                    {% endif %}
+
+                </a>
+
+            </div>
+
+        </header>
+
+
+        <!-- =========================================================
+             HERO / GREETING
+        ========================================================== -->
+
+        <section class="mt-10">
+
+            <p class="text-[12px] text-pheral-text-muted">
+
+                {% now "G" as current_hour %}
+
+                {% if current_hour|add:0 < 12 %}
+                    Good morning
+                {% elif current_hour|add:0 < 18 %}
+                    Good afternoon
+                {% else %}
+                    Good evening
+                {% endif %}
+
+            </p>
+
+
+            <h1 class="mt-1 max-w-[500px] text-[30px] font-bold leading-[1.05] tracking-[-0.04em] sm:text-[38px]">
+
+                {{ user.first_name|default:user.username }}.
+
+            </h1>
+
+        </section>
+
+
+        <!-- =========================================================
+             UNIVERSAL ACTION
+        ========================================================== -->
+
+        <section class="mt-8">
+
+            <a
+                href="{% url 'global_pay' %}"
+                class="group flex items-center justify-between border-y border-pheral-raised py-4"
+            >
+
+                <div class="flex items-center gap-3">
+
+                    <div class="flex h-10 w-10 items-center justify-center rounded-full bg-pheral-purple">
+
+                        <i
+                            data-lucide="arrow-up-right"
+                            class="h-[18px] w-[18px] text-white"
+                        ></i>
+
+                    </div>
+
+
+                    <div>
+
+                        <p class="text-[13px] font-semibold">
+                            Pay someone
+                        </p>
+
+                        <p class="mt-0.5 text-[11px] text-pheral-text-muted">
+                            Send money without an account number
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <i
+                    data-lucide="arrow-right"
+                    class="h-4 w-4 text-pheral-text-muted transition group-hover:translate-x-0.5 group-hover:text-pheral-text"
+                ></i>
+
+            </a>
+
+        </section>
+
+
+        <!-- =========================================================
+             STORIES
+        ========================================================== -->
+
+        <section class="mt-9">
+
+            <div class="mb-4 flex items-center justify-between">
+
+                <h2 class="text-[14px] font-semibold">
+                    Stories
+                </h2>
+
+                <a
+                    href="{% url 'status_list' %}"
+                    class="text-[11px] text-pheral-text-muted hover:text-pheral-text"
+                >
+                    See all
+                </a>
+
+            </div>
+
+
+            <div class="flex gap-4 overflow-x-auto pb-1 scrollbar-hide">
+
+                <!-- YOUR STORY -->
+
+                <a
+                    href="{% url 'create_status' %}"
+                    class="flex w-[58px] shrink-0 flex-col items-center"
+                >
+
+                    <div class="relative h-[58px] w-[58px]">
+
+                        <div class="h-full w-full overflow-hidden rounded-full bg-pheral-surface">
+
+                            {% if user.avatar %}
+
+                                <img
+                                    src="{{ user.avatar.url }}"
+                                    alt=""
+                                    class="h-full w-full object-cover"
+                                >
+
+                            {% else %}
+
+                                <div class="flex h-full w-full items-center justify-center text-sm font-semibold">
+                                    {{ user.first_name|default:user.username|slice:":1"|upper }}
+                                </div>
+
+                            {% endif %}
+
+                        </div>
+
+
+                        <span class="absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-pheral-purple text-[12px] font-bold text-white ring-2 ring-pheral-black">
+                            +
+                        </span>
+
+                    </div>
+
+
+                    <span class="mt-2 w-full truncate text-center text-[10px] text-pheral-text-muted">
+                        Your story
+                    </span>
+
+                </a>
+
+
+                {% for status in statuses %}
+
+                    <a
+                        href="{% url 'status_detail' status.id %}"
+                        class="flex w-[58px] shrink-0 flex-col items-center"
+                    >
+
+                        <div class="h-[58px] w-[58px] rounded-full p-[2px] {% if status.user_id == user.id %}bg-pheral-raised{% else %}bg-pheral-purple{% endif %}">
+
+                            <div class="h-full w-full overflow-hidden rounded-full bg-pheral-black">
+
+                                {% if status.user.avatar %}
+
+                                    <img
+                                        src="{{ status.user.avatar.url }}"
+                                        alt=""
+                                        class="h-full w-full object-cover"
+                                    >
+
+                                {% else %}
+
+                                    <div class="flex h-full w-full items-center justify-center text-sm font-semibold">
+                                        {{ status.user.first_name|default:status.user.username|slice:":1"|upper }}
+                                    </div>
+
+                                {% endif %}
+
+                            </div>
+
+                        </div>
+
+
+                        <span class="mt-2 w-full truncate text-center text-[10px] text-pheral-text-muted">
+
+                            {% if status.user_id == user.id %}
+                                You
+                            {% else %}
+                                {{ status.user.first_name|default:status.user.username }}
+                            {% endif %}
+
+                        </span>
+
+                    </a>
+
+                {% endfor %}
+
+            </div>
+
+        </section>
+
+
+        <!-- =========================================================
+             MAIN ACTIVITY
+        ========================================================== -->
+
+        <section class="mt-10">
+
+            <div class="mb-4 flex items-end justify-between">
+
+                <div>
+
+                    <p class="text-[11px] uppercase tracking-[0.15em] text-pheral-text-muted">
+                        Activity
+                    </p>
+
+                    <h2 class="mt-1 text-[20px] font-semibold tracking-[-0.02em]">
+                        Continue
+                    </h2>
+
+                </div>
+
+
+                <a
+                    href="{% url 'chat_list' %}"
+                    class="text-[11px] text-pheral-text-muted hover:text-pheral-text"
+                >
+                    All chats
+                </a>
+
+            </div>
+
+
+            <div>
+
+                {% for conversation in conversations %}
+
+                    <a
+                        href="{% url 'chat' conversation.id %}"
+                        class="group flex items-center gap-3 border-b border-pheral-raised py-3.5 first:border-t"
+                    >
+
+                        <!-- AVATAR -->
+
+                        <div class="h-11 w-11 shrink-0 overflow-hidden rounded-full bg-pheral-raised">
+
+                            {% if conversation.conversation_type == "group" %}
+
+                                <div class="flex h-full w-full items-center justify-center text-[13px] font-semibold">
+                                    {{ conversation.name|default:"Group"|slice:":1"|upper }}
+                                </div>
+
+                            {% elif conversation.other_user.avatar %}
+
+                                <img
+                                    src="{{ conversation.other_user.avatar.url }}"
+                                    alt=""
+                                    class="h-full w-full object-cover"
+                                >
+
+                            {% else %}
+
+                                <div class="flex h-full w-full items-center justify-center text-[13px] font-semibold">
+                                    {{ conversation.other_user.first_name|default:conversation.other_user.username|slice:":1"|upper }}
+                                </div>
+
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- TEXT -->
+
+                        <div class="min-w-0 flex-1">
+
+                            <div class="flex items-center justify-between gap-3">
+
+                                <p class="truncate text-[13px] font-semibold">
+
+                                    {% if conversation.conversation_type == "group" %}
+
+                                        {{ conversation.name|default:"Group" }}
+
+                                    {% else %}
+
+                                        {{ conversation.other_user.display_name|default:conversation.other_user.username }}
+
+                                    {% endif %}
+
+                                </p>
+
+
+                                {% if conversation.latest_message %}
+
+                                    <span class="shrink-0 text-[10px] text-pheral-text-muted">
+                                        {{ conversation.latest_message.created_at|date:"g:i A" }}
+                                    </span>
+
+                                {% endif %}
+
+                            </div>
+
+
+                            <p class="mt-1 truncate text-[11px] text-pheral-text-muted">
+
+                                {% if conversation.latest_message %}
+
+                                    {% if conversation.latest_message.sender_id == user.id %}
+                                        <span class="text-pheral-text-secondary">You:</span>
+                                    {% endif %}
+
+
+                                    {% if conversation.latest_message.message_type == "image" %}
+
+                                        Photo
+
+                                    {% elif conversation.latest_message.message_type == "voice" %}
+
+                                        Voice note
+
+                                    {% elif conversation.latest_message.message_type == "payment" %}
+
+                                        <span class="text-pheral-purple">
+                                            Payment
+                                        </span>
+
+                                    {% else %}
+
+                                        {{ conversation.latest_message.content|truncatechars:44 }}
+
+                                    {% endif %}
+
+                                {% else %}
+
+                                    Start a conversation
+
+                                {% endif %}
+
+                            </p>
+
+                        </div>
+
+
+                        <i
+                            data-lucide="chevron-right"
+                            class="h-4 w-4 shrink-0 text-pheral-text-muted opacity-0 transition group-hover:opacity-100"
+                        ></i>
+
+                    </a>
+
+
+                {% empty %}
+
+                    <div class="border-y border-pheral-raised py-14 text-center">
+
+                        <div class="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-pheral-surface">
+
+                            <i
+                                data-lucide="message-circle"
+                                class="h-[18px] w-[18px] text-pheral-text-muted"
+                            ></i>
+
+                        </div>
+
+
+                        <p class="mt-4 text-[13px] font-semibold">
+                            Your conversations live here
+                        </p>
+
+                        <p class="mx-auto mt-1 max-w-[240px] text-[11px] leading-5 text-pheral-text-muted">
+                            Find someone on Pheral and start talking.
+                        </p>
+
+                    </div>
+
+                {% endfor %}
+
+            </div>
+
+        </section>
+
+
+        <!-- =========================================================
+             DISCOVERY / CAPABILITIES
+        ========================================================== -->
+
+        <section class="mt-10">
+
+            <p class="mb-4 text-[11px] uppercase tracking-[0.15em] text-pheral-text-muted">
+                Pheral
+            </p>
+
+
+            <div class="grid grid-cols-3 border-y border-pheral-raised">
+
+                <!-- CHAT -->
+
+                <a
+                    href="{% url 'chat_list' %}"
+                    class="group border-r border-pheral-raised px-3 py-5 transition hover:bg-pheral-surface"
+                >
+
+                    <i
+                        data-lucide="message-circle"
+                        class="h-[18px] w-[18px] text-pheral-text-secondary transition group-hover:text-pheral-text"
+                    ></i>
+
+                    <p class="mt-5 text-[12px] font-semibold">
+                        Chat
+                    </p>
+
+                    <p class="mt-1 text-[10px] leading-4 text-pheral-text-muted">
+                        Talk privately
+                    </p>
+
+                </a>
+
+
+                <!-- HIRE -->
+
+                <a
+                    href="{% url 'hire' %}"
+                    class="group border-r border-pheral-raised px-3 py-5 transition hover:bg-pheral-surface"
+                >
+
+                    <i
+                        data-lucide="briefcase-business"
+                        class="h-[18px] w-[18px] text-pheral-text-secondary transition group-hover:text-pheral-text"
+                    ></i>
+
+                    <p class="mt-5 text-[12px] font-semibold">
+                        Hire
+                    </p>
+
+                    <p class="mt-1 text-[10px] leading-4 text-pheral-text-muted">
+                        Find someone
+                    </p>
+
+                </a>
+
+
+                <!-- AGENT -->
+
+                <a
+                    href="{% url 'agent' %}"
+                    class="group px-3 py-5 transition hover:bg-pheral-surface"
+                >
+
+                    <i
+                        data-lucide="sparkles"
+                        class="h-[18px] w-[18px] text-pheral-purple"
+                    ></i>
+
+                    <p class="mt-5 text-[12px] font-semibold">
+                        Agent
+                    </p>
+
+                    <p class="mt-1 text-[10px] leading-4 text-pheral-text-muted">
+                        Let Pheral act
+                    </p>
+
+                </a>
+
+            </div>
+
+        </section>
+
+
+        <!-- =========================================================
+             FOOTER BRAND MOMENT
+        ========================================================== -->
+
+        <div class="py-12 text-center">
+
+            <p class="text-[10px] tracking-[0.18em] text-pheral-text-muted">
+                CHAT · PAY · HIRE
+            </p>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    lucide.createIcons();
+</script>
+{% endblock %}

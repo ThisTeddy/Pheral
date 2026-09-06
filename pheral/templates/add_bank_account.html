@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+
+{% block title %}Add Bank Account · Pheral{% endblock %}
+{% block page_title %}Add Bank Account{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-md px-4 pb-10 pt-4 md:pt-6">
+
+    <div class="mb-5 flex items-center gap-2 md:hidden">
+        <a href="{% url 'bank_accounts' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink">
+            <i data-lucide="chevron-left" class="h-5 w-5"></i>
+        </a>
+        <h1 class="text-2xl font-bold tracking-tight text-ink">Add Bank Account</h1>
+    </div>
+
+    <form method="post" id="add-bank-form" class="rounded-2xl border border-line bg-white p-5">
+        {% csrf_token %}
+
+        <!-- Bank -->
+        <label class="mb-1.5 block text-sm font-semibold text-ink">Bank</label>
+        <div class="relative mb-4">
+            <select id="bank-select" name="bank_code"
+                    class="w-full appearance-none rounded-2xl border border-line bg-white px-4 py-3 pr-10 text-sm font-medium text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                <option value="" data-bank-name="">Select your bank</option>
+                <option value="044" data-bank-name="Access Bank">Access Bank</option>
+                <option value="023" data-bank-name="Citibank Nigeria">Citibank Nigeria</option>
+                <option value="050" data-bank-name="Ecobank Nigeria">Ecobank Nigeria</option>
+                <option value="070" data-bank-name="Fidelity Bank">Fidelity Bank</option>
+                <option value="011" data-bank-name="First Bank of Nigeria">First Bank of Nigeria</option>
+                <option value="214" data-bank-name="First City Monument Bank">First City Monument Bank</option>
+                <option value="058" data-bank-name="Guaranty Trust Bank">Guaranty Trust Bank</option>
+                <option value="030" data-bank-name="Heritage Bank">Heritage Bank</option>
+                <option value="301" data-bank-name="Jaiz Bank">Jaiz Bank</option>
+                <option value="082" data-bank-name="Keystone Bank">Keystone Bank</option>
+                <option value="076" data-bank-name="Polaris Bank">Polaris Bank</option>
+                <option value="221" data-bank-name="Stanbic IBTC Bank">Stanbic IBTC Bank</option>
+                <option value="068" data-bank-name="Standard Chartered Bank">Standard Chartered Bank</option>
+                <option value="232" data-bank-name="Sterling Bank">Sterling Bank</option>
+                <option value="032" data-bank-name="Union Bank of Nigeria">Union Bank of Nigeria</option>
+                <option value="033" data-bank-name="United Bank For Africa">United Bank For Africa</option>
+                <option value="215" data-bank-name="Unity Bank">Unity Bank</option>
+                <option value="035" data-bank-name="Wema Bank">Wema Bank</option>
+                <option value="057" data-bank-name="Zenith Bank">Zenith Bank</option>
+                <option value="50515" data-bank-name="Moniepoint MFB">Moniepoint MFB</option>
+                <option value="999992" data-bank-name="Opay">Opay</option>
+                <option value="999991" data-bank-name="Palmpay">Palmpay</option>
+                <option value="120001" data-bank-name="Kuda Bank">Kuda Bank</option>
+            </select>
+            <i data-lucide="chevron-down" class="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"></i>
+        </div>
+        <input type="hidden" name="bank_name" id="bank-name-input">
+
+        <!-- Account number -->
+        <label class="mb-1.5 block text-sm font-semibold text-ink">Account number</label>
+        <div class="mb-1 flex items-center gap-2 rounded-2xl bg-surface px-4 py-3">
+            <input
+                type="text" name="account_number" id="account-number-input"
+                inputmode="numeric" pattern="[0-9]*" maxlength="10" required autocomplete="off"
+                placeholder="0123456789"
+                class="w-full bg-transparent font-mono text-sm tracking-wide text-ink placeholder-muted focus:outline-none">
+        </div>
+        <p class="mb-4 text-xs text-muted">Enter a 10-digit NUBAN account number.</p>
+
+        <!-- Resolved account name -->
+        <input type="hidden" name="account_name" id="account-name-input">
+
+        <div id="resolve-idle" class="mb-5 hidden rounded-2xl border border-dashed border-line bg-surface px-4 py-3 text-xs text-muted">
+            Select a bank and enter the account number to verify the account holder.
+        </div>
+
+        <div id="resolve-loading" class="mb-5 hidden items-center gap-2 rounded-2xl border border-line bg-surface px-4 py-3 text-sm text-muted">
+            <svg class="h-4 w-4 animate-spin text-accent-500" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+            </svg>
+            Verifying account…
+        </div>
+
+        <div id="resolve-success" class="mb-5 hidden items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+            <i data-lucide="badge-check" class="h-5 w-5 shrink-0 text-emerald-600"></i>
+            <div class="min-w-0">
+                <p class="text-[11px] font-medium uppercase tracking-wide text-emerald-600">Account holder</p>
+                <p id="resolve-success-name" class="truncate text-sm font-semibold text-ink"></p>
+            </div>
+        </div>
+
+        <div id="resolve-error" class="mb-5 hidden items-center gap-2 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <i data-lucide="alert-circle" class="h-4 w-4 shrink-0"></i>
+            <span id="resolve-error-text">Could not verify that account.</span>
+        </div>
+
+        <button type="submit" id="submit-button" disabled
+                class="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white opacity-50 transition">
+            <i data-lucide="landmark" class="h-4 w-4"></i>
+            Add bank account
+        </button>
+
+        <p class="mt-3 flex items-center justify-center gap-1.5 text-center text-xs text-muted">
+            <i data-lucide="shield-check" class="h-3.5 w-3.5"></i>
+            Verified securely via Paystack — we never store your bank login details
+        </p>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const resolveUrl = "{% url 'resolve_bank_account' %}";
+
+    const bankSelect = document.getElementById('bank-select');
+    const bankNameInput = document.getElementById('bank-name-input');
+    const accountNumberInput = document.getElementById('account-number-input');
+    const accountNameInput = document.getElementById('account-name-input');
+    const submitButton = document.getElementById('submit-button');
+
+    const panels = {
+        idle: document.getElementById('resolve-idle'),
+        loading: document.getElementById('resolve-loading'),
+        success: document.getElementById('resolve-success'),
+        error: document.getElementById('resolve-error'),
+    };
+
+    function showPanel(name) {
+        Object.entries(panels).forEach(([key, el]) => {
+            if (!el) return;
+            const isMatch = key === name;
+            el.classList.toggle('hidden', !isMatch);
+            el.classList.toggle('flex', isMatch);
+        });
+    }
+
+    function setSubmitEnabled(enabled) {
+        submitButton.disabled = !enabled;
+        submitButton.classList.toggle('opacity-50', !enabled);
+        submitButton.classList.toggle('hover:bg-accent-600', enabled);
+    }
+
+    let resolveTimeout = null;
+    let resolveController = null;
+
+    function resetResolution() {
+        accountNameInput.value = '';
+        setSubmitEnabled(false);
+        showPanel('idle');
+    }
+
+    function maybeResolve() {
+        clearTimeout(resolveTimeout);
+        resetResolution();
+
+        const accountNumber = accountNumberInput.value.trim();
+        const bankCode = bankSelect.value;
+
+        if (accountNumber.length !== 10 || !bankCode) {
+            return;
+        }
+
+        resolveTimeout = setTimeout(() => runResolve(accountNumber, bankCode), 500);
+    }
+
+    function runResolve(accountNumber, bankCode) {
+        if (resolveController) resolveController.abort();
+        resolveController = new AbortController();
+
+        showPanel('loading');
+
+        const params = new URLSearchParams({ account_number: accountNumber, bank_code: bankCode });
+
+        fetch(resolveUrl + '?' + params.toString(), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            signal: resolveController.signal,
+        })
+            .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+            .then(({ ok, data }) => {
+                if (ok && data.success) {
+                    accountNameInput.value = data.account_name;
+                    document.getElementById('resolve-success-name').textContent = data.account_name;
+                    showPanel('success');
+                    setSubmitEnabled(true);
+                } else {
+                    document.getElementById('resolve-error-text').textContent =
+                        data.error || 'Could not verify that account.';
+                    showPanel('error');
+                    setSubmitEnabled(false);
+                }
+            })
+            .catch((err) => {
+                if (err.name === 'AbortError') return;
+                document.getElementById('resolve-error-text').textContent =
+                    'Something went wrong verifying that account. Please try again.';
+                showPanel('error');
+                setSubmitEnabled(false);
+            });
+    }
+
+    bankSelect.addEventListener('change', () => {
+        const selected = bankSelect.options[bankSelect.selectedIndex];
+        bankNameInput.value = selected ? selected.dataset.bankName || '' : '';
+        maybeResolve();
+    });
+
+    accountNumberInput.addEventListener('input', () => {
+        accountNumberInput.value = accountNumberInput.value.replace(/\D/g, '').slice(0, 10);
+        maybeResolve();
+    });
+
+    showPanel('idle');
+</script>
+{% endblock %}

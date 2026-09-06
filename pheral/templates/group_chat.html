@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+
+{% block title %}{{ conversation.name|default:"Group" }} · Pheral{% endblock %}
+{% block page_title %}{{ conversation.name|default:"Group" }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    [x-cloak] { display: none !important; }
+    #pheral-group-scroll { scroll-behavior: smooth; }
+    #pheral-group-scroll::-webkit-scrollbar { width: 6px; }
+    #pheral-group-scroll::-webkit-scrollbar-thumb { background: #EAE6F4; border-radius: 999px; }
+    #pheral-group-input { field-sizing: content; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="pheral-group-root" x-data="pheralGroupChat()" x-init="init()" class="mx-auto flex max-w-3xl flex-col">
+
+    <!-- ============================================================
+         GROUP HEADER
+    ============================================================= -->
+    <div id="pheral-group-header" class="flex items-center gap-3 border-b border-line px-4 py-3">
+        <a href="{% url 'chat_list' %}" class="shrink-0 rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink md:hidden" aria-label="Back to chats">
+            <i data-lucide="chevron-left" class="h-5 w-5"></i>
+        </a>
+
+        <a href="{% url 'group_profile' conversation_id=conversation.id %}" class="shrink-0">
+            {% if conversation.avatar %}
+                <img src="{{ conversation.avatar.url }}" alt="" class="h-10 w-10 rounded-full object-cover">
+            {% else %}
+                <div class="flex h-10 w-10 items-center justify-center rounded-full bg-accent-100 text-accent-700">
+                    <i data-lucide="users" class="h-5 w-5"></i>
+                </div>
+            {% endif %}
+        </a>
+
+        <a href="{% url 'group_profile' conversation_id=conversation.id %}" class="min-w-0 flex-1">
+            <p class="truncate text-[15px] font-semibold text-ink">{{ conversation.name|default:"Group" }}</p>
+            <p class="truncate text-xs text-muted">{{ conversation.participants.count }} member{{ conversation.participants.count|pluralize }}</p>
+        </a>
+
+        <a href="{% url 'group_add_member' conversation_id=conversation.id %}" class="shrink-0 rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink" aria-label="Add member">
+            <i data-lucide="user-plus" class="h-5 w-5"></i>
+        </a>
+    </div>
+
+    <!-- ============================================================
+         MESSAGES
+    ============================================================= -->
+    <div class="relative min-h-0 flex-1">
+        <div id="pheral-group-scroll" @scroll="onScroll" class="h-full space-y-1 overflow-y-auto px-4 py-4">
+
+            {% if not chat_messages %}
+                <div class="flex h-full flex-col items-center justify-center gap-2 text-center">
+                    <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50">
+                        <i data-lucide="users" class="h-6 w-6 text-accent-500"></i>
+                    </div>
+                    <p class="text-sm font-medium text-ink">No messages yet</p>
+                    <p class="max-w-xs text-xs text-muted">Be the first to say something in {{ conversation.name|default:"the group" }}.</p>
+                </div>
+            {% endif %}
+
+            {% regroup chat_messages by created_at|date:"Y-m-d" as message_days %}
+            {% for day in message_days %}
+
+                <div class="sticky top-0 z-10 flex justify-center py-2">
+                    <span x-data="{ label: '' }" x-init="label = pheralDayLabel('{{ day.grouper }}')" x-text="label"
+                          class="rounded-full bg-white/95 px-3 py-1 text-[11px] font-medium text-muted shadow-sm ring-1 ring-line backdrop-blur"></span>
+                </div>
+
+                {% for message in day.list %}
+                    {% if message.message_type == "system" %}
+                        <div class="flex justify-center py-1">
+                            <span class="rounded-full bg-surface px-3 py-1 text-xs text-muted">{{ message.content }}</span>
+                        </div>
+
+                    {% elif message.message_type == "agent" %}
+                        <div class="flex justify-center py-1">
+                            <div class="flex max-w-[85%] items-start gap-2 rounded-2xl border border-accent-100 bg-accent-50 px-4 py-2.5 sm:max-w-sm">
+                                <i data-lucide="bot" class="mt-0.5 h-4 w-4 shrink-0 text-accent-600"></i>
+                                <div>
+                                    <p class="text-xs font-semibold text-accent-700">Agent</p>
+                                    <p class="text-sm text-ink">{{ message.content }}</p>
+                                </div>
+                            </div>
+                        </div>
+
+                    {% else %}
+                        <div class="flex items-end gap-2 py-0.5 {% if message.sender_id == current_user.id %}justify-end{% else %}justify-start{% endif %}"
+                             x-data="{ menuOpen: false }">
+
+                            {% if message.sender_id != current_user.id %}
+                                <a href="{% url 'profile_user' username=message.sender.username %}" class="shrink-0 self-end">
+                                    {% if message.sender.avatar %}
+                                        <img src="{{ message.sender.avatar.url }}" alt="" class="h-7 w-7 rounded-full object-cover">
+                                    {% else %}
+                                        <div class="flex h-7 w-7 items-center justify-center rounded-full bg-accent-100 text-[11px] font-semibold text-accent-700">
+                                            {{ message.sender.username|default:"?"|first|upper }}
+                                        </div>
+                                    {% endif %}
+                                </a>
+                            {% endif %}
+
+                            <div class="max-w-[78%] sm:max-w-sm">
+                                <div class="rounded-2xl px-3.5 py-2.5
+                                            {% if message.sender_id == current_user.id %}
+                                                bg-accent-500 text-white rounded-br-md
+                                            {% else %}
+                                                bg-surface text-ink rounded-bl-md
+                                            {% endif %}">
+
+                                    {% if message.sender_id != current_user.id %}
+                                        <p class="mb-0.5 text-xs font-semibold text-accent-600">
+                                            {{ message.sender.display_name|default:message.sender.username|default:"Deleted user" }}
+                                        </p>
+                                    {% endif %}
+
+                                    {% if message.message_type == "image" %}
+                                        <button type="button" @click="lightbox = '{{ message.attachment.url|escapejs }}'" class="mb-1 block w-full">
+                                            <img src="{{ message.attachment.url }}" alt="" class="max-h-72 w-full rounded-xl object-cover">
+                                        </button>
+                                    {% elif message.message_type == "video" %}
+                                        <video src="{{ message.attachment.url }}" controls class="mb-1 max-h-72 w-full rounded-xl"></video>
+                                    {% elif message.message_type == "voice" %}
+                                        <div class="mb-1 flex items-center gap-2">
+                                            <i data-lucide="mic" class="h-4 w-4 {% if message.sender_id == current_user.id %}text-white{% else %}text-accent-600{% endif %}"></i>
+                                            <audio src="{{ message.attachment.url }}" controls class="h-9 max-w-[220px]"></audio>
+                                        </div>
+                                    {% elif message.message_type == "file" %}
+                                        <a href="{{ message.attachment.url }}" target="_blank" rel="noopener"
+                                           class="mb-1 flex items-center gap-2 rounded-xl px-2 py-2 {% if message.sender_id == current_user.id %}bg-white/10{% else %}bg-white{% endif %}">
+                                            <i data-lucide="file-text" class="h-5 w-5 shrink-0 {% if message.sender_id == current_user.id %}text-white{% else %}text-accent-600{% endif %}"></i>
+                                            <span class="truncate text-sm underline">{{ message.attachment.name|default:"Attachment" }}</span>
+                                        </a>
+                                    {% elif message.message_type == "payment" %}
+                                        <a href="{% if message.receipt %}{% url 'receipt_detail' reference=message.receipt.reference %}{% endif %}"
+                                           class="mb-1 flex items-center gap-2.5 rounded-xl px-2.5 py-2 {% if message.sender_id == current_user.id %}bg-white/10{% else %}bg-white{% endif %}">
+                                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full {% if message.sender_id == current_user.id %}bg-white/20{% else %}bg-accent-50{% endif %}">
+                                                <i data-lucide="banknote" class="h-4 w-4 {% if message.sender_id == current_user.id %}text-white{% else %}text-accent-600{% endif %}"></i>
+                                            </span>
+                                            <span class="text-sm font-medium">{{ message.content }}</span>
+                                        </a>
+                                    {% elif message.message_type == "hire" %}
+                                        <div class="mb-1 flex items-center gap-2.5 rounded-xl px-2.5 py-2 {% if message.sender_id == current_user.id %}bg-white/10{% else %}bg-white{% endif %}">
+                                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full {% if message.sender_id == current_user.id %}bg-white/20{% else %}bg-accent-50{% endif %}">
+                                                <i data-lucide="briefcase" class="h-4 w-4 {% if message.sender_id == current_user.id %}text-white{% else %}text-accent-600{% endif %}"></i>
+                                            </span>
+                                            <span class="text-sm font-medium">{{ message.content }}</span>
+                                        </div>
+                                    {% endif %}
+
+                                    {% if message.content and message.message_type != "payment" and message.message_type != "hire" %}
+                                        <p class="whitespace-pre-wrap break-words text-[15px] leading-snug">{{ message.content }}</p>
+                                    {% endif %}
+
+                                    <div class="mt-1 flex items-center justify-end">
+                                        <span class="text-[11px] {% if message.sender_id == current_user.id %}text-white/70{% else %}text-muted{% endif %}">
+                                            {{ message.created_at|date:"H:i" }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {% if message.sender_id == current_user.id %}
+                                <div class="relative self-end">
+                                    <button @click="menuOpen = !menuOpen" @click.outside="menuOpen = false"
+                                            class="rounded-full p-1 text-muted/60 transition hover:bg-surface hover:text-ink"
+                                            aria-label="Message actions">
+                                        <i data-lucide="chevron-down" class="h-3.5 w-3.5"></i>
+                                    </button>
+                                    <div x-show="menuOpen" x-cloak x-transition
+                                         class="absolute right-0 bottom-6 z-20 w-32 rounded-xl border border-line bg-white p-1 shadow-lg">
+                                        <form method="post" action="{% url 'delete_message' message_id=message.id %}">
+                                            {% csrf_token %}
+                                            <button type="submit" class="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm text-red-600 hover:bg-red-50">
+                                                <i data-lucide="trash-2" class="h-3.5 w-3.5"></i> Delete
+                                            </button>
+                                        </form>
+                                    </div>
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            {% endfor %}
+        </div>
+
+        <button x-show="showScrollButton" x-cloak x-transition @click="scrollToBottom(true)"
+                class="absolute bottom-4 right-4 flex h-10 w-10 items-center justify-center rounded-full border border-line bg-white text-ink shadow-md transition hover:bg-surface"
+                aria-label="Scroll to latest">
+            <i data-lucide="arrow-down" class="h-4 w-4"></i>
+        </button>
+    </div>
+
+    <!-- ============================================================
+         COMPOSER (text only — matches what the group_chat view accepts)
+    ============================================================= -->
+    <div id="pheral-group-composer" class="border-t border-line bg-white px-3 py-2.5">
+        <form method="post" action="{% url 'group_chat' conversation_id=conversation.id %}" class="flex items-end gap-1.5">
+            {% csrf_token %}
+            <textarea
+                id="pheral-group-input"
+                x-ref="messageInput"
+                name="content"
+                rows="1"
+                placeholder="Message {{ conversation.name|default:'the group' }}"
+                autocomplete="off"
+                @input="autoGrow($event)"
+                @keydown.enter.prevent="if (!$event.shiftKey) $event.target.form.requestSubmit()"
+                class="max-h-32 min-h-[42px] flex-1 resize-none overflow-y-auto rounded-2xl bg-surface px-4 py-2.5 text-sm leading-relaxed text-ink placeholder-muted focus:outline-none"
+            ></textarea>
+            <button type="submit" class="shrink-0 rounded-full bg-accent-500 p-2.5 text-white transition hover:bg-accent-600" aria-label="Send">
+                <i data-lucide="send" class="h-5 w-5"></i>
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Image lightbox -->
+<div x-data x-show="lightbox" x-cloak x-transition.opacity @keydown.escape.window="lightbox = null"
+     class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+     @click="lightbox = null">
+    <button type="button" @click="lightbox = null" class="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20" aria-label="Close">
+        <i data-lucide="x" class="h-5 w-5"></i>
+    </button>
+    <img :src="lightbox" alt="" class="max-h-full max-w-full rounded-lg object-contain" @click.stop>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function pheralDayLabel(isoDate) {
+        const d = new Date(isoDate + 'T00:00:00');
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        if (d.getTime() === today.getTime()) return 'Today';
+        if (d.getTime() === yesterday.getTime()) return 'Yesterday';
+
+        const sameYear = d.getFullYear() === today.getFullYear();
+        return d.toLocaleDateString(undefined, sameYear
+            ? { weekday: 'long', day: 'numeric', month: 'long' }
+            : { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+
+    function pheralGroupChat() {
+        return {
+            showScrollButton: false,
+            lightbox: null,
+            resizeObserver: null,
+
+            init() {
+                const composer = document.getElementById('pheral-group-composer');
+                this.recalcHeight();
+                this.scrollToBottom();
+
+                window.addEventListener('resize', () => this.recalcHeight());
+                if (window.ResizeObserver && composer) {
+                    this.resizeObserver = new ResizeObserver(() => {
+                        this.recalcHeight();
+                        if (!this.showScrollButton) this.scrollToBottom();
+                    });
+                    this.resizeObserver.observe(composer);
+                }
+            },
+
+            recalcHeight() {
+                const root = document.getElementById('pheral-group-root');
+                if (!root) return;
+
+                const topBar = document.querySelector('header.sticky');
+                const bottomNav = document.querySelector('nav.fixed.bottom-0');
+                const isMobile = window.innerWidth < 768;
+
+                const topBarH = topBar ? topBar.getBoundingClientRect().height : 0;
+                const bottomNavH = (isMobile && bottomNav) ? bottomNav.getBoundingClientRect().height : 0;
+
+                root.style.height = `calc(100dvh - ${topBarH}px - ${bottomNavH}px)`;
+            },
+
+            onScroll(event) {
+                const el = event.target;
+                const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+                this.showScrollButton = distanceFromBottom > 200;
+            },
+
+            scrollToBottom(smooth) {
+                this.$nextTick(() => {
+                    const el = document.getElementById('pheral-group-scroll');
+                    if (!el) return;
+                    if (smooth) {
+                        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+                    } else {
+                        el.scrollTop = el.scrollHeight;
+                    }
+                    this.showScrollButton = false;
+                });
+            },
+
+            autoGrow(event) {
+                event.target.style.height = 'auto';
+                event.target.style.height = event.target.scrollHeight + 'px';
+            },
+        };
+    }
+</script>
+{% endblock %}

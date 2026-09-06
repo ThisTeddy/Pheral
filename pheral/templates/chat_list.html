@@ -1,0 +1,233 @@
+
+{% extends "base.html" %}
+
+{% block title %}Chats · Pheral{% endblock %}
+{% block page_title %}Chats{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl">
+
+    <!-- Mobile heading + actions -->
+    <div class="flex items-center justify-between px-4 pt-4 md:hidden">
+        <h1 class="text-xl font-bold tracking-tight text-ink">Chats</h1>
+
+        <div class="flex items-center gap-1">
+            <a
+                href="{% url 'group_create' %}"
+                class="rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                aria-label="New group"
+            >
+                <i data-lucide="users" class="h-5 w-5"></i>
+            </a>
+
+            <a
+                href="{% url 'contacts' %}"
+                class="rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                aria-label="New chat"
+            >
+                <i data-lucide="square-pen" class="h-5 w-5"></i>
+            </a>
+        </div>
+    </div>
+
+    <div x-data="{ tab: 'all', q: '' }" class="px-4 pt-4 md:pt-6">
+
+        <!-- Local filter search -->
+        <div class="mb-4 flex items-center gap-2 rounded-2xl bg-surface px-4 py-2.5">
+            <i data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></i>
+
+            <input
+                type="text"
+                x-model="q"
+                placeholder="Search chats"
+                autocomplete="off"
+                class="w-full bg-transparent text-[13px] text-ink placeholder-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/60 focus-visible:ring-offset-1 focus-visible:ring-offset-surface"
+            >
+        </div>
+
+        <!-- Tabs -->
+        <div class="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
+            <button
+                @click="tab = 'all'"
+                :class="tab === 'all' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'"
+                class="shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+            >
+                All
+            </button>
+
+            <button
+                @click="tab = 'unread'"
+                :class="tab === 'unread' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'"
+                class="shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+            >
+                Unread
+            </button>
+
+            <button
+                @click="tab = 'groups'"
+                :class="tab === 'groups' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'"
+                class="shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+            >
+                Groups
+            </button>
+
+            <button
+                @click="tab = 'archived'"
+                :class="tab === 'archived' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'"
+                class="shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+            >
+                Archived
+            </button>
+        </div>
+
+        {% if chat_items %}
+
+            <div class="divide-y divide-line">
+
+                {% for item in chat_items %}
+                    {% now "Y-m-d" as today_str %}
+
+                    <div
+                        x-data="{
+                            archived: {{ item.is_archived|yesno:'true,false' }},
+                            unread: {{ item.unread_count }},
+                            isGroup: {{ item.is_group|yesno:'true,false' }},
+                            name: '{{ item.display_name|escapejs|lower }}'
+                        }"
+                        x-show="
+                            (tab === 'all' ? !archived : tab === 'unread' ? (unread > 0 && !archived) : tab === 'groups' ? (isGroup && !archived) : archived)
+                            && (q === '' || name.includes(q.toLowerCase()))
+                        "
+                    >
+
+                        <a
+                            href="{% if item.is_group %}{% url 'group_chat' conversation_id=item.conversation_id %}{% else %}{% url 'chat' conversation_id=item.conversation_id %}{% endif %}"
+                            class="-mx-2 flex items-center gap-3 rounded-2xl px-2 py-3 transition hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-inset {% if item.unread_count %}bg-accent-50/50{% endif %}"
+                        >
+
+                            <!-- Avatar -->
+                            <div class="relative shrink-0">
+
+                                {% if item.avatar_url %}
+                                    <img
+                                        src="{{ item.avatar_url }}"
+                                        alt=""
+                                        class="h-[52px] w-[52px] rounded-full object-cover"
+                                    >
+                                {% else %}
+                                    <div class="flex h-[52px] w-[52px] items-center justify-center rounded-full bg-accent-100 text-accent-700">
+
+                                        {% if item.is_group %}
+                                            <i data-lucide="users" class="h-6 w-6"></i>
+                                        {% else %}
+                                            <span class="text-base font-semibold">
+                                                {{ item.display_name|first|upper }}
+                                            </span>
+                                        {% endif %}
+
+                                    </div>
+                                {% endif %}
+
+                                {% if not item.is_group and item.is_online %}
+                                    <span class="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white"></span>
+                                {% endif %}
+
+                            </div>
+
+                            <!-- Text -->
+                            <div class="min-w-0 flex-1">
+
+                                <div class="flex items-center justify-between gap-2">
+
+                                    <p class="truncate text-sm font-semibold text-ink">
+                                        {{ item.display_name }}
+                                    </p>
+
+                                    <span class="shrink-0 text-[11px] {% if item.unread_count %}font-medium text-accent-600{% else %}text-muted{% endif %}">
+                                        {% if item.latest_activity|date:"Y-m-d" == today_str %}
+                                            {{ item.latest_activity|date:"H:i" }}
+                                        {% else %}
+                                            {{ item.latest_activity|date:"d M" }}
+                                        {% endif %}
+                                    </span>
+
+                                </div>
+
+                                <div class="flex items-center justify-between gap-2">
+
+                                    <p class="truncate text-[13px] text-muted">
+
+                                        {% if item.is_muted %}
+                                            <i
+                                                data-lucide="bell-off"
+                                                class="mr-1 inline h-3.5 w-3.5 align-[-2px]"
+                                            ></i>
+                                        {% endif %}
+
+                                        {% if item.last_message_prefix %}
+                                            <span>{{ item.last_message_prefix }}</span>
+                                        {% endif %}
+
+                                        {{ item.last_message_preview|default:"No messages yet" }}
+
+                                    </p>
+
+                                    {% if item.unread_count %}
+                                        <span class="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-accent-500 px-1.5 text-[11px] font-semibold text-white">
+                                            {{ item.unread_count }}
+                                        </span>
+                                    {% endif %}
+
+                                </div>
+
+                            </div>
+
+                        </a>
+
+                    </div>
+
+                {% endfor %}
+
+            </div>
+
+        {% else %}
+
+            <!-- Empty state -->
+            <div class="flex flex-col items-center gap-3 py-20 text-center">
+
+                <div class="flex h-16 w-16 items-center justify-center rounded-full bg-accent-50">
+                    <i data-lucide="message-circle" class="h-7 w-7 text-accent-500"></i>
+                </div>
+
+                <p class="text-sm font-semibold text-ink">
+                    No chats yet
+                </p>
+
+                <p class="max-w-xs text-[13px] text-muted">
+                    Start a conversation with someone in your contacts.
+                </p>
+
+                <a
+                    href="{% url 'contacts' %}"
+                    class="mt-2 rounded-full bg-accent-500 px-5 py-2.5 text-[13px] font-semibold text-white transition hover:bg-accent-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                >
+                    Find people
+                </a>
+
+            </div>
+
+        {% endif %}
+
+    </div>
+</div>
+
+<!-- Floating new-chat button (mobile only — desktop uses the icons above the list) -->
+<a
+    href="{% url 'contacts' %}"
+    class="fixed bottom-24 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-accent-500 text-white shadow-lg transition hover:bg-accent-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black md:hidden"
+    aria-label="New chat"
+>
+    <i data-lucide="message-square-plus" class="h-6 w-6"></i>
+</a>
+
+{% endblock %}

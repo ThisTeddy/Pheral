@@ -1,0 +1,529 @@
+
+{% extends "base.html" %}
+
+{% block title %}Chats · Pheral{% endblock %}
+
+{% block content %}
+
+<div
+    x-data="{
+        query: '',
+        filter: 'all',
+
+        chats: [
+            {
+                id: 1,
+                name: 'Alex Morgan',
+                username: '@alexmorgan',
+                initials: 'A',
+                message: 'The design looks great.',
+                time: '2m',
+                unread: 2,
+                online: true,
+                pinned: true
+            },
+            {
+                id: 2,
+                name: 'Sarah Williams',
+                username: '@sarahw',
+                initials: 'S',
+                message: 'Can you send the details?',
+                time: '18m',
+                unread: 0,
+                online: true,
+                pinned: false
+            },
+            {
+                id: 3,
+                name: 'Pheral Team',
+                username: '@pheral',
+                initials: 'P',
+                message: 'Welcome to Pheral.',
+                time: '1h',
+                unread: 1,
+                online: false,
+                pinned: true
+            },
+            {
+                id: 4,
+                name: 'Daniel Okoro',
+                username: '@daniel',
+                initials: 'D',
+                message: 'Payment received.',
+                time: '3h',
+                unread: 0,
+                online: false,
+                pinned: false
+            }
+        ],
+
+        get filteredChats() {
+            return this.chats.filter(chat => {
+
+                const matchesSearch =
+                    chat.name.toLowerCase().includes(this.query.toLowerCase()) ||
+                    chat.username.toLowerCase().includes(this.query.toLowerCase()) ||
+                    chat.message.toLowerCase().includes(this.query.toLowerCase());
+
+                const matchesFilter =
+                    this.filter === 'all' ||
+                    (this.filter === 'unread' && chat.unread > 0) ||
+                    (this.filter === 'pinned' && chat.pinned);
+
+                return matchesSearch && matchesFilter;
+            });
+        }
+    }"
+    class="mx-auto w-full max-w-2xl"
+>
+
+
+    <!-- =====================================================
+         HEADER
+    ====================================================== -->
+
+    <div class="mb-5 flex items-center justify-between">
+
+        <div>
+
+            <p class="text-[11px] font-medium text-slate-500">
+                Messages
+            </p>
+
+            <h1 class="mt-0.5 text-lg font-semibold tracking-tight text-white">
+                Chats
+            </h1>
+
+        </div>
+
+
+        <!-- New chat -->
+
+        <a
+            href="{% url 'chat_list' %}"
+            class="
+                flex
+                h-9
+                w-9
+                items-center
+                justify-center
+                rounded-lg
+                bg-pher​al-600
+                text-white
+                transition
+                hover:bg-pher​al-500
+                active:scale-[0.97]
+            "
+            aria-label="New chat"
+        >
+
+            <i
+                data-lucide="square-pen"
+                class="h-4 w-4"
+            ></i>
+
+        </a>
+
+    </div>
+
+
+
+    <!-- =====================================================
+         SEARCH
+    ====================================================== -->
+
+    <div class="relative mb-4">
+
+        <i
+            data-lucide="search"
+            class="
+                pointer-events-none
+                absolute
+                left-3
+                top-1/2
+                h-4
+                w-4
+                -translate-y-1/2
+                text-slate-600
+            "
+        ></i>
+
+
+        <input
+            type="search"
+            x-model="query"
+            placeholder="Search chats"
+            class="
+                h-10
+                w-full
+                rounded-xl
+                border
+                border-white/[0.07]
+                bg-[#111116]
+                pl-9
+                pr-9
+                text-xs
+                text-white
+                outline-none
+                placeholder:text-slate-600
+                focus:border-pher​al-500/40
+                focus:ring-1
+                focus:ring-pher​al-500/20
+            "
+        >
+
+
+        <button
+            x-show="query.length"
+            x-cloak
+            @click="query = ''"
+            type="button"
+            class="
+                absolute
+                right-2.5
+                top-1/2
+                flex
+                h-6
+                w-6
+                -translate-y-1/2
+                items-center
+                justify-center
+                rounded-md
+                text-slate-600
+                hover:bg-white/[0.05]
+                hover:text-white
+            "
+        >
+
+            <i
+                data-lucide="x"
+                class="h-3.5 w-3.5"
+            ></i>
+
+        </button>
+
+    </div>
+
+
+
+    <!-- =====================================================
+         FILTERS
+    ====================================================== -->
+
+    <div class="mb-4 flex gap-1">
+
+        <button
+            type="button"
+            @click="filter = 'all'"
+            class="
+                rounded-lg
+                px-3
+                py-1.5
+                text-[10px]
+                font-medium
+                transition
+            "
+            :class="
+                filter === 'all'
+                    ? 'bg-white/[0.08] text-white'
+                    : 'text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
+            "
+        >
+            All
+        </button>
+
+
+        <button
+            type="button"
+            @click="filter = 'unread'"
+            class="
+                rounded-lg
+                px-3
+                py-1.5
+                text-[10px]
+                font-medium
+                transition
+            "
+            :class="
+                filter === 'unread'
+                    ? 'bg-white/[0.08] text-white'
+                    : 'text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
+            "
+        >
+            Unread
+        </button>
+
+
+        <button
+            type="button"
+            @click="filter = 'pinned'"
+            class="
+                rounded-lg
+                px-3
+                py-1.5
+                text-[10px]
+                font-medium
+                transition
+            "
+            :class="
+                filter === 'pinned'
+                    ? 'bg-white/[0.08] text-white'
+                    : 'text-slate-500 hover:bg-white/[0.04] hover:text-slate-300'
+            "
+        >
+            Pinned
+        </button>
+
+    </div>
+
+
+
+    <!-- =====================================================
+         CHAT LIST
+    ====================================================== -->
+
+    <div class="overflow-hidden rounded-xl border border-white/[0.07] bg-[#111116]">
+
+
+        <!-- Chat -->
+
+        <template x-for="chat in filteredChats" :key="chat.id">
+
+            <a
+                href="#"
+                class="
+                    group
+                    flex
+                    items-center
+                    gap-3
+                    border-b
+                    border-white/[0.05]
+                    px-3.5
+                    py-3
+                    transition
+                    last:border-b-0
+                    hover:bg-white/[0.025]
+                "
+            >
+
+
+                <!-- Avatar -->
+
+                <div class="relative shrink-0">
+
+                    <div
+                        class="
+                            flex
+                            h-11
+                            w-11
+                            items-center
+                            justify-center
+                            rounded-full
+                            bg-white/[0.06]
+                            text-xs
+                            font-semibold
+                            text-slate-300
+                        "
+                        x-text="chat.initials"
+                    ></div>
+
+
+                    <!-- Online -->
+
+                    <span
+                        x-show="chat.online"
+                        class="
+                            absolute
+                            bottom-0
+                            right-0
+                            h-2.5
+                            w-2.5
+                            rounded-full
+                            border-2
+                            border-[#111116]
+                            bg-emerald-500
+                        "
+                    ></span>
+
+                </div>
+
+
+
+                <!-- Chat information -->
+
+                <div class="min-w-0 flex-1">
+
+                    <div class="flex items-center justify-between gap-3">
+
+                        <div class="flex min-w-0 items-center gap-1.5">
+
+                            <p
+                                class="
+                                    truncate
+                                    text-xs
+                                    font-semibold
+                                    text-white
+                                "
+                                x-text="chat.name"
+                            ></p>
+
+
+                            <i
+                                x-show="chat.pinned"
+                                data-lucide="pin"
+                                class="
+                                    h-3
+                                    w-3
+                                    shrink-0
+                                    text-slate-600
+                                "
+                            ></i>
+
+                        </div>
+
+
+                        <span
+                            class="
+                                shrink-0
+                                text-[9px]
+                                text-slate-600
+                            "
+                            x-text="chat.time"
+                        ></span>
+
+                    </div>
+
+
+                    <div class="mt-1 flex items-center justify-between gap-3">
+
+                        <p
+                            class="
+                                truncate
+                                text-[11px]
+                                text-slate-500
+                            "
+                            x-text="chat.message"
+                        ></p>
+
+
+                        <span
+                            x-show="chat.unread > 0"
+                            class="
+                                flex
+                                h-5
+                                min-w-5
+                                shrink-0
+                                items-center
+                                justify-center
+                                rounded-full
+                                bg-pher​al-600
+                                px-1.5
+                                text-[9px]
+                                font-semibold
+                                text-white
+                            "
+                            x-text="chat.unread"
+                        ></span>
+
+                    </div>
+
+                </div>
+
+
+                <!-- Arrow -->
+
+                <i
+                    data-lucide="chevron-right"
+                    class="
+                        h-4
+                        w-4
+                        shrink-0
+                        text-slate-700
+                        transition
+                        group-hover:text-slate-500
+                    "
+                ></i>
+
+            </a>
+
+        </template>
+
+
+
+        <!-- =================================================
+             EMPTY SEARCH STATE
+        ================================================== -->
+
+        <div
+            x-show="filteredChats.length === 0"
+            x-cloak
+            class="px-5 py-14 text-center"
+        >
+
+            <div
+                class="
+                    mx-auto
+                    flex
+                    h-10
+                    w-10
+                    items-center
+                    justify-center
+                    rounded-xl
+                    bg-white/[0.04]
+                "
+            >
+
+                <i
+                    data-lucide="search-x"
+                    class="h-4 w-4 text-slate-600"
+                ></i>
+
+            </div>
+
+
+            <p class="mt-3 text-xs font-medium text-slate-300">
+                No chats found
+            </p>
+
+            <p class="mt-1 text-[10px] text-slate-600">
+                Try a different name or username.
+            </p>
+
+        </div>
+
+    </div>
+
+
+
+    <!-- =====================================================
+         EMPTY / START CHAT
+    ====================================================== -->
+
+    <div class="mt-6 text-center">
+
+        <p class="text-[10px] text-slate-600">
+            Pheral conversations are private and secure.
+        </p>
+
+    </div>
+
+</div>
+
+{% endblock %}
+
+
+{% block extra_scripts %}
+
+<script>
+
+    document.addEventListener("DOMContentLoaded", () => {
+
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+
+    });
+
+</script>
+
+{% endblock %}

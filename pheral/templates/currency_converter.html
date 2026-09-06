@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Currency Converter · Pheral{% endblock %}
+{% block page_title %}Currency Converter{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-md px-4 pb-10 pt-4 md:pt-6">
+
+    <div class="mb-5 flex items-center gap-2 md:hidden">
+        <a href="{% url 'wallet' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink">
+            <i data-lucide="chevron-left" class="h-5 w-5"></i>
+        </a>
+        <h1 class="text-2xl font-bold tracking-tight text-ink">Convert</h1>
+    </div>
+
+    <form method="post" class="rounded-2xl border border-line bg-white p-5">
+        {% csrf_token %}
+
+        <!-- Amount -->
+        <label class="mb-2 block text-sm font-semibold text-ink">Amount</label>
+        <div class="mb-4 flex items-center gap-2 rounded-2xl bg-surface px-4 py-3">
+            <input
+                type="number" name="amount" step="0.01" min="0.01" required inputmode="decimal"
+                value="{{ result.amount|default:'' }}" placeholder="0.00"
+                class="w-full bg-transparent text-2xl font-bold text-ink placeholder-line focus:outline-none">
+        </div>
+
+        <!-- From / To with swap -->
+        <div class="relative mb-5 flex flex-col gap-3">
+
+            <div>
+                <label class="mb-1.5 block text-xs font-medium text-muted">From</label>
+                <div class="relative">
+                    <select name="source_currency" required
+                            class="w-full appearance-none rounded-2xl border border-line bg-white px-4 py-3 pr-10 text-sm font-medium text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                        {% for c in currencies %}
+                            <option value="{{ c.pk }}" {% if result.source.pk == c.pk %}selected{% endif %}>
+                                {{ c.code }} — {{ c.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <i data-lucide="chevron-down" class="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"></i>
+                </div>
+            </div>
+
+            <!-- Swap button -->
+            <button type="button" onclick="swapCurrencies()"
+                    class="absolute left-1/2 top-1/2 z-10 flex h-9 w-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-line bg-white text-accent-600 shadow-sm transition hover:bg-accent-50"
+                    aria-label="Swap currencies">
+                <i data-lucide="arrow-down-up" class="h-4 w-4"></i>
+            </button>
+
+            <div>
+                <label class="mb-1.5 block text-xs font-medium text-muted">To</label>
+                <div class="relative">
+                    <select name="target_currency" required
+                            class="w-full appearance-none rounded-2xl border border-line bg-white px-4 py-3 pr-10 text-sm font-medium text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                        {% for c in currencies %}
+                            <option value="{{ c.pk }}" {% if result.target.pk == c.pk %}selected{% endif %}>
+                                {{ c.code }} — {{ c.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <i data-lucide="chevron-down" class="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"></i>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit"
+                class="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600">
+            <i data-lucide="repeat" class="h-4 w-4"></i>
+            Convert
+        </button>
+    </form>
+
+    <!-- Result -->
+    {% if result %}
+        <div class="mt-5 rounded-3xl bg-gradient-to-br from-accent-600 via-accent-500 to-accent-400 p-5 text-white">
+            <p class="text-xs font-medium uppercase tracking-wide text-white/80">Converted amount</p>
+            <p class="mt-1 text-3xl font-extrabold tracking-tight">
+                {{ result.target.symbol }}{{ result.converted|floatformat:2 }}
+            </p>
+            <p class="mt-2 text-sm text-white/85">
+                {{ result.source.symbol }}{{ result.amount|floatformat:2 }} {{ result.source.code }}
+                =
+                {{ result.target.symbol }}{{ result.converted|floatformat:2 }} {{ result.target.code }}
+            </p>
+        </div>
+    {% elif request.method == "POST" %}
+        <div class="mt-5 rounded-2xl border border-red-100 bg-red-50 p-4 text-sm text-red-700">
+            We couldn't convert between those currencies right now — no exchange rate is available for that pair.
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function swapCurrencies() {
+        const sourceSelect = document.querySelector('select[name="source_currency"]');
+        const targetSelect = document.querySelector('select[name="target_currency"]');
+        const tmp = sourceSelect.value;
+        sourceSelect.value = targetSelect.value;
+        targetSelect.value = tmp;
+    }
+</script>
+{% endblock %}

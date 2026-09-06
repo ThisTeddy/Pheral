@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Notifications · Pheral{% endblock %}
+{% block page_title %}Notifications{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl">
+
+    <div class="flex items-center justify-between px-4 pt-4">
+        <h1 class="text-2xl font-bold tracking-tight text-ink md:hidden">Notifications</h1>
+        <span class="hidden text-sm text-muted md:block">Stay on top of activity across Pheral</span>
+        {% if notifications %}
+            <a href="{% url 'mark_all_notifications_read' %}" class="text-sm font-medium text-accent-600 hover:text-accent-700">
+                Mark all read
+            </a>
+        {% endif %}
+    </div>
+
+    {% if notifications %}
+        <div class="divide-y divide-line px-4 py-4">
+            {% for notification in notifications %}
+                <div class="-mx-2 flex items-start gap-3 rounded-2xl px-2 py-3 {% if not notification.is_read %}bg-accent-50/40{% endif %}">
+
+                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-100 text-accent-700">
+                        {% if notification.notification_type == "message" %}
+                            <i data-lucide="message-circle" class="h-5 w-5"></i>
+                        {% elif notification.notification_type == "payment" %}
+                            <i data-lucide="banknote" class="h-5 w-5"></i>
+                        {% elif notification.notification_type == "hire" %}
+                            <i data-lucide="briefcase" class="h-5 w-5"></i>
+                        {% elif notification.notification_type == "status" %}
+                            <i data-lucide="circle-dashed" class="h-5 w-5"></i>
+                        {% elif notification.notification_type == "post" %}
+                            <i data-lucide="newspaper" class="h-5 w-5"></i>
+                        {% elif notification.notification_type == "group" %}
+                            <i data-lucide="users" class="h-5 w-5"></i>
+                        {% elif notification.notification_type == "agent" %}
+                            <i data-lucide="bot" class="h-5 w-5"></i>
+                        {% else %}
+                            <i data-lucide="bell" class="h-5 w-5"></i>
+                        {% endif %}
+                    </div>
+
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-start justify-between gap-2">
+                            <p class="text-sm font-semibold text-ink">{{ notification.title }}</p>
+                            {% if not notification.is_read %}
+                                <span class="mt-1 h-2 w-2 shrink-0 rounded-full bg-accent-500"></span>
+                            {% endif %}
+                        </div>
+                        <p class="mt-0.5 text-sm text-muted">{{ notification.body }}</p>
+                        <div class="mt-1.5 flex items-center gap-3">
+                            <span class="text-xs text-muted">{{ notification.created_at|timesince }} ago</span>
+                            {% if notification.link %}
+                                <a href="{{ notification.link }}" class="text-xs font-medium text-accent-600 hover:text-accent-700">Open</a>
+                            {% endif %}
+                            {% if not notification.is_read %}
+                                <a href="{% url 'mark_notification_read' notification_id=notification.id %}" class="text-xs font-medium text-muted hover:text-ink">
+                                    Mark as read
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="flex flex-col items-center gap-3 px-4 py-20 text-center">
+            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-accent-50">
+                <i data-lucide="bell" class="h-7 w-7 text-accent-500"></i>
+            </div>
+            <p class="text-base font-semibold text-ink">You're all caught up</p>
+            <p class="max-w-xs text-sm text-muted">Notifications about messages, payments and hire requests will show up here.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,840 @@
+{% extends "base.html" %}
+
+{% block title %}{{ other_user.display_name|default:other_user.username }} · Pheral{% endblock %}
+
+{% block page_title %}{{ other_user.display_name|default:other_user.username }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    body.chat-open nav.md\:hidden.bottom-0 {
+        display: none !important;
+    }
+
+    body.chat-open main {
+        padding-bottom: 0 !important;
+    }
+
+    .chat-shell {
+        height: calc(100dvh - 57px);
+    }
+
+    @media (min-width: 768px) {
+        .chat-shell {
+            height: 100dvh;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div
+    x-data="pheralChat()"
+    x-init="init()"
+    class="mx-auto flex max-w-2xl flex-col chat-shell md:h-screen"
+>
+
+    <!-- CHAT HEADER -->
+    <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2.5">
+
+        <a
+            href="{% url 'chat_list' %}"
+            class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink md:hidden"
+            aria-label="Back to chats"
+        >
+            <i data-lucide="chevron-left" class="h-4.5 w-4.5"></i>
+        </a>
+
+        {% if other_user %}
+
+            <a
+                href="{% url 'profile_user' other_user.username %}"
+                class="flex min-w-0 flex-1 items-center gap-2.5"
+            >
+
+                {% if other_user.avatar %}
+                    <img
+                        src="{{ other_user.avatar.url }}"
+                        alt=""
+                        class="h-9 w-9 shrink-0 rounded-full object-cover"
+                    >
+                {% else %}
+                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-100 text-accent-700">
+                        <span class="text-[12px] font-semibold">
+                            {{ other_user.first_name|default:other_user.username|first|upper }}
+                        </span>
+                    </div>
+                {% endif %}
+
+                <div class="min-w-0">
+
+                    <p class="truncate text-[13px] font-semibold text-ink">
+                        {{ other_user.display_name|default:other_user.username }}
+                    </p>
+
+                    <p
+                        class="text-[10px]"
+                        :class="typing ? 'font-medium text-accent-600' : 'text-muted'"
+                        x-text="typing ? 'typing…' : '{% if other_user_presence.is_online %}Online{% elif not other_user_presence.is_online and other_user_presence.last_seen_at %}Last seen {{ other_user_presence.last_seen_at|timesince }} ago{% else %}Offline{% endif %}'"
+                    ></p>
+
+                </div>
+
+            </a>
+
+            <a
+                href="{% url 'pay_user' other_user.username %}"
+                class="flex items-center gap-1.5 rounded-full bg-accent-500 px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-600"
+                aria-label="Pay {{ other_user.username }}"
+            >
+                <i data-lucide="banknote" class="h-3.5 w-3.5"></i>
+                <span class="hidden sm:inline">Pay</span>
+            </a>
+
+        {% else %}
+
+            <p class="flex-1 text-[13px] font-semibold text-ink">
+                Unknown conversation
+            </p>
+
+        {% endif %}
+
+    </div>
+
+
+    <!-- MESSAGES -->
+    <div
+        class="flex-1 space-y-1.5 overflow-y-auto px-3.5 py-3"
+        id="message-scroll"
+        x-ref="scroll"
+    >
+
+        {% for message in chat_messages %}
+
+            {% if message.message_type == "system" %}
+
+                <div class="flex justify-center py-1.5">
+                    <span class="rounded-full bg-surface px-2.5 py-1 text-[10px] text-muted">
+                        {{ message.content }}
+                    </span>
+                </div>
+
+            {% else %}
+
+                <div class="group flex items-end gap-1.5 {% if message.sender_id == user.id %}justify-end{% endif %}">
+
+                    <div
+                        class="relative max-w-[78%] rounded-2xl px-3 py-2 text-[12.5px] leading-snug
+                        {% if message.sender_id == user.id %}
+                            rounded-br-md bg-accent-500 text-white
+                        {% else %}
+                            rounded-bl-md bg-surface text-ink
+                        {% endif %}"
+                    >
+
+                        {% if message.reply_to %}
+
+                            <div
+                                class="mb-1 rounded-md border-l-2 px-1.5 py-1 text-[10px]
+                                {% if message.sender_id == user.id %}
+                                    border-white/50 bg-white/10 text-white/80
+                                {% else %}
+                                    border-accent-400 bg-accent-50 text-accent-700
+                                {% endif %}"
+                            >
+                                <p class="font-semibold">
+                                    {% if message.reply_to.sender_id == user.id %}
+                                        You
+                                    {% else %}
+                                        {{ message.reply_to.sender.first_name|default:message.reply_to.sender.username }}
+                                    {% endif %}
+                                </p>
+
+                                <p class="truncate opacity-80">
+                                    {{ message.reply_to.content|default:"Attachment"|truncatechars:60 }}
+                                </p>
+                            </div>
+
+                        {% endif %}
+
+
+                        {% if message.message_type == "image" and message.attachment %}
+
+                            <a
+                                href="{{ message.attachment.url }}"
+                                target="_blank"
+                                rel="noopener"
+                            >
+                                <img
+                                    src="{{ message.attachment.url }}"
+                                    alt=""
+                                    class="mb-1 max-h-72 rounded-xl object-cover"
+                                >
+                            </a>
+
+                            {% if message.content %}
+                                <p>{{ message.content }}</p>
+                            {% endif %}
+
+
+                        {% elif message.message_type == "video" and message.attachment %}
+
+                            <video
+                                src="{{ message.attachment.url }}"
+                                controls
+                                class="mb-1 max-h-72 rounded-xl"
+                            ></video>
+
+
+                        {% elif message.message_type == "voice" and message.attachment %}
+
+                            <div class="flex min-w-[190px] items-center gap-2">
+
+                                <i
+                                    data-lucide="mic"
+                                    class="h-3.5 w-3.5 shrink-0 {% if message.sender_id == user.id %}text-white/80{% else %}text-accent-500{% endif %}"
+                                ></i>
+
+                                <audio
+                                    src="{{ message.attachment.url }}"
+                                    controls
+                                    class="h-7 flex-1"
+                                ></audio>
+
+                            </div>
+
+
+                        {% elif message.message_type == "file" and message.attachment %}
+
+                            <a
+                                href="{{ message.attachment.url }}"
+                                target="_blank"
+                                rel="noopener"
+                                class="flex items-center gap-2"
+                            >
+
+                                <span
+                                    class="flex h-7 w-7 items-center justify-center rounded-lg
+                                    {% if message.sender_id == user.id %}
+                                        bg-white/15
+                                    {% else %}
+                                        bg-accent-100
+                                    {% endif %}"
+                                >
+                                    <i data-lucide="file-text" class="h-3.5 w-3.5"></i>
+                                </span>
+
+                                <span class="truncate text-[11px] underline underline-offset-2">
+                                    {{ message.attachment.name|cut:"message_files/" }}
+                                </span>
+
+                            </a>
+
+
+                        {% elif message.message_type == "payment" %}
+
+                            <div class="flex min-w-[160px] items-center gap-2">
+
+                                <span
+                                    class="flex h-7 w-7 items-center justify-center rounded-full
+                                    {% if message.sender_id == user.id %}
+                                        bg-white/15
+                                    {% else %}
+                                        bg-accent-100
+                                    {% endif %}"
+                                >
+                                    <i data-lucide="banknote" class="h-3.5 w-3.5"></i>
+                                </span>
+
+                                <div>
+
+                                    <p class="font-semibold">
+                                        {{ message.content }}
+                                    </p>
+
+                                    {% if message.receipt %}
+                                        <a
+                                            href="{% url 'receipt_detail' message.receipt.reference %}"
+                                            class="text-[10px] underline opacity-80"
+                                        >
+                                            View receipt
+                                        </a>
+                                    {% endif %}
+
+                                </div>
+
+                            </div>
+
+
+                        {% elif message.message_type == "hire" %}
+
+                            <div class="flex items-center gap-1.5">
+
+                                <i
+                                    data-lucide="briefcase"
+                                    class="h-3.5 w-3.5 shrink-0"
+                                ></i>
+
+                                <p class="font-medium">
+                                    {{ message.content }}
+                                </p>
+
+                            </div>
+
+
+                        {% elif message.message_type == "agent" %}
+
+                            <p class="mb-0.5 text-[9px] font-semibold uppercase tracking-wide opacity-60">
+                                Agent
+                            </p>
+
+                            <p>{{ message.content }}</p>
+
+
+                        {% else %}
+
+                            <p class="whitespace-pre-wrap">
+                                {{ message.content }}
+                            </p>
+
+                        {% endif %}
+
+
+                        <!-- MESSAGE META -->
+                        <div class="mt-0.5 flex items-center justify-end gap-1">
+
+                            <span
+                                class="text-[9px]
+                                {% if message.sender_id == user.id %}
+                                    text-white/60
+                                {% else %}
+                                    text-muted
+                                {% endif %}"
+                            >
+                                {{ message.created_at|date:"g:i A" }}
+                            </span>
+
+                            {% if message.sender_id == user.id %}
+
+                                {% if message.id in read_by_others %}
+
+                                    <i
+                                        data-lucide="check-check"
+                                        class="h-3 w-3 text-accent-200"
+                                    ></i>
+
+                                {% else %}
+
+                                    <i
+                                        data-lucide="check"
+                                        class="h-3 w-3 text-white/60"
+                                    ></i>
+
+                                {% endif %}
+
+                            {% endif %}
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- REPLY -->
+                    <button
+                        type="button"
+                        @click="startReply(
+                            '{{ message.id }}',
+                            '{% if message.sender_id == user.id %}You{% else %}{{ message.sender.first_name|default:message.sender.username|escapejs }}{% endif %}',
+                            '{{ message.content|default:"Attachment*"|truncatechars:60|escapejs }}'
+                        )"
+                        class="mb-1 hidden h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted opacity-0 transition hover:bg-surface hover:text-ink group-hover:opacity-100 md:flex"
+                        aria-label="Reply"
+                    >
+                        <i data-lucide="reply" class="h-3 w-3"></i>
+                    </button>
+
+                </div>
+
+            {% endif %}
+
+        {% empty %}
+
+            <div class="flex h-full flex-col items-center justify-center gap-1.5 py-20 text-center">
+
+                <div class="flex h-12 w-12 items-center justify-center rounded-full bg-accent-50">
+                    <i data-lucide="message-circle" class="h-5 w-5 text-accent-500"></i>
+                </div>
+
+                <p class="text-[12px] font-semibold text-ink">
+                    No messages yet
+                </p>
+
+                <p class="text-[11px] text-muted">
+                    Say hello to get things started.
+                </p>
+
+            </div>
+
+        {% endfor %}
+
+    </div>
+
+
+    <!-- COMPOSER -->
+    <div class="border-t border-line bg-white px-3.5 py-2.5">
+
+        <!-- Reply preview -->
+        <div
+            x-show="replyId"
+            x-cloak
+            class="mb-1.5 flex items-center gap-2 rounded-lg bg-surface px-2.5 py-1.5"
+        >
+
+            <span class="h-full w-0.5 shrink-0 self-stretch rounded-full bg-accent-400"></span>
+
+            <div class="min-w-0 flex-1">
+
+                <p
+                    class="text-[10px] font-semibold text-accent-600"
+                    x-text="'Replying to ' + replySender"
+                ></p>
+
+                <p
+                    class="truncate text-[10px] text-muted"
+                    x-text="replyPreview"
+                ></p>
+
+            </div>
+
+            <button
+                type="button"
+                @click="cancelReply()"
+                class="shrink-0 rounded-full p-1 text-muted hover:bg-white hover:text-ink"
+                aria-label="Cancel reply"
+            >
+                <i data-lucide="x" class="h-3.5 w-3.5"></i>
+            </button>
+
+        </div>
+
+
+        <!-- Attachment preview -->
+        <div
+            x-show="attachmentName"
+            x-cloak
+            class="mb-1.5 flex items-center gap-2 rounded-lg bg-surface px-2.5 py-1.5"
+        >
+
+            <i data-lucide="paperclip" class="h-3.5 w-3.5 shrink-0 text-muted"></i>
+
+            <p
+                class="min-w-0 flex-1 truncate text-[10px] text-ink"
+                x-text="attachmentName"
+            ></p>
+
+            <button
+                type="button"
+                @click="clearAttachment()"
+                class="shrink-0 rounded-full p-1 text-muted hover:bg-white hover:text-ink"
+                aria-label="Remove attachment"
+            >
+                <i data-lucide="x" class="h-3.5 w-3.5"></i>
+            </button>
+
+        </div>
+
+
+        <!-- Recording state -->
+        <div
+            x-show="recording"
+            x-cloak
+            class="mb-1.5 flex items-center gap-2.5 rounded-lg bg-red-50 px-2.5 py-2"
+        >
+
+            <span class="h-2 w-2 animate-pulse rounded-full bg-red-500"></span>
+
+            <span
+                class="flex-1 text-[11px] font-medium text-red-700"
+                x-text="'Recording ' + recordingTime"
+            ></span>
+
+            <button
+                type="button"
+                @click="cancelRecording()"
+                class="text-[11px] font-semibold text-muted"
+            >
+                Cancel
+            </button>
+
+            <button
+                type="button"
+                @click="stopRecording()"
+                class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-500 text-white"
+                aria-label="Send voice note"
+            >
+                <i data-lucide="send" class="h-3.5 w-3.5"></i>
+            </button>
+
+        </div>
+
+
+        <!-- Normal composer -->
+        <form
+            method="post"
+            action="{% url 'chat' conversation.id %}"
+            enctype="multipart/form-data"
+            x-ref="form"
+            x-show="!recording"
+            class="flex items-end gap-1"
+        >
+
+            {% csrf_token %}
+
+            <input
+                type="hidden"
+                name="reply_to"
+                x-model="replyId"
+            >
+
+            <input
+                type="file"
+                name="attachment"
+                x-ref="attachmentInput"
+                class="hidden"
+                accept="image/*,video/*,.pdf,.doc,.docx,.zip"
+                @change="onAttachmentChange"
+            >
+
+            <input
+                type="file"
+                name="voice_note"
+                x-ref="voiceInput"
+                class="hidden"
+            >
+
+            <button
+                type="button"
+                @click="$refs.attachmentInput.click()"
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-surface hover:text-ink"
+                aria-label="Attach a file"
+            >
+                <i data-lucide="paperclip" class="h-4.5 w-4.5"></i>
+            </button>
+
+
+            <textarea
+                name="content"
+                x-ref="textarea"
+                x-model="content"
+                @input="autoGrow(); notifyTyping()"
+                @keydown.enter.prevent="if (!$event.shiftKey) $refs.form.requestSubmit()"
+                rows="1"
+                placeholder="Message"
+                class="max-h-28 flex-1 resize-none rounded-2xl bg-surface px-3.5 py-2 text-[12px] text-ink placeholder-muted focus:outline-none"
+            ></textarea>
+
+
+            <button
+                type="button"
+                @click="startRecording()"
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-surface hover:text-ink"
+                aria-label="Record a voice note"
+            >
+                <i data-lucide="mic" class="h-4.5 w-4.5"></i>
+            </button>
+
+
+            <button
+                type="submit"
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-500 text-white transition hover:bg-accent-600"
+                aria-label="Send message"
+            >
+                <i data-lucide="send" class="h-4 w-4"></i>
+            </button>
+
+        </form>
+
+    </div>
+
+</div>
+
+{% endblock %}
+
+
+{% block extra_scripts %}
+
+<script>
+
+    document.body.classList.add("chat-open");
+
+    function pheralChat() {
+
+        return {
+
+            content: "",
+            replyId: "",
+            replySender: "",
+            replyPreview: "",
+            attachmentName: "",
+            typing: false,
+            recording: false,
+            recordingTime: "0:00",
+
+            _mediaRecorder: null,
+            _recordedChunks: [],
+            _recordingStartedAt: 0,
+            _recordingTimer: null,
+            _discardRecording: false,
+            _typingTimeout: null,
+
+            init() {
+                this.scrollToBottom();
+                this.pollTyping();
+                setInterval(() => this.pollTyping(), 3000);
+            },
+
+            scrollToBottom() {
+                this.$nextTick(() => {
+                    const el = this.$refs.scroll;
+                    if (el) el.scrollTop = el.scrollHeight;
+                });
+            },
+
+            autoGrow() {
+                const el = this.$refs.textarea;
+                el.style.height = "auto";
+                el.style.height = Math.min(el.scrollHeight, 112) + "px";
+            },
+
+            startReply(id, sender, preview) {
+                this.replyId = id;
+                this.replySender = sender;
+                this.replyPreview = preview;
+                this.$refs.textarea.focus();
+            },
+
+            cancelReply() {
+                this.replyId = "";
+                this.replySender = "";
+                this.replyPreview = "";
+            },
+
+            onAttachmentChange(event) {
+                const file = event.target.files && event.target.files[0];
+                this.attachmentName = file ? file.name : "";
+            },
+
+            clearAttachment() {
+                this.$refs.attachmentInput.value = "";
+                this.attachmentName = "";
+            },
+
+            getCookie(name) {
+                const match = document.cookie.match(
+                    "(^|;)\\s*" + name + "\\s*=\\s*([^;]+)"
+                );
+                return match ? match.pop() : "";
+            },
+
+            notifyTyping() {
+
+                const url = "{% url 'chat_typing' conversation.id %}";
+
+                fetch(url, {
+                    method: "POST",
+                    headers: {
+                        "X-CSRFToken": this.getCookie("csrftoken"),
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    body: "typing=1",
+                });
+
+                clearTimeout(this._typingTimeout);
+
+                this._typingTimeout = setTimeout(() => {
+
+                    fetch(url, {
+                        method: "POST",
+                        headers: {
+                            "X-CSRFToken": this.getCookie("csrftoken"),
+                            "Content-Type": "application/x-www-form-urlencoded",
+                            "X-Requested-With": "XMLHttpRequest",
+                        },
+                        body: "typing=0",
+                    });
+
+                }, 2000);
+            },
+
+            pollTyping() {
+
+                const url = "{% url 'chat_typing' conversation.id %}";
+
+                fetch(url, {
+                    headers: {
+                        "X-Requested-With": "XMLHttpRequest"
+                    }
+                })
+                .then(res => res.json())
+                .then(data => {
+                    this.typing = !!data.typing;
+                })
+                .catch(() => {});
+
+            },
+
+            formatTimer(totalSeconds) {
+
+                const m = Math.floor(totalSeconds / 60);
+                const s = totalSeconds % 60;
+
+                return m + ":" + String(s).padStart(2, "0");
+            },
+
+            async startRecording() {
+
+                if (
+                    !navigator.mediaDevices ||
+                    !navigator.mediaDevices.getUserMedia
+                ) {
+                    alert("Voice notes aren't supported in this browser.");
+                    return;
+                }
+
+                try {
+
+                    const stream =
+                        await navigator.mediaDevices.getUserMedia({
+                            audio: true
+                        });
+
+                    this._recordedChunks = [];
+                    this._discardRecording = false;
+
+                    this._mediaRecorder =
+                        new MediaRecorder(stream);
+
+                    this._mediaRecorder.addEventListener(
+                        "dataavailable",
+                        (e) => {
+                            if (e.data.size > 0) {
+                                this._recordedChunks.push(e.data);
+                            }
+                        }
+                    );
+
+                    this._mediaRecorder.addEventListener(
+                        "stop",
+                        () => {
+
+                            stream
+                                .getTracks()
+                                .forEach(t => t.stop());
+
+                            clearInterval(this._recordingTimer);
+
+                            this.recording = false;
+                            this.recordingTime = "0:00";
+
+                            if (
+                                this._discardRecording ||
+                                this._recordedChunks.length === 0
+                            ) {
+                                return;
+                            }
+
+                            const blob = new Blob(
+                                this._recordedChunks,
+                                {
+                                    type: "audio/webm"
+                                }
+                            );
+
+                            const file = new File(
+                                [blob],
+                                "voice-note.webm",
+                                {
+                                    type: "audio/webm"
+                                }
+                            );
+
+                            const dataTransfer =
+                                new DataTransfer();
+
+                            dataTransfer.items.add(file);
+
+                            this.$refs.voiceInput.files =
+                                dataTransfer.files;
+
+                            this.$refs.form.requestSubmit();
+                        }
+                    );
+
+                    this._mediaRecorder.start();
+
+                    this.recording = true;
+                    this._recordingStartedAt = Date.now();
+
+                    this._recordingTimer = setInterval(() => {
+
+                        this.recordingTime =
+                            this.formatTimer(
+                                Math.floor(
+                                    (Date.now() -
+                                        this._recordingStartedAt) /
+                                    1000
+                                )
+                            );
+
+                    }, 1000);
+
+                } catch (error) {
+
+                    alert(
+                        "Microphone access is needed to record a voice note."
+                    );
+
+                }
+            },
+
+            stopRecording() {
+
+                this._discardRecording = false;
+
+                if (
+                    this._mediaRecorder &&
+                    this._mediaRecorder.state !== "inactive"
+                ) {
+                    this._mediaRecorder.stop();
+                }
+
+            },
+
+            cancelRecording() {
+
+                this._discardRecording = true;
+
+                if (
+                    this._mediaRecorder &&
+                    this._mediaRecorder.state !== "inactive"
+                ) {
+                    this._mediaRecorder.stop();
+                }
+
+            },
+
+        };
+
+    }
+
+    document.addEventListener(
+        "alpine:initialized",
+        () => lucide.createIcons()
+    );
+
+    lucide.createIcons();
+
+</script>
+
+{% endblock %}

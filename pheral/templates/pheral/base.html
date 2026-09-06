@@ -1,0 +1,887 @@
+
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    >
+
+    <!-- =========================================================
+         SEO / APP IDENTITY
+    ========================================================== -->
+
+    <meta
+        name="description"
+        content="{% block meta_description %}Pheral — Chat. Pay. Hire.{% endblock %}"
+    >
+
+    <meta name="application-name" content="Pheral">
+
+    <meta name="theme-color" content="#ffffff">
+
+    <!-- =========================================================
+         FAVICON / APP ICON
+    ========================================================== -->
+
+    <link
+        rel="icon"
+        type="image/png"
+        href="{% static 'images/pheral-logo.png' %}"
+    >
+
+    <link
+        rel="apple-touch-icon"
+        href="{% static 'images/pheral-logo.png' %}"
+    >
+
+    <!-- PWA manifest -->
+    <link
+        rel="manifest"
+        href="{% static 'manifest.json' %}"
+    >
+
+    <!-- =========================================================
+         TITLE
+    ========================================================== -->
+
+    <title>
+        {% block title %}Pheral — Chat. Pay. Hire.{% endblock %}
+    </title>
+
+    <!-- =========================================================
+         TAILWIND
+    ========================================================== -->
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+
+                    fontFamily: {
+                        sans: [
+                            "Inter",
+                            "ui-sans-serif",
+                            "system-ui",
+                            "sans-serif"
+                        ],
+                    },
+
+                    colors: {
+                        pheral: "#7C3AED",
+                    },
+
+                    boxShadow: {
+                        pheral: "0 8px 30px rgba(24, 24, 27, 0.06)",
+                    },
+
+                    screens: {
+                        xs: "420px",
+                    },
+
+                }
+            }
+        }
+    </script>
+
+    <!-- =========================================================
+         ALPINE
+    ========================================================== -->
+
+    <script
+        defer
+        src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+
+    <!-- =========================================================
+         LUCIDE
+    ========================================================== -->
+
+    <script
+        src="https://unpkg.com/lucide@latest"
+    ></script>
+
+    <!-- =========================================================
+         GLOBAL STYLES
+    ========================================================== -->
+
+    <style>
+
+        html {
+            scroll-behavior: smooth;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family:
+                Inter,
+                ui-sans-serif,
+                system-ui,
+                -apple-system,
+                BlinkMacSystemFont,
+                "Segoe UI",
+                sans-serif;
+        }
+
+        button,
+        a,
+        input,
+        textarea,
+        select {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        input,
+        textarea,
+        select {
+            outline: none;
+        }
+
+        ::selection {
+            background: #ede9fe;
+            color: #18181b;
+        }
+
+        /* Hide Alpine elements before Alpine initializes */
+
+        [x-cloak] {
+            display: none !important;
+        }
+
+        /* Prevent horizontal overflow on mobile */
+
+        body {
+            overflow-x: hidden;
+        }
+
+        /* Thin scrollbar */
+
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #d4d4d8;
+            border-radius: 999px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a1a1aa;
+        }
+
+        /* Safe-area support for installed PWA */
+
+        .safe-top {
+            padding-top: env(safe-area-inset-top);
+        }
+
+        .safe-bottom {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+    </style>
+
+    {% block extra_head %}{% endblock %}
+
+</head>
+
+
+<body
+    class="
+        min-h-screen
+        bg-white
+        text-zinc-950
+        antialiased
+    "
+    x-data="{
+        mobileMenuOpen: false,
+        searchOpen: false
+    }"
+>
+
+    <!-- =========================================================
+         APPLICATION
+    ========================================================== -->
+
+    <div class="min-h-screen">
+
+        <!-- =====================================================
+             DESKTOP / TABLET TOP BAR
+        ====================================================== -->
+
+        <header
+            class="
+                fixed
+                inset-x-0
+                top-0
+                z-50
+                safe-top
+            "
+        >
+
+            <div class="mx-auto max-w-7xl px-4 pt-3 sm:px-6">
+
+                <nav
+                    class="
+                        flex
+                        h-14
+                        items-center
+                        justify-between
+                        border
+                        border-zinc-200/80
+                        bg-white/95
+                        px-3
+                        shadow-sm
+                        backdrop-blur-xl
+                        sm:px-4
+                    "
+                >
+
+                    <!-- LOGO -->
+
+                    <a
+                        href="{% url 'home' %}"
+                        class="
+                            flex
+                            items-center
+                            gap-2.5
+                        "
+                    >
+
+                        <img
+                            src="{% static 'images/pheral-logo.png' %}"
+                            alt="Pheral"
+                            class="h-7 w-7 object-contain"
+                        >
+
+                        <span
+                            class="
+                                text-[14px]
+                                font-semibold
+                                tracking-tight
+                            "
+                        >
+                            Pheral
+                        </span>
+
+                    </a>
+
+
+                    <!-- DESKTOP SEARCH -->
+
+                    <div
+                        class="
+                            hidden
+                            w-full
+                            max-w-sm
+                            md:block
+                        "
+                    >
+
+                        <button
+                            type="button"
+                            @click="searchOpen = true"
+                            class="
+                                flex
+                                h-9
+                                w-full
+                                items-center
+                                gap-2
+                                border
+                                border-zinc-200
+                                bg-zinc-50
+                                px-3
+                                text-left
+                                transition
+                                hover:border-zinc-300
+                            "
+                        >
+
+                            <i
+                                data-lucide="search"
+                                class="h-4 w-4 text-zinc-400"
+                            ></i>
+
+                            <span
+                                class="
+                                    text-[11px]
+                                    text-zinc-400
+                                "
+                            >
+                                Search people, chats...
+                            </span>
+
+                        </button>
+
+                    </div>
+
+
+                    <!-- DESKTOP ACTIONS -->
+
+                    <div class="hidden items-center gap-1 sm:flex">
+
+                        <button
+                            type="button"
+                            class="
+                                flex
+                                h-9
+                                w-9
+                                items-center
+                                justify-center
+                                text-zinc-500
+                                transition
+                                hover:bg-zinc-50
+                                hover:text-zinc-950
+                            "
+                            aria-label="Notifications"
+                        >
+
+                            <i
+                                data-lucide="bell"
+                                class="h-4 w-4"
+                            ></i>
+
+                        </button>
+
+
+                        <button
+                            type="button"
+                            class="
+                                flex
+                                h-9
+                                w-9
+                                items-center
+                                justify-center
+                                text-zinc-500
+                                transition
+                                hover:bg-zinc-50
+                                hover:text-zinc-950
+                            "
+                            aria-label="Profile menu"
+                            @click="mobileMenuOpen = !mobileMenuOpen"
+                        >
+
+                            <i
+                                data-lucide="user-round"
+                                class="h-4 w-4"
+                            ></i>
+
+                        </button>
+
+                    </div>
+
+
+                    <!-- MOBILE SEARCH -->
+
+                    <button
+                        type="button"
+                        @click="searchOpen = true"
+                        class="
+                            flex
+                            h-9
+                            w-9
+                            items-center
+                            justify-center
+                            text-zinc-500
+                            sm:hidden
+                        "
+                        aria-label="Search"
+                    >
+
+                        <i
+                            data-lucide="search"
+                            class="h-4 w-4"
+                        ></i>
+
+                    </button>
+
+                </nav>
+
+            </div>
+
+        </header>
+
+
+        <!-- =====================================================
+             PROFILE DROPDOWN
+        ====================================================== -->
+
+        <div
+            x-cloak
+            x-show="mobileMenuOpen"
+            x-transition.opacity
+            @click.outside="mobileMenuOpen = false"
+            class="
+                fixed
+                right-4
+                top-20
+                z-[60]
+                w-52
+                border
+                border-zinc-200
+                bg-white
+                p-2
+                shadow-xl
+            "
+        >
+
+            <a
+                href="{% url 'profile' %}"
+                class="
+                    flex
+                    items-center
+                    gap-3
+                    px-3
+                    py-3
+                    text-[12px]
+                    font-medium
+                    text-zinc-700
+                    hover:bg-zinc-50
+                "
+            >
+
+                <i
+                    data-lucide="user-round"
+                    class="h-4 w-4 text-zinc-400"
+                ></i>
+
+                Profile
+
+            </a>
+
+
+            <a
+                href="{% url 'settings' %}"
+                class="
+                    flex
+                    items-center
+                    gap-3
+                    px-3
+                    py-3
+                    text-[12px]
+                    font-medium
+                    text-zinc-700
+                    hover:bg-zinc-50
+                "
+            >
+
+                <i
+                    data-lucide="settings"
+                    class="h-4 w-4 text-zinc-400"
+                ></i>
+
+                Settings
+
+            </a>
+
+
+            <div class="my-1 border-t border-zinc-100"></div>
+
+
+            <form
+                method="post"
+                action="{% url 'logout' %}"
+            >
+
+                {% csrf_token %}
+
+                <button
+                    type="submit"
+                    class="
+                        flex
+                        w-full
+                        items-center
+                        gap-3
+                        px-3
+                        py-3
+                        text-left
+                        text-[12px]
+                        font-medium
+                        text-red-500
+                        hover:bg-red-50
+                    "
+                >
+
+                    <i
+                        data-lucide="log-out"
+                        class="h-4 w-4"
+                    ></i>
+
+                    Log out
+
+                </button>
+
+            </form>
+
+        </div>
+
+
+        <!-- =====================================================
+             SEARCH OVERLAY
+        ====================================================== -->
+
+        <div
+            x-cloak
+            x-show="searchOpen"
+            x-transition.opacity
+            class="
+                fixed
+                inset-0
+                z-[70]
+                bg-white
+            "
+        >
+
+            <div
+                class="
+                    mx-auto
+                    flex
+                    min-h-screen
+                    max-w-2xl
+                    flex-col
+                "
+            >
+
+                <div
+                    class="
+                        flex
+                        h-16
+                        items-center
+                        gap-3
+                        border-b
+                        border-zinc-200
+                        px-4
+                    "
+                >
+
+                    <button
+                        type="button"
+                        @click="searchOpen = false"
+                        class="
+                            flex
+                            h-9
+                            w-9
+                            items-center
+                            justify-center
+                            text-zinc-500
+                        "
+                        aria-label="Close search"
+                    >
+
+                        <i
+                            data-lucide="arrow-left"
+                            class="h-4 w-4"
+                        ></i>
+
+                    </button>
+
+
+                    <div
+                        class="
+                            flex
+                            flex-1
+                            items-center
+                            gap-2
+                            bg-zinc-50
+                            px-3
+                        "
+                    >
+
+                        <i
+                            data-lucide="search"
+                            class="h-4 w-4 text-zinc-400"
+                        ></i>
+
+                        <input
+                            type="search"
+                            placeholder="Search people, chats..."
+                            class="
+                                h-10
+                                w-full
+                                bg-transparent
+                                text-sm
+                                text-zinc-950
+                                placeholder:text-zinc-400
+                            "
+                            autofocus
+                        >
+
+                    </div>
+
+                </div>
+
+
+                <div class="flex-1 px-5 py-8">
+
+                    <p
+                        class="
+                            text-[10px]
+                            font-semibold
+                            uppercase
+                            tracking-[0.16em]
+                            text-zinc-400
+                        "
+                    >
+                        Search Pheral
+                    </p>
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- =====================================================
+             MAIN CONTENT
+        ====================================================== -->
+
+        <main
+            class="
+                min-h-screen
+                pt-[76px]
+                pb-24
+                sm:pb-8
+            "
+        >
+
+            {% block content %}
+            {% endblock %}
+
+        </main>
+
+
+        <!-- =====================================================
+             MOBILE BOTTOM NAVIGATION
+             Chat → Home → Scroll → Wallet → Profile
+        ====================================================== -->
+
+        <nav
+            class="
+                fixed
+                inset-x-0
+                bottom-0
+                z-50
+                border-t
+                border-zinc-200
+                bg-white/95
+                backdrop-blur-xl
+                safe-bottom
+                sm:hidden
+            "
+        >
+
+            <div
+                class="
+                    mx-auto
+                    flex
+                    h-16
+                    max-w-lg
+                    items-center
+                    justify-around
+                    px-2
+                "
+            >
+
+                <!-- CHAT -->
+
+                <a
+                    href=""
+                    class="
+                        flex
+                        min-w-[56px]
+                        flex-col
+                        items-center
+                        justify-center
+                        gap-1
+                        text-zinc-400
+                        transition
+                        hover:text-zinc-950
+                    "
+                >
+
+                    <i
+                        data-lucide="message-circle"
+                        class="h-[18px] w-[18px]"
+                    ></i>
+
+                    <span class="text-[9px] font-medium">
+                        Chat
+                    </span>
+
+                </a>
+
+
+                <!-- HOME -->
+
+                <a
+                    href="{% url 'home' %}"
+                    class="
+                        flex
+                        min-w-[56px]
+                        flex-col
+                        items-center
+                        justify-center
+                        gap-1
+                        text-zinc-400
+                        transition
+                        hover:text-zinc-950
+                    "
+                >
+
+                    <i
+                        data-lucide="house"
+                        class="h-[18px] w-[18px]"
+                    ></i>
+
+                    <span class="text-[9px] font-medium">
+                        Home
+                    </span>
+
+                </a>
+
+
+                <!-- SCROLL -->
+
+                <a
+                    href="{% url 'scroll' %}"
+                    class="
+                        flex
+                        min-w-[56px]
+                        flex-col
+                        items-center
+                        justify-center
+                        gap-1
+                        text-zinc-400
+                        transition
+                        hover:text-zinc-950
+                    "
+                >
+
+                    <i
+                        data-lucide="layers-3"
+                        class="h-[18px] w-[18px]"
+                    ></i>
+
+                    <span class="text-[9px] font-medium">
+                        Scroll
+                    </span>
+
+                </a>
+
+
+                <!-- WALLET -->
+
+                <a
+                    href="{% url 'wallet' %}"
+                    class="
+                        flex
+                        min-w-[56px]
+                        flex-col
+                        items-center
+                        justify-center
+                        gap-1
+                        text-zinc-400
+                        transition
+                        hover:text-zinc-950
+                    "
+                >
+
+                    <i
+                        data-lucide="wallet"
+                        class="h-[18px] w-[18px]"
+                    ></i>
+
+                    <span class="text-[9px] font-medium">
+                        Wallet
+                    </span>
+
+                </a>
+
+
+                <!-- PROFILE -->
+
+                <a
+                    href="{% url 'profile' %}"
+                    class="
+                        flex
+                        min-w-[56px]
+                        flex-col
+                        items-center
+                        justify-center
+                        gap-1
+                        text-zinc-400
+                        transition
+                        hover:text-zinc-950
+                    "
+                >
+
+                    <i
+                        data-lucide="user-round"
+                        class="h-[18px] w-[18px]"
+                    ></i>
+
+                    <span class="text-[9px] font-medium">
+                        Profile
+                    </span>
+
+                </a>
+
+            </div>
+
+        </nav>
+
+    </div>
+
+
+    <!-- =========================================================
+         GLOBAL JAVASCRIPT
+    ========================================================== -->
+
+    <script>
+
+        function initializeLucide() {
+            if (window.lucide) {
+                lucide.createIcons();
+            }
+        }
+
+        document.addEventListener(
+            "DOMContentLoaded",
+            initializeLucide
+        );
+
+        document.addEventListener(
+            "alpine:initialized",
+            initializeLucide
+        );
+
+        document.addEventListener(
+            "alpine:updated",
+            initializeLucide
+        );
+
+    </script>
+
+
+    {% block extra_scripts %}
+    {% endblock %}
+
+</body>
+</html>

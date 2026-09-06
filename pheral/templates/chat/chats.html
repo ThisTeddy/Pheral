@@ -1,0 +1,186 @@
+
+{% extends "base.html" %}
+
+{% block title %}Conversations · Pheral{% endblock %}
+
+{% block content %}
+
+<div class="mx-auto w-full max-w-2xl px-4 pb-28 sm:px-6">
+
+    <!-- HEADER -->
+    <header class="pt-2">
+
+        <div class="flex items-center justify-between">
+
+            <h1 class="text-2xl font-semibold tracking-tight text-white">
+                Conversations
+            </h1>
+
+            <a
+                href=""
+                aria-label="New conversation"
+                class="flex h-10 w-10 items-center justify-center rounded-full text-slate-400 transition hover:bg-white/[0.05] hover:text-white"
+            >
+                <i data-lucide="square-pen" class="h-[18px] w-[18px]"></i>
+            </a>
+
+        </div>
+
+    </header>
+
+
+    <!-- SEARCH -->
+    <div class="mt-5">
+
+        <div class="relative">
+
+            <i
+                data-lucide="search"
+                class="pointer-events-none absolute left-4 top-1/2 h-[16px] w-[16px] -translate-y-1/2 text-slate-500"
+            ></i>
+
+            <input
+                type="search"
+                placeholder="Search"
+                class="h-11 w-full rounded-xl border border-white/[0.07] bg-white/[0.045] pl-11 pr-4 text-sm text-white outline-none placeholder:text-slate-500 transition focus:border-purple-500/30 focus:bg-white/[0.06]"
+            >
+
+        </div>
+
+    </div>
+
+
+    <!-- CHAT LIST -->
+    <section class="mt-5">
+
+        {% for conversation in conversations %}
+
+            <a
+                href="{% url 'conversation' conversation.id %}"
+                class="group flex w-full items-center gap-3.5 rounded-xl px-2 py-3 transition hover:bg-white/[0.035] active:bg-white/[0.055]"
+            >
+
+                <!-- AVATAR -->
+                <div class="relative h-14 w-14 shrink-0">
+
+                    <div class="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-purple-500/10 text-base font-semibold text-purple-300 ring-1 ring-white/[0.06]">
+
+                        {% for participant in conversation.participants.all %}
+
+                            {% if participant.user != request.user %}
+
+                                {% if participant.user.profile.avatar %}
+
+                                    <img
+                                        src="{{ participant.user.profile.avatar.url }}"
+                                        alt="{{ participant.user.username }}"
+                                        class="h-full w-full object-cover"
+                                    >
+
+                                {% else %}
+
+                                    {{ participant.user.username|first|upper }}
+
+                                {% endif %}
+
+                            {% endif %}
+
+                        {% endfor %}
+
+                    </div>
+
+                </div>
+
+
+                <!-- CHAT INFO -->
+                <div class="min-w-0 flex-1">
+
+                    <div class="flex items-center justify-between gap-3">
+
+                        <p class="min-w-0 truncate text-[15px] font-semibold text-white">
+
+                            {% for participant in conversation.participants.all %}
+
+                                {% if participant.user != request.user %}
+                                    {{ participant.user.get_full_name|default:participant.user.username }}
+                                {% endif %}
+
+                            {% endfor %}
+
+                        </p>
+
+
+                        <span class="shrink-0 text-[11px] text-slate-600">
+                            {{ conversation.updated_at|timesince }}
+                        </span>
+
+                    </div>
+
+
+                    <div class="mt-1 flex items-center justify-between gap-3">
+
+                        <p class="truncate text-[13px] text-slate-500">
+                            @{% for participant in conversation.participants.all %}{% if participant.user != request.user %}{{ participant.user.username }}{% endif %}{% endfor %}
+                        </p>
+
+                        <i
+                            data-lucide="chevron-right"
+                            class="h-4 w-4 shrink-0 text-slate-700 opacity-0 transition group-hover:opacity-100"
+                        ></i>
+
+                    </div>
+
+                </div>
+
+            </a>
+
+        {% empty %}
+
+            <!-- EMPTY -->
+            <div class="px-4 py-20 text-center">
+
+                <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-purple-500/[0.08]">
+                    <i
+                        data-lucide="message-circle"
+                        class="h-6 w-6 text-purple-400"
+                    ></i>
+                </div>
+
+                <h2 class="mt-5 text-base font-semibold text-white">
+                    No conversations
+                </h2>
+
+                <p class="mt-2 text-sm text-slate-500">
+                    Start a conversation with someone on Pheral.
+                </p>
+
+                <a
+                    href=""
+                    class="mt-5 inline-flex h-10 items-center gap-2 rounded-xl bg-purple-600 px-4 text-xs font-semibold text-white transition hover:bg-purple-500"
+                >
+                    <i data-lucide="search" class="h-3.5 w-3.5"></i>
+                    Find people
+                </a>
+
+            </div>
+
+        {% endfor %}
+
+    </section>
+
+</div>
+
+{% endblock %}
+
+
+{% block extra_scripts %}
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+});
+</script>
+
+{% endblock %}
