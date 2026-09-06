@@ -43,10 +43,12 @@ ENVIRONMENT = os.environ.get(
 ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
+    "pheral.onrender.com",
     ".ngrok-free.dev",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
+    "https://pheral.onrender.com",
     "https://shivering-unscrew-quaintly.ngrok-free.dev",
 ]
 
