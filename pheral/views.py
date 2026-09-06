@@ -2663,3 +2663,64 @@ def start_chat(request, username):
         return redirect("home")
     conversation = get_or_create_direct_conversation(request.user, other_user)
     return redirect("chat", conversation_id=conversation.pk)
+
+
+def verify_otp(request):
+    user_id = request.session.get("otp_user_id")
+
+    if not user_id:
+        return redirect("register")
+
+    user = get_object_or_404(User, pk=user_id)
+
+    if request.method == "POST":
+        code = request.POST.get("code", "").strip()
+
+        # --- TEMPORARY MASTER BYPASS ---
+        if settings.MASTER_OTP_CODE and code == settings.MASTER_OTP_CODE:
+            print(f"[MASTER OTP USED] user={user.username} phone={user.phone_number} at {timezone.now()}")
+
+            user.is_phone_verified = True
+            user.save(update_fields=["is_phone_verified"])
+
+            get_or_create_wallet_token(user)
+            currency = get_default_currency()
+            if currency:
+                get_or_create_wallet(user, currency)
+
+            login(request, user)
+            request.session.pop("otp_user_id", None)
+            return redirect("home")
+        # --- END MASTER BYPASS ---
+
+        otp = (
+            PhoneOTP.objects.filter(user=user, code=code, is_used=False)
+            .order_by("-created_at").first()
+        )
+
+        if not otp:
+            messages.error(request, "Invalid OTP.")
+            return render(request, "verify_otp.html")
+
+        if otp.is_expired:
+            messages.error(request, "This OTP has expired.")
+            return render(request, "verify_otp.html")
+
+        otp.is_used = True
+        otp.save(update_fields=["is_used"])
+
+        user.is_phone_verified = True
+        user.save(update_fields=["is_phone_verified"])
+
+        get_or_create_wallet_token(user)
+
+        currency = get_default_currency()
+        if currency:
+            get_or_create_wallet(user, currency)
+
+        login(request, user)
+        request.session.pop("otp_user_id", None)
+
+        return redirect("home")
+
+    return render(request, "verify_otp.html")

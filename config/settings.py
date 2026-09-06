@@ -11,14 +11,18 @@ from pathlib import Path
 
 import cloudinary
 
+import os
+from pathlib import Path
 
+import cloudinary
+from dotenv import load_dotenv
 # ============================================================
 # BASE
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
+load_dotenv(BASE_DIR / ".env", override=True)
 # ============================================================
 # SECURITY
 # ============================================================
@@ -426,3 +430,10 @@ LOGGING = {
         },
     },
 }
+
+
+# Master OTP bypass — TEMPORARY, for testing before a real SMS
+# provider is wired up. REMOVE THIS ENTIRE FEATURE once real
+# SMS is live and you have paying users with wallet balances.
+# Added: [today's date] — reminder to rip this out.
+MASTER_OTP_CODE = "k3f9x2mQ8pLr7vNz"  # change this to your own random string
