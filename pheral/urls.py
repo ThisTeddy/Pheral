@@ -77,12 +77,6 @@ urlpatterns = [
     # MAIN APP
     # ============================================================
 
-    path(
-        "home/",
-        views.home,
-        name="home",
-    ),
-
 
     # ============================================================
     # PROFILE
@@ -486,11 +480,10 @@ urlpatterns = [
     # ============================================================
 
     path(
-        "paystack/webhook/",
-        views.paystack_webhook,
-        name="paystack_webhook",
+    "flutterwave/webhook/",
+    views.flutterwave_webhook,
+    name="flutterwave_webhook",
     ),
-
 
     # ============================================================
     # DJANGO ADMIN

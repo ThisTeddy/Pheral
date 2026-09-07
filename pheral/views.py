@@ -1,5 +1,5 @@
 import hashlib
-import hmac
+import hmac, base64
 import json
 import random
 import re
@@ -416,7 +416,7 @@ def verify_otp(request):
         login(request, user)
         request.session.pop("otp_user_id", None)
 
-        return redirect("home")
+        return redirect("chat")
 
     return render(request, "verify_otp.html")
 
@@ -614,71 +614,6 @@ def resend_password_reset_otp(request):
 # ============================================================
 # HOME
 # ============================================================
-
-@login_required
-def home(request):
-    now = timezone.now()
-
-    active_statuses = list(
-        Status.objects.filter(is_active=True, expires_at__gt=now)
-        .select_related("user").order_by("-created_at")
-    )
-
-    status_groups = {}
-    for status in active_statuses:
-        status_groups.setdefault(status.user_id, []).append(status)
-
-    statuses = []
-    for user_statuses in status_groups.values():
-        latest_status = user_statuses[0]
-        latest_status.status_count = len(user_statuses)
-        latest_status.statuses = user_statuses
-        statuses.append(latest_status)
-
-    contacts_qs = (
-        Contact.objects.filter(owner=request.user)
-        .select_related("contact_user").order_by("-created_at")[:20]
-    )
-
-    participant_prefetch = Prefetch(
-        "participants",
-        queryset=ConversationParticipant.objects.select_related("user"),
-    )
-
-    latest_message_prefetch = Prefetch(
-        "messages",
-        queryset=Message.objects.filter(is_deleted=False).select_related("sender").order_by("-created_at"),
-        to_attr="prefetched_messages",
-    )
-
-    conversations = list(
-        Conversation.objects.filter(participants__user=request.user, is_active=True)
-        .distinct()
-        .prefetch_related(participant_prefetch, latest_message_prefetch)
-        .order_by("-updated_at")[:20]
-    )
-
-    for conversation in conversations:
-        conversation.other_user = None
-
-        if conversation.conversation_type == Conversation.ConversationType.DIRECT:
-            for participant in conversation.participants.all():
-                if participant.user_id != request.user.id:
-                    conversation.other_user = participant.user
-                    break
-
-        conversation.latest_message = (
-            conversation.prefetched_messages[0] if conversation.prefetched_messages else None
-        )
-
-    unread_notifications = Notification.objects.filter(user=request.user, is_read=False).count()
-
-    return render(request, "home.html", {
-        "statuses": statuses,
-        "contacts": contacts_qs,
-        "conversations": conversations,
-        "unread_notifications": unread_notifications,
-    })
 
 
 # ============================================================
@@ -1331,11 +1266,6 @@ def wallet(request):
         "wallet_token": token,
     })
 
-
-# ============================================================
-# TOP UP (Paystack)
-# ============================================================
-
 @login_required
 def top_up(request):
     currency = get_default_currency()
@@ -1346,77 +1276,133 @@ def top_up(request):
 
         if amount is None:
             messages.error(request, "Enter a valid top-up amount.")
-            return render(request, "top_up.html", {"currency": currency, "wallet": wallet_obj})
+            return render(
+                request,
+                "top_up.html",
+                {"currency": currency, "wallet": wallet_obj},
+            )
 
         if not wallet_obj:
             messages.error(request, "No wallet currency is configured.")
             return redirect("wallet")
 
-        if not settings.PAYSTACK_SECRET_KEY:
-            messages.error(request, "Payments are not configured yet. Please try again later.")
+        if not settings.FLW_SECRET_KEY:
+            messages.error(
+                request,
+                "Payments are not configured yet. Please try again later.",
+            )
             return redirect("wallet")
 
         pheral_transaction = PheralTransaction.objects.create(
-            sender=request.user, sender_wallet=wallet_obj,
+            sender=request.user,
+            sender_wallet=wallet_obj,
             transaction_type=PheralTransaction.TransactionType.TOP_UP,
-            amount=amount, currency=currency, status=PheralTransaction.Status.PENDING,
+            amount=amount,
+            currency=currency,
+            status=PheralTransaction.Status.PENDING,
         )
 
-        callback_url = request.build_absolute_uri(reverse("top_up_callback"))
+        callback_url = request.build_absolute_uri(
+            reverse("top_up_callback")
+        )
 
         payload = {
-            "email": request.user.email or f"{request.user.username}@pheral.app",
-            "amount": int(amount * 100),
-            "reference": pheral_transaction.reference,
-            "callback_url": callback_url,
-            "metadata": {"user_id": request.user.id, "transaction_id": pheral_transaction.id},
+            "tx_ref": pheral_transaction.reference,
+            "amount": float(amount),
+            "currency": currency.code,
+            "redirect_url": callback_url,
+            "customer": {
+                "email": (
+                    request.user.email
+                    or f"{request.user.username}@pheral.app"
+                ),
+                "name": request.user.get_full_name()
+                or request.user.username,
+            },
+            "meta": {
+                "user_id": request.user.id,
+                "transaction_id": pheral_transaction.id,
+            },
+            "customizations": {
+                "title": "Pheral Wallet Top Up",
+                "description": "Add funds to your Pheral wallet",
+            },
         }
 
         try:
             response = requests.post(
-                f"{PAYSTACK_BASE_URL}/transaction/initialize",
+                "https://api.flutterwave.com/v3/payments",
                 json=payload,
                 headers={
-                    "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
+                    "Authorization": f"Bearer {settings.FLW_SECRET_KEY}",
                     "Content-Type": "application/json",
                 },
                 timeout=15,
             )
-            data = response.json()
-        except (requests.RequestException, ValueError):
-            data = {"status": False}
 
-        if not data.get("status"):
-            pheral_transaction.status = PheralTransaction.Status.FAILED
+            data = response.json()
+
+        except (requests.RequestException, ValueError):
+            data = {"status": "error"}
+
+        if data.get("status") != "success":
+            pheral_transaction.status = (
+                PheralTransaction.Status.FAILED
+            )
             pheral_transaction.save(update_fields=["status"])
-            messages.error(request, "Could not start payment. Please try again.")
+
+            messages.error(
+                request,
+                "Could not start payment. Please try again.",
+            )
             return redirect("wallet")
 
-        pheral_transaction.external_reference = data["data"].get("access_code", "")
+        payment_link = data.get("data", {}).get("link")
+
+        if not payment_link:
+            pheral_transaction.status = (
+                PheralTransaction.Status.FAILED
+            )
+            pheral_transaction.save(update_fields=["status"])
+
+            messages.error(
+                request,
+                "Payment checkout could not be created.",
+            )
+            return redirect("wallet")
+
+        pheral_transaction.external_reference = (
+            pheral_transaction.reference
+        )
         pheral_transaction.save(update_fields=["external_reference"])
 
-        return redirect(data["data"]["authorization_url"])
+        return redirect(payment_link)
 
-    return render(request, "top_up.html", {"currency": currency, "wallet": wallet_obj})
-
+    return render(
+        request,
+        "top_up.html",
+        {"currency": currency, "wallet": wallet_obj},
+    )
 
 @login_required
 def top_up_callback(request):
     """
-    Paystack redirects the user's browser here after checkout.
-    This gives immediate feedback — the webhook below is still
-    the authoritative source of truth, since a user can close
-    their browser before this page loads.
+    Flutterwave redirects the user's browser here after checkout.
+    The webhook remains the authoritative source of truth.
     """
 
-    reference = request.GET.get("reference") or request.GET.get("trxref")
+    tx_ref = request.GET.get("tx_ref")
+    transaction_id = request.GET.get("transaction_id")
+    status = request.GET.get("status")
 
-    if not reference:
+    if not tx_ref:
         messages.error(request, "Missing payment reference.")
         return redirect("wallet")
 
     pheral_transaction = get_object_or_404(
-        PheralTransaction, reference=reference, sender=request.user,
+        PheralTransaction,
+        reference=tx_ref,
+        sender=request.user,
         transaction_type=PheralTransaction.TransactionType.TOP_UP,
     )
 
@@ -1424,25 +1410,49 @@ def top_up_callback(request):
         messages.success(request, "Top-up successful.")
         return redirect("wallet")
 
+    if status != "successful" or not transaction_id:
+        messages.error(
+            request,
+            "We couldn't verify this payment yet. It may still be processing.",
+        )
+        return redirect("wallet")
+
     try:
         response = requests.get(
-            f"{PAYSTACK_BASE_URL}/transaction/verify/{reference}",
-            headers={"Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}"},
+            f"https://api.flutterwave.com/v3/transactions/{transaction_id}/verify",
+            headers={
+                "Authorization": f"Bearer {settings.FLW_SECRET_KEY}",
+                "Content-Type": "application/json",
+            },
             timeout=15,
         )
         data = response.json()
     except (requests.RequestException, ValueError):
-        data = {"status": False}
+        data = {"status": "error"}
 
-    if not data.get("status"):
-        messages.error(request, "We couldn't verify this payment yet. It may still be processing.")
+    if data.get("status") != "success":
+        messages.error(
+            request,
+            "We couldn't verify this payment yet. It may still be processing.",
+        )
         return redirect("wallet")
 
-    paystack_data = data["data"]
-    paid_kobo = paystack_data.get("amount", 0)
-    expected_kobo = int(pheral_transaction.amount * 100)
+    flutterwave_data = data.get("data", {})
 
-    if paystack_data.get("status") == "success" and paid_kobo == expected_kobo:
+    paid_amount = flutterwave_data.get("amount", 0)
+    paid_currency = flutterwave_data.get("currency")
+    payment_status = flutterwave_data.get("status")
+    paid_reference = flutterwave_data.get("tx_ref")
+
+    expected_amount = float(pheral_transaction.amount)
+    expected_currency = currency.code if (currency := pheral_transaction.currency) else None
+
+    if (
+        payment_status == "successful"
+        and paid_reference == pheral_transaction.reference
+        and paid_currency == expected_currency
+        and float(paid_amount) == expected_amount
+    ):
         _complete_top_up(pheral_transaction)
         messages.success(request, "Top-up successful.")
     else:
@@ -1451,91 +1461,194 @@ def top_up_callback(request):
 
     return redirect("wallet")
 
-
 @csrf_exempt
-def paystack_webhook(request):
+def flutterwave_webhook(request):
     """
-    Paystack's server-to-server webhook. This is the source of
-    truth for completing top-ups and withdrawals, independent of
-    whether the user's browser ever comes back.
+    Flutterwave server-to-server webhook.
+
+    This is the authoritative source for completing top-ups
+    and processing withdrawal status updates.
     """
 
     if request.method != "POST":
         return HttpResponse(status=405)
 
-    signature = request.headers.get("X-Paystack-Signature", "")
+    secret_hash = settings.FLW_SECRET_HASH
+    signature = request.headers.get("flutterwave-signature", "")
+
+    if not secret_hash or not signature:
+        return HttpResponse(status=401)
+
     computed_signature = hmac.new(
-        settings.PAYSTACK_SECRET_KEY.encode("utf-8"), request.body, hashlib.sha512,
-    ).hexdigest()
+        secret_hash.encode("utf-8"),
+        request.body,
+        hashlib.sha256,
+    ).digest()
+
+    computed_signature = base64.b64encode(
+        computed_signature
+    ).decode("utf-8")
 
     if not hmac.compare_digest(signature, computed_signature):
         return HttpResponse(status=401)
 
     try:
         event = json.loads(request.body)
-    except ValueError:
+    except (ValueError, json.JSONDecodeError):
         return HttpResponse(status=400)
 
     event_type = event.get("event")
     event_data = event.get("data", {})
-    reference = event_data.get("reference")
 
-    if event_type == "charge.success":
+    # TOP-UP
+    if event_type == "charge.completed":
 
-        pheral_transaction = PheralTransaction.objects.filter(
-            reference=reference, transaction_type=PheralTransaction.TransactionType.TOP_UP,
-        ).first()
-
-        if pheral_transaction:
-            expected_kobo = int(pheral_transaction.amount * 100)
-            paid_kobo = event_data.get("amount", 0)
-
-            if event_data.get("status") == "success" and paid_kobo == expected_kobo:
-                _complete_top_up(pheral_transaction)
-
-    elif event_type == "transfer.success":
+        transaction_id = event_data.get("id")
+        reference = event_data.get("tx_ref")
 
         pheral_transaction = PheralTransaction.objects.filter(
-            reference=reference, transaction_type=PheralTransaction.TransactionType.WITHDRAWAL,
+            reference=reference,
+            transaction_type=PheralTransaction.TransactionType.TOP_UP,
         ).first()
 
-        if pheral_transaction and pheral_transaction.status == PheralTransaction.Status.PENDING:
-            pheral_transaction.status = PheralTransaction.Status.COMPLETED
+        if not pheral_transaction:
+            return HttpResponse(status=200)
+
+        if pheral_transaction.status == PheralTransaction.Status.COMPLETED:
+            return HttpResponse(status=200)
+
+        if not transaction_id:
+            return HttpResponse(status=200)
+
+        try:
+            response = requests.get(
+                f"https://api.flutterwave.com/v3/transactions/{transaction_id}/verify",
+                headers={
+                    "Authorization": f"Bearer {settings.FLW_SECRET_KEY}",
+                    "Content-Type": "application/json",
+                },
+                timeout=15,
+            )
+
+            verification = response.json()
+
+        except (requests.RequestException, ValueError):
+            return HttpResponse(status=200)
+
+        if verification.get("status") != "success":
+            return HttpResponse(status=200)
+
+        verified_data = verification.get("data", {})
+
+        expected_amount = float(pheral_transaction.amount)
+        expected_currency = pheral_transaction.currency.code
+
+        verified_status = verified_data.get("status")
+        verified_amount = verified_data.get("amount")
+        verified_currency = verified_data.get("currency")
+        verified_reference = verified_data.get("tx_ref")
+
+        if (
+            verified_status == "successful"
+            and verified_reference == pheral_transaction.reference
+            and verified_currency == expected_currency
+            and float(verified_amount) == expected_amount
+        ):
+            _complete_top_up(pheral_transaction)
+
+    # WITHDRAWAL SUCCESS
+    elif event_type == "transfer.completed":
+
+        reference = event_data.get("reference")
+
+        pheral_transaction = PheralTransaction.objects.filter(
+            reference=reference,
+            transaction_type=PheralTransaction.TransactionType.WITHDRAWAL,
+        ).first()
+
+        if (
+            pheral_transaction
+            and pheral_transaction.status
+            == PheralTransaction.Status.PENDING
+        ):
+            pheral_transaction.status = (
+                PheralTransaction.Status.COMPLETED
+            )
             pheral_transaction.completed_at = timezone.now()
-            pheral_transaction.save(update_fields=["status", "completed_at"])
 
+            pheral_transaction.save(
+                update_fields=["status", "completed_at"]
+            )
+
+    # WITHDRAWAL FAILED
     elif event_type == "transfer.failed":
 
+        reference = event_data.get("reference")
+
         pheral_transaction = PheralTransaction.objects.filter(
-            reference=reference, transaction_type=PheralTransaction.TransactionType.WITHDRAWAL,
+            reference=reference,
+            transaction_type=PheralTransaction.TransactionType.WITHDRAWAL,
         ).first()
 
-        if pheral_transaction and pheral_transaction.status == PheralTransaction.Status.PENDING:
+        if (
+            pheral_transaction
+            and pheral_transaction.status
+            == PheralTransaction.Status.PENDING
+        ):
 
             with transaction.atomic():
-                locked_txn = PheralTransaction.objects.select_for_update().get(pk=pheral_transaction.pk)
+
+                locked_txn = (
+                    PheralTransaction.objects
+                    .select_for_update()
+                    .get(pk=pheral_transaction.pk)
+                )
 
                 if locked_txn.status == PheralTransaction.Status.PENDING:
-                    locked_wallet = Wallet.objects.select_for_update().get(pk=locked_txn.sender_wallet_id)
+
+                    locked_wallet = (
+                        Wallet.objects
+                        .select_for_update()
+                        .get(
+                            pk=locked_txn.sender_wallet_id
+                        )
+                    )
 
                     balance_before = locked_wallet.balance
-                    locked_wallet.balance += locked_txn.amount
-                    locked_wallet.save(update_fields=["balance", "updated_at"])
 
-                    locked_txn.status = PheralTransaction.Status.FAILED
+                    locked_wallet.balance += locked_txn.amount
+
+                    locked_wallet.save(
+                        update_fields=[
+                            "balance",
+                            "updated_at",
+                        ]
+                    )
+
+                    locked_txn.status = (
+                        PheralTransaction.Status.FAILED
+                    )
+
                     locked_txn.completed_at = timezone.now()
-                    locked_txn.save(update_fields=["status", "completed_at"])
+
+                    locked_txn.save(
+                        update_fields=[
+                            "status",
+                            "completed_at",
+                        ]
+                    )
 
                     LedgerEntry.objects.create(
-                        transaction=locked_txn, wallet=locked_wallet,
-                        entry_type=LedgerEntry.EntryType.CREDIT, amount=locked_txn.amount,
-                        balance_before=balance_before, balance_after=locked_wallet.balance,
+                        transaction=locked_txn,
+                        wallet=locked_wallet,
+                        entry_type=LedgerEntry.EntryType.CREDIT,
+                        amount=locked_txn.amount,
+                        balance_before=balance_before,
+                        balance_after=locked_wallet.balance,
                         description="Withdrawal failed — refunded",
                     )
 
     return HttpResponse(status=200)
-
-
 # ============================================================
 # BANK ACCOUNTS / WITHDRAWAL
 # ============================================================
@@ -2690,7 +2803,7 @@ def verify_otp(request):
 
             login(request, user)
             request.session.pop("otp_user_id", None)
-            return redirect("home")
+            return redirect("chat")
         # --- END MASTER BYPASS ---
 
         otp = (
@@ -2721,6 +2834,6 @@ def verify_otp(request):
         login(request, user)
         request.session.pop("otp_user_id", None)
 
-        return redirect("home")
+        return redirect("chat")
 
     return render(request, "verify_otp.html")

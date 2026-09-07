@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}{{ job.title }} · Pheral{% endblock %}
+{% block page_title %}Job Details{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-2xl px-4 pb-10 pt-4 md:pt-6">
+
+    <div class="mb-5 flex items-center gap-2 md:hidden">
+        <a href="{% url 'hire' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink">
+            <i data-lucide="chevron-left" class="h-5 w-5"></i>
+        </a>
+        <h1 class="text-2xl font-bold tracking-tight text-ink">Job Details</h1>
+    </div>
+
+    <!-- ============================================================
+         JOB CARD
+    ============================================================= -->
+    <div class="mb-6 rounded-2xl border border-line bg-white p-5">
+
+        <div class="mb-4 flex items-start justify-between gap-3">
+            <div class="min-w-0 flex-1">
+                <h2 class="text-lg font-bold leading-snug text-ink">{{ job.title }}</h2>
+                <a href="{% url 'profile_user' username=job.employer.username %}"
+                   class="mt-1 flex items-center gap-1.5 text-sm text-muted hover:text-accent-600">
+                    {% if job.employer.avatar %}
+                        <img src="{{ job.employer.avatar.url }}" alt="" class="h-5 w-5 rounded-full object-cover">
+                    {% else %}
+                        <span class="flex h-5 w-5 items-center justify-center rounded-full bg-accent-100 text-[10px] font-semibold text-accent-700">
+                            {{ job.employer.username|first|upper }}
+                        </span>
+                    {% endif %}
+                    Posted by @{{ job.employer.username }}
+                </a>
+            </div>
+
+            <span class="shrink-0 rounded-full px-3 py-1 text-xs font-semibold
+                         {% if job.status == 'open' %}bg-emerald-50 text-emerald-600
+                         {% elif job.status == 'in_progress' %}bg-amber-50 text-amber-600
+                         {% elif job.status == 'completed' %}bg-accent-50 text-accent-600
+                         {% else %}bg-red-50 text-red-600{% endif %}">
+                {{ job.get_status_display }}
+            </span>
+        </div>
+
+        <div class="mb-4 rounded-2xl bg-surface px-4 py-3.5">
+            <p class="text-xs font-medium uppercase tracking-wide text-muted">Budget</p>
+            <p class="mt-0.5 text-2xl font-extrabold text-ink">
+                {{ job.currency.symbol }}{{ job.budget|floatformat:2 }}
+                <span class="text-sm font-medium text-muted">{{ job.currency.code }}</span>
+            </p>
+        </div>
+
+        {% if job.description %}
+            <div>
+                <p class="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">Description</p>
+                <p class="whitespace-pre-wrap text-sm leading-relaxed text-ink">{{ job.description }}</p>
+            </div>
+        {% endif %}
+
+        <p class="mt-4 text-xs text-muted">Posted {{ job.created_at|timesince }} ago</p>
+    </div>
+
+    <!-- ============================================================
+         HIRE SOMEONE (employer only, job still open)
+    ============================================================= -->
+    {% if request.user == job.employer and job.status == "open" %}
+        <div class="mb-6 rounded-2xl border border-line bg-white p-5" x-data="{ q: '', results: [], loading: false }">
+            <p class="mb-3 flex items-center gap-1.5 text-sm font-semibold text-ink">
+                <i data-lucide="user-plus" class="h-4 w-4 text-accent-500"></i> Hire someone for this job
+            </p>
+
+            <div class="relative">
+                <div class="flex items-center gap-2 rounded-2xl bg-surface px-4 py-2.5">
+                    <i data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></i>
+                    <input
+                        type="text" x-model="q" autocomplete="off" placeholder="Search by username"
+                        @input.debounce.300ms="
+                            if (q.trim().length < 2) { results = []; return; }
+                            loading = true;
+                            fetch('{% url 'user_lookup' %}?q=' + encodeURIComponent(q))
+                                .then(r => r.json())
+                                .then(data => { results = data.results; loading = false; })
+                                .catch(() => { loading = false; });
+                        "
+                        class="w-full bg-transparent text-sm text-ink placeholder-muted focus:outline-none">
+                </div>
+
+                <div x-show="results.length > 0" x-cloak
+                     class="absolute z-20 mt-1.5 w-full overflow-hidden rounded-2xl border border-line bg-white shadow-lg">
+                    <template x-for="user in results" :key="user.username">
+                        <a :href="'{% url 'hire_job_detail' job_id=job.id %}' + 'request/' + user.username + '/'"
+                           class="flex items-center gap-2.5 px-3.5 py-2.5 transition hover:bg-surface">
+                            <template x-if="user.avatar">
+                                <img :src="user.avatar" alt="" class="h-8 w-8 rounded-full object-cover">
+                            </template>
+                            <template x-if="!user.avatar">
+                                <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-100 text-xs font-semibold text-accent-700"
+                                      x-text="user.username.charAt(0).toUpperCase()"></span>
+                            </template>
+                            <span class="min-w-0 flex-1">
+                                <span class="block truncate text-sm font-medium text-ink" x-text="user.display_name || user.username"></span>
+                                <span class="block truncate text-xs text-muted" x-text="'@' + user.username"></span>
+                            </span>
+                        </a>
+                    </template>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
+    <!-- ============================================================
+         HIRE REQUESTS
+    ============================================================= -->
+    <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-base font-semibold text-ink">
+            {% if request.user == job.employer %}Requests sent{% else %}Your requests{% endif %}
+        </h2>
+        {% if hire_requests %}
+            <span class="text-xs text-muted">{{ hire_requests|length }} total</span>
+        {% endif %}
+    </div>
+
+    {% if hire_requests %}
+        <div class="space-y-3">
+            {% for hire_request in hire_requests %}
+                {% if request.user == job.employer or hire_request.requester == request.user or hire_request.worker == request.user %}
+                    <div class="rounded-2xl border border-line bg-white p-4">
+                        <div class="flex items-start gap-3">
+
+                            <a href="{% url 'profile_user' username=hire_request.worker.username %}" class="shrink-0">
+                                {% if hire_request.worker.avatar %}
+                                    <img src="{{ hire_request.worker.avatar.url }}" alt="" class="h-10 w-10 rounded-full object-cover">
+                                {% else %}
+                                    <div class="flex h-10 w-10 items-center justify-center rounded-full bg-accent-100 text-sm font-semibold text-accent-700">
+                                        {{ hire_request.worker.username|first|upper }}
+                                    </div>
+                                {% endif %}
+                            </a>
+
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div class="min-w-0">
+                                        <a href="{% url 'profile_user' username=hire_request.worker.username %}"
+                                           class="truncate text-sm font-semibold text-ink hover:text-accent-600">
+                                            {{ hire_request.worker.display_name|default:hire_request.worker.username }}
+                                        </a>
+                                        <p class="text-xs text-muted">
+                                            Requested by
+                                            {% if hire_request.requester == request.user %}you{% else %}@{{ hire_request.requester.username }}{% endif %}
+                                            · {{ hire_request.created_at|timesince }} ago
+                                        </p>
+                                    </div>
+
+                                    <span class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold
+                                                 {% if hire_request.status == 'pending' %}bg-amber-50 text-amber-600
+                                                 {% elif hire_request.status == 'accepted' %}bg-emerald-50 text-emerald-600
+                                                 {% elif hire_request.status == 'completed' %}bg-accent-50 text-accent-600
+                                                 {% elif hire_request.status == 'declined' %}bg-red-50 text-red-600
+                                                 {% else %}bg-surface text-muted{% endif %}">
+                                        {{ hire_request.get_status_display }}
+                                    </span>
+                                </div>
+
+                                {% if hire_request.message %}
+                                    <p class="mt-2 whitespace-pre-wrap rounded-xl bg-surface px-3 py-2 text-sm text-ink">
+                                        {{ hire_request.message }}
+                                    </p>
+                                {% endif %}
+
+                                {% if hire_request.proposed_amount %}
+                                    <p class="mt-2 flex items-center gap-1 text-sm font-semibold text-ink">
+                                        <i data-lucide="banknote" class="h-3.5 w-3.5 text-accent-500"></i>
+                                        {{ job.currency.symbol }}{{ hire_request.proposed_amount|floatformat:2 }} proposed
+                                    </p>
+                                {% endif %}
+
+                                <a href="{% url 'chat_user' username=hire_request.requester.username|default:hire_request.worker.username %}"
+                                   class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-accent-600 hover:underline">
+                                    <i data-lucide="message-circle" class="h-3.5 w-3.5"></i> Message
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line bg-surface py-14 text-center">
+            <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50">
+                <i data-lucide="briefcase" class="h-6 w-6 text-accent-500"></i>
+            </div>
+            <p class="text-sm font-semibold text-ink">No requests yet</p>
+            <p class="max-w-xs text-sm text-muted">
+                {% if request.user == job.employer %}
+                    Search for someone above to send them a hire request.
+                {% else %}
+                    Requests for this job will appear here.
+                {% endif %}
+            </p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
