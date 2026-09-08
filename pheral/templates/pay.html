@@ -1,159 +1,100 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Pay {{ recipient.username }} — Pheral{% endblock %}
+{% block title %}Pay {{ recipient.username }} · Pheral{% endblock %}
+{% block page_title %}Pay {{ recipient.username }}{% endblock %}
+
+{% block extra_head %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
 
 {% block content %}
+<div class="mx-auto max-w-md px-4 pb-10 pt-4 md:pt-6" x-data="{ amount: '', description: '', step: 'form' }">
 
-<div class="pheral-container pheral-safe-top">
-
-    <!-- ============================================================
-         HEADER
-    ============================================================ -->
-
-    <div class="flex items-center gap-3 mb-8">
-
-        
-        <a    href="{% url 'profile_user' recipient.username %}"
-            class="pheral-press w-10 h-10 flex items-center justify-center rounded-full bg-white border border-line shrink-0"
-            aria-label="Back"
-        >
-            <svg class="w-5 h-5 text-ink" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m15 18-6-6 6-6"/>
-            </svg>
+    <div class="mb-5 flex items-center gap-2 md:hidden">
+        <a href="{% url 'profile_user' recipient.username %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink">
+            <i data-lucide="chevron-left" class="h-[18px] w-[18px]"></i>
         </a>
-
-        <h1 class="font-bold text-ink text-lg">
-            Pay
-        </h1>
-
+        <h1 class="text-lg font-bold tracking-tight text-ink">Pay</h1>
     </div>
 
-
-    <!-- ============================================================
-         RECIPIENT
-    ============================================================ -->
-
-    <div class="flex flex-col items-center text-center mb-8">
-
-        <span class="pheral-avatar w-20 h-20 mb-3">
-
+    <div class="mb-6 flex flex-col items-center text-center">
+        <div class="mb-2.5 h-16 w-16 overflow-hidden rounded-full bg-accent-100">
             {% if recipient.avatar %}
-                <img src="{{ recipient.avatar.url }}" alt="" class="w-full h-full object-cover">
+                <img src="{{ recipient.avatar.url }}" alt="" class="h-full w-full object-cover">
             {% else %}
-                <div class="w-full h-full flex items-center justify-center bg-pheral-500 text-white text-2xl font-bold">
+                <div class="flex h-full w-full items-center justify-center text-xl font-bold text-accent-700">
                     {{ recipient.first_name|default:recipient.username|slice:":1"|upper }}
                 </div>
             {% endif %}
-
-        </span>
-
-        <p class="font-semibold text-ink">
-            {{ recipient.display_name|default:recipient.username }}
-        </p>
-
-        <p class="text-sm text-pheral-text-secondary">
-            @{{ recipient.username }}
-        </p>
-
+        </div>
+        <p class="text-[13px] font-semibold text-ink">{{ recipient.display_name|default:recipient.username }}</p>
+        <p class="text-[11px] text-muted">@{{ recipient.username }}</p>
     </div>
 
-
-    <!-- ============================================================
-         AMOUNT + FORM
-    ============================================================ -->
-
-    <form method="post" id="pay-form">
-        {% csrf_token %}
-
-        <div class="flex flex-col items-center mb-8">
-
-            <div class="flex items-start gap-1 mb-2">
-
-                <span class="pheral-figure text-4xl text-pheral-text-secondary mt-2">
-                    {{ currency.symbol }}
-                </span>
-
-                <input
-                    type="text"
-                    inputmode="decimal"
-                    name="amount"
-                    id="amount-input"
-                    placeholder="0.00"
-                    autocomplete="off"
-                    class="pheral-figure text-6xl text-ink bg-transparent text-center w-[240px] focus:outline-none placeholder:text-line"
-                    required
-                >
-
+    <!-- STEP 1: FORM -->
+    <div x-show="step === 'form'">
+        <div class="mb-6 flex flex-col items-center">
+            <div class="mb-1.5 flex items-start gap-1">
+                <span class="mt-2 text-[26px] text-muted">{{ currency.symbol }}</span>
+                <input type="text" inputmode="decimal" x-model="amount" placeholder="0.00" autocomplete="off"
+                       class="w-[220px] bg-transparent text-center text-[44px] font-bold text-ink placeholder-line focus:outline-none">
             </div>
-
-            <p class="text-sm text-pheral-text-secondary" id="balance-hint">
-                {{ currency.code }}
-            </p>
-
+            <p class="text-[11px] text-muted">{{ currency.code }}</p>
         </div>
 
-        <div class="mb-6">
+        <div class="mb-2">
+            <input type="text" x-model="description" maxlength="255" placeholder="What's this for? (optional)"
+                   class="w-full rounded-2xl border border-line bg-white px-3.5 py-3 text-[12px] text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-accent-100">
+        </div>
+        <p class="mb-5 text-right text-[10px] text-muted"><span x-text="description.length"></span>/255</p>
 
-            <input
-                type="text"
-                name="description"
-                maxlength="255"
-                placeholder="What's this for? (optional)"
-                class="
-                    w-full
-                    px-4 py-3.5
-                    rounded-2xl
-                    bg-white
-                    border border-line
-                    text-sm text-ink
-                    placeholder:text-pheral-text-secondary
-                    focus:outline-none focus:ring-2 focus:ring-pheral-500/30
-                "
-            >
-
+        <div class="mb-6 flex gap-2">
+            <button type="button" @click="amount = '1000'" class="flex-1 rounded-full bg-accent-50 py-2 text-[11px] font-semibold text-accent-600 transition hover:bg-accent-100">{{ currency.symbol }}1,000</button>
+            <button type="button" @click="amount = '5000'" class="flex-1 rounded-full bg-accent-50 py-2 text-[11px] font-semibold text-accent-600 transition hover:bg-accent-100">{{ currency.symbol }}5,000</button>
+            <button type="button" @click="amount = '10000'" class="flex-1 rounded-full bg-accent-50 py-2 text-[11px] font-semibold text-accent-600 transition hover:bg-accent-100">{{ currency.symbol }}10,000</button>
         </div>
 
-        <!-- QUICK AMOUNTS -->
-        <div class="flex gap-2 mb-8">
-
-            {% for quick in "1000,5000,10000,20000"|make_list %}{% endfor %}
-
-            <button type="button" class="quick-amount pheral-press flex-1 py-2.5 rounded-full bg-mist text-pheral-600 text-sm font-semibold" data-amount="1000">
-                {{ currency.symbol }}1,000
-            </button>
-
-            <button type="button" class="quick-amount pheral-press flex-1 py-2.5 rounded-full bg-mist text-pheral-600 text-sm font-semibold" data-amount="5000">
-                {{ currency.symbol }}5,000
-            </button>
-
-            <button type="button" class="quick-amount pheral-press flex-1 py-2.5 rounded-full bg-mist text-pheral-600 text-sm font-semibold" data-amount="10000">
-                {{ currency.symbol }}10,000
-            </button>
-
-        </div>
-
-        <button
-            type="submit"
-            class="pheral-press w-full py-4 rounded-2xl bg-ink text-white font-semibold"
-        >
-            Send payment
+        <button type="button" @click="step = 'review'" :disabled="!amount || Number(amount) <= 0"
+                :class="(!amount || Number(amount) <= 0) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-accent-600'"
+                class="w-full rounded-2xl bg-ink py-3.5 text-[13px] font-semibold text-white transition">
+            Review payment
         </button>
+    </div>
 
+    <!-- STEP 2: REVIEW -->
+    <div x-show="step === 'review'" x-cloak>
+        <div class="mb-5 flex flex-col items-center rounded-2xl bg-surface py-6">
+            <p class="text-[10px] text-muted">You're sending</p>
+            <p class="mt-0.5 text-[30px] font-extrabold text-ink" x-text="'{{ currency.symbol }}' + Number(amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})"></p>
+            <p class="text-[10px] text-muted">to {{ recipient.display_name|default:recipient.username }}</p>
+        </div>
+
+        <div class="mb-6 divide-y divide-line rounded-2xl border border-line text-[12px]">
+            <div class="flex items-center justify-between px-3.5 py-2.5">
+                <span class="text-muted">Recipient</span>
+                <span class="font-medium text-ink">@{{ recipient.username }}</span>
+            </div>
+            <div class="flex items-center justify-between px-3.5 py-2.5" x-show="description">
+                <span class="text-muted">Note</span>
+                <span class="max-w-[60%] truncate text-right font-medium text-ink" x-text="description"></span>
+            </div>
+        </div>
+
+        <div class="flex gap-2.5">
+            <button type="button" @click="step = 'form'" class="flex-1 rounded-2xl border border-line py-3.5 text-[13px] font-semibold text-ink transition hover:bg-surface">
+                Back
+            </button>
+            <button type="submit" form="pay-form" class="flex-[2] rounded-2xl bg-ink py-3.5 text-[13px] font-semibold text-white transition hover:bg-ink/90">
+                Send {{ currency.symbol }}<span x-text="Number(amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})"></span>
+            </button>
+        </div>
+    </div>
+
+    <form method="post" id="pay-form" class="hidden">
+        {% csrf_token %}
+        <input type="hidden" name="amount" :value="amount">
+        <input type="hidden" name="description" :value="description">
     </form>
-
 </div>
-
-{% endblock %}
-
-{% block extra_scripts %}
-<script>
-
-    document.querySelectorAll(".quick-amount").forEach(function (btn) {
-        btn.addEventListener("click", function () {
-            document.getElementById("amount-input").value = this.dataset.amount;
-        });
-    });
-
-</script>
 {% endblock %}

@@ -3,135 +3,119 @@
 {% block title %}Edit Profile · Pheral{% endblock %}
 {% block page_title %}Edit Profile{% endblock %}
 
-{% block content %}
-<div class="mx-auto max-w-md px-4 pb-10 pt-4 md:pt-6">
+{% block extra_head %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
 
-    <div class="mb-5 flex items-center gap-2 md:hidden">
-        <a href="{% url 'profile' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink">
-            <i data-lucide="chevron-left" class="h-5 w-5"></i>
-        </a>
-        <h1 class="text-2xl font-bold tracking-tight text-ink">Edit Profile</h1>
+{% block content %}
+<div class="mx-auto max-w-md px-4 pb-10 pt-4 md:pt-6"
+     x-data="{
+        firstName: '{{ request.user.first_name|escapejs }}',
+        lastName: '{{ request.user.last_name|escapejs }}',
+        bio: '{{ request.user.bio|escapejs }}',
+        avatarPreview: '{% if request.user.avatar %}{{ request.user.avatar.url }}{% endif %}',
+        showPreview: false,
+        dirty() {
+            return this.firstName !== '{{ request.user.first_name|escapejs }}' ||
+                   this.lastName !== '{{ request.user.last_name|escapejs }}' ||
+                   this.bio !== '{{ request.user.bio|escapejs }}';
+        },
+        onAvatarChosen(input) {
+            if (!input.files || !input.files.length) return;
+            this.avatarPreview = URL.createObjectURL(input.files[0]);
+        },
+     }"
+     x-init="window.addEventListener('beforeunload', (e) => { if (dirty()) { e.preventDefault(); e.returnValue = ''; } })">
+
+    <div class="mb-4 flex items-center justify-between">
+        <div class="flex items-center gap-2 md:hidden">
+            <a href="{% url 'profile' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink">
+                <i data-lucide="chevron-left" class="h-[18px] w-[18px]"></i>
+            </a>
+            <h1 class="text-lg font-bold tracking-tight text-ink">Edit Profile</h1>
+        </div>
+        <button type="button" @click="showPreview = !showPreview" class="ml-auto text-[11px] font-semibold text-accent-600" x-text="showPreview ? 'Edit' : 'Preview'"></button>
     </div>
 
-    <form method="post" enctype="multipart/form-data" id="edit-profile-form" class="rounded-2xl border border-line bg-white p-5">
+    <!-- Live preview -->
+    <div x-show="showPreview" x-cloak class="rounded-2xl border border-line bg-white p-5 text-center">
+        <template x-if="avatarPreview">
+            <img :src="avatarPreview" alt="" class="mx-auto h-20 w-20 rounded-full object-cover">
+        </template>
+        <template x-if="!avatarPreview">
+            <div class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-accent-100 text-2xl font-semibold text-accent-700">
+                {{ request.user.username|first|upper }}
+            </div>
+        </template>
+        <p class="mt-2.5 text-[15px] font-bold text-ink" x-text="(firstName + ' ' + lastName).trim() || '{{ request.user.username }}'"></p>
+        <p class="text-[11px] text-muted">@{{ request.user.username }}</p>
+        <p x-show="bio" class="mx-auto mt-1.5 max-w-sm text-[12px] leading-5 text-ink" x-text="bio"></p>
+    </div>
+
+    <form x-show="!showPreview" method="post" enctype="multipart/form-data" id="edit-profile-form" class="rounded-2xl border border-line bg-white p-4">
         {% csrf_token %}
 
-        <!-- ============================================================
-             AVATAR
-        ============================================================= -->
-        <div class="mb-6 flex flex-col items-center">
-
+        <div class="mb-5 flex flex-col items-center">
             <div class="relative">
-                <div id="avatar-preview-wrap" class="h-24 w-24 overflow-hidden rounded-full bg-accent-100">
-                    {% if request.user.avatar %}
-                        <img id="avatar-preview" src="{{ request.user.avatar.url }}" alt="" class="h-full w-full object-cover">
-                    {% else %}
-                        <div id="avatar-preview-fallback" class="flex h-full w-full items-center justify-center text-3xl font-bold text-accent-700">
+                <div class="h-20 w-20 overflow-hidden rounded-full bg-accent-100">
+                    <template x-if="avatarPreview">
+                        <img :src="avatarPreview" alt="" class="h-full w-full object-cover">
+                    </template>
+                    <template x-if="!avatarPreview">
+                        <div class="flex h-full w-full items-center justify-center text-2xl font-bold text-accent-700">
                             {{ request.user.first_name|default:request.user.username|slice:":1"|upper }}
                         </div>
-                        <img id="avatar-preview" src="" alt="" class="hidden h-full w-full object-cover">
-                    {% endif %}
+                    </template>
                 </div>
-
                 <button type="button" onclick="document.getElementById('avatar-input').click()"
-                        class="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full bg-accent-500 text-white shadow-sm ring-2 ring-white transition hover:bg-accent-600"
+                        class="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-accent-500 text-white shadow-sm ring-2 ring-white transition hover:bg-accent-600"
                         aria-label="Change photo">
-                    <i data-lucide="camera" class="h-4 w-4"></i>
+                    <i data-lucide="camera" class="h-3.5 w-3.5"></i>
                 </button>
             </div>
-
-            <input type="file" name="avatar" id="avatar-input" accept="image/*" class="hidden" onchange="onAvatarChosen(this)">
-
-            <button type="button" onclick="document.getElementById('avatar-input').click()"
-                    class="mt-3 text-sm font-medium text-accent-600 hover:underline">
+            <input type="file" name="avatar" id="avatar-input" accept="image/*" class="hidden" @change="onAvatarChosen($event.target)">
+            <button type="button" onclick="document.getElementById('avatar-input').click()" class="mt-2.5 text-[11px] font-medium text-accent-600 hover:underline">
                 Change photo
             </button>
         </div>
 
-        <!-- ============================================================
-             NAME
-        ============================================================= -->
-        <div class="mb-4 grid grid-cols-2 gap-3">
+        <div class="mb-3.5 grid grid-cols-2 gap-2.5">
             <div>
-                <label class="mb-1.5 block text-xs font-medium text-muted">First name</label>
-                <input
-                    type="text" name="first_name" required maxlength="100"
-                    value="{{ request.user.first_name }}"
-                    class="w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                <label class="mb-1 block text-[10px] font-medium text-muted">First name</label>
+                <input type="text" name="first_name" x-model="firstName" required maxlength="100"
+                       class="w-full rounded-2xl border border-line bg-surface px-3.5 py-2.5 text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
             </div>
             <div>
-                <label class="mb-1.5 block text-xs font-medium text-muted">Last name</label>
-                <input
-                    type="text" name="last_name" required maxlength="100"
-                    value="{{ request.user.last_name }}"
-                    class="w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                <label class="mb-1 block text-[10px] font-medium text-muted">Last name</label>
+                <input type="text" name="last_name" x-model="lastName" required maxlength="100"
+                       class="w-full rounded-2xl border border-line bg-surface px-3.5 py-2.5 text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
             </div>
         </div>
 
-        <!-- ============================================================
-             USERNAME (read-only — view has no path to change it)
-        ============================================================= -->
-        <div class="mb-4">
-            <label class="mb-1.5 block text-xs font-medium text-muted">Username</label>
-            <div class="flex items-center gap-2 rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-muted">
+        <div class="mb-3.5">
+            <label class="mb-1 block text-[10px] font-medium text-muted">Username</label>
+            <div class="flex items-center gap-2 rounded-2xl border border-line bg-surface px-3.5 py-2.5 text-[13px] text-muted">
                 <span>@{{ request.user.username }}</span>
-                <i data-lucide="lock" class="ml-auto h-3.5 w-3.5 shrink-0"></i>
+                <i data-lucide="lock" class="ml-auto h-3 w-3 shrink-0"></i>
             </div>
         </div>
 
-        <!-- ============================================================
-             BIO
-        ============================================================= -->
         <div class="mb-1">
-            <label class="mb-1.5 block text-xs font-medium text-muted">Bio</label>
-            <textarea
-                name="bio" id="bio-input" rows="3" maxlength="500"
-                oninput="updateBioCount()"
-                placeholder="Tell people a bit about yourself"
-                class="w-full resize-none rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-accent-200">{{ request.user.bio }}</textarea>
+            <label class="mb-1 block text-[10px] font-medium text-muted">Bio</label>
+            <textarea name="bio" x-model="bio" rows="3" maxlength="500" placeholder="Tell people a bit about yourself"
+                      class="w-full resize-none rounded-2xl border border-line bg-surface px-3.5 py-2.5 text-[13px] text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-accent-200"></textarea>
         </div>
-        <p class="mb-6 text-right text-xs text-muted">
-            <span id="bio-count">{{ request.user.bio|length }}</span>/500
-        </p>
+        <p class="mb-5 text-right text-[10px] text-muted"><span x-text="bio.length"></span>/500</p>
 
-        <button type="submit"
-                class="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600">
-            <i data-lucide="check" class="h-4 w-4"></i>
-            Save changes
+        <button type="submit" :disabled="!dirty()"
+                :class="!dirty() ? 'opacity-50 cursor-not-allowed' : 'hover:bg-accent-600'"
+                class="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-500 py-3 text-[13px] font-semibold text-white transition">
+            <i data-lucide="check" class="h-3.5 w-3.5"></i> Save changes
         </button>
     </form>
 
-    <a href="{% url 'profile' %}"
-       class="mt-3 flex w-full items-center justify-center rounded-2xl py-3 text-sm font-medium text-muted transition hover:bg-surface">
+    <a href="{% url 'profile' %}" class="mt-3 flex w-full items-center justify-center rounded-2xl py-2.5 text-[12px] font-medium text-muted transition hover:bg-surface">
         Cancel
     </a>
 </div>
-{% endblock %}
-
-{% block extra_scripts %}
-<script>
-    function updateBioCount() {
-        const input = document.getElementById('bio-input');
-        document.getElementById('bio-count').textContent = input.value.length;
-    }
-
-    function onAvatarChosen(input) {
-        if (!input.files || !input.files.length) return;
-
-        const file = input.files[0];
-        const reader = new FileReader();
-
-        reader.onload = function (e) {
-            const preview = document.getElementById('avatar-preview');
-            const fallback = document.getElementById('avatar-preview-fallback');
-            preview.src = e.target.result;
-            preview.classList.remove('hidden');
-            if (fallback) fallback.classList.add('hidden');
-        };
-
-        reader.readAsDataURL(file);
-    }
-
-    updateBioCount();
-</script>
 {% endblock %}

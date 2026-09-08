@@ -24,7 +24,7 @@
             })).filter(c => c.phone);
 
             const csrftoken = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
-            const res = await fetch('{% url "sync_contacts" %}', {
+            const res = await fetch('{% url 'sync_contacts' %}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
                 body: JSON.stringify({ contacts: payload }),
@@ -40,35 +40,37 @@
             this.syncing = false;
         }
     },
+    scrollToLetter(letter) {
+        const el = document.getElementById('letter-' + letter);
+        if (el) el.scrollIntoView({ block: 'start' });
+    },
 }">
 
-    <h1 class="px-4 pt-4 text-2xl font-bold tracking-tight text-ink md:hidden">Contacts</h1>
+    <h1 class="px-4 pt-4 text-lg font-bold tracking-tight text-ink md:hidden">Contacts</h1>
 
-    <!-- Search -->
-    <form method="get" action="{% url 'contacts' %}" class="px-4 pt-4">
-        <div class="flex items-center gap-2 rounded-2xl bg-surface px-4 py-2.5">
-            <i data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></i>
+    <form method="get" action="{% url 'contacts' %}" class="px-4 pt-3">
+        <div class="flex h-9 items-center gap-2 rounded-xl bg-surface px-3">
+            <i data-lucide="search" class="h-3.5 w-3.5 shrink-0 text-muted"></i>
             <input type="text" name="q" value="{{ query }}" placeholder="Search contacts" autocomplete="off"
-                   class="w-full bg-transparent text-sm text-ink placeholder-muted focus:outline-none">
+                   class="w-full bg-transparent text-[12px] text-ink placeholder-muted focus:outline-none">
         </div>
     </form>
 
-    <!-- Sync + find people -->
-    <div class="flex items-center gap-2 px-4 pt-3">
+    <div class="flex items-center gap-2 px-4 pt-2.5">
         <template x-if="syncSupported">
             <button @click="syncDeviceContacts()" :disabled="syncing"
-                    class="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-line py-2.5 text-sm font-semibold text-ink transition hover:bg-surface disabled:opacity-60">
-                <i data-lucide="contact-round" class="h-4 w-4"></i>
+                    class="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-line py-2 text-[12px] font-semibold text-ink transition hover:bg-surface disabled:opacity-60">
+                <i data-lucide="contact-round" class="h-3.5 w-3.5"></i>
                 <span x-text="syncing ? 'Syncing…' : 'Sync device contacts'"></span>
             </button>
         </template>
-        <a href="{% url 'search' %}" class="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-line py-2.5 text-sm font-semibold text-ink transition hover:bg-surface">
-            <i data-lucide="user-search" class="h-4 w-4"></i> Find people
+        <a href="{% url 'search' %}" class="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-line py-2 text-[12px] font-semibold text-ink transition hover:bg-surface">
+            <i data-lucide="user-search" class="h-3.5 w-3.5"></i> Find people
         </a>
     </div>
 
     <template x-if="syncResult">
-        <div class="mx-4 mt-3 rounded-xl px-3 py-2 text-xs"
+        <div class="mx-4 mt-2.5 rounded-xl px-3 py-2 text-[11px]"
              :class="syncResult.success ? 'bg-accent-50 text-accent-700' : 'bg-red-50 text-red-700'">
             <span x-show="syncResult.success" x-text="syncResult.matched_count + ' contact(s) found on Pheral' + (syncResult.not_on_pheral_count ? ', ' + syncResult.not_on_pheral_count + ' not yet on Pheral.' : '.')"></span>
             <span x-show="!syncResult.success">Couldn't sync contacts. Please try again.</span>
@@ -76,40 +78,61 @@
     </template>
 
     {% if contacts %}
-        <div class="divide-y divide-line px-4 py-4">
-            {% for contact in contacts %}
-                <div class="-mx-2 flex items-center gap-3 rounded-2xl px-2 py-3 transition hover:bg-surface">
-                    <a href="{% url 'start_chat' username=contact.contact_user.username %}" class="flex min-w-0 flex-1 items-center gap-3">
-                        {% if contact.contact_user.avatar %}
-                            <img src="{{ contact.contact_user.avatar.url }}" alt="" class="h-12 w-12 shrink-0 rounded-full object-cover">
-                        {% else %}
-                            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-accent-100 text-sm font-semibold text-accent-700">
-                                {{ contact.contact_user.username|first|upper }}
-                            </div>
-                        {% endif %}
-                        <div class="min-w-0 flex-1">
-                            <p class="truncate text-[15px] font-semibold text-ink">
-                                {{ contact.nickname|default:contact.contact_user.display_name|default:contact.contact_user.username }}
-                            </p>
-                            <p class="truncate text-sm text-muted">@{{ contact.contact_user.username }}{% if contact.phone_number %} · {{ contact.phone_number }}{% endif %}</p>
+        <div class="relative flex">
+            <div class="min-w-0 flex-1 px-4 py-3">
+                {% regroup contacts by contact_user.username|first|upper as letter_groups %}
+                {% for group in letter_groups %}
+                    <div id="letter-{{ group.grouper }}" class="pt-3 first:pt-0">
+                        <p class="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted">{{ group.grouper }}</p>
+                        <div class="divide-y divide-line">
+                            {% for contact in group.list %}
+                                <div class="-mx-1 flex items-center gap-2.5 rounded-xl px-1 py-2.5 transition hover:bg-surface">
+                                    <a href="{% url 'start_chat' username=contact.contact_user.username %}" class="flex min-w-0 flex-1 items-center gap-2.5">
+                                        {% if contact.contact_user.avatar %}
+                                            <img src="{{ contact.contact_user.avatar.url }}" alt="" class="h-10 w-10 shrink-0 rounded-full object-cover">
+                                        {% else %}
+                                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[12px] font-semibold text-accent-700">
+                                                {{ contact.contact_user.username|first|upper }}
+                                            </div>
+                                        {% endif %}
+                                        <div class="min-w-0 flex-1">
+                                            <p class="truncate text-[13px] font-semibold text-ink">
+                                                {{ contact.nickname|default:contact.contact_user.display_name|default:contact.contact_user.username }}
+                                            </p>
+                                            <p class="truncate text-[11px] text-muted">@{{ contact.contact_user.username }}{% if contact.phone_number %} · {{ contact.phone_number }}{% endif %}</p>
+                                        </div>
+                                    </a>
+                                    <a href="{% url 'pay_user' username=contact.contact_user.username %}"
+                                       class="shrink-0 rounded-full p-2 text-muted transition hover:bg-white hover:text-accent-600" aria-label="Pay">
+                                        <i data-lucide="banknote" class="h-3.5 w-3.5"></i>
+                                    </a>
+                                </div>
+                            {% endfor %}
                         </div>
-                    </a>
-                    <a href="{% url 'pay_user' username=contact.contact_user.username %}"
-                       class="shrink-0 rounded-full p-2 text-muted transition hover:bg-white hover:text-accent-600" aria-label="Pay">
-                        <i data-lucide="banknote" class="h-4 w-4"></i>
-                    </a>
-                </div>
-            {% endfor %}
+                    </div>
+                {% endfor %}
+            </div>
+
+            <!-- A-Z scrubber -->
+            <div class="sticky top-16 flex h-fit shrink-0 flex-col items-center gap-[1px] px-1.5 py-3 md:top-20">
+                {% regroup contacts by contact_user.username|first|upper as scrub_groups %}
+                {% for group in scrub_groups %}
+                    <button type="button" @click="scrollToLetter('{{ group.grouper }}')"
+                            class="text-[9px] font-semibold text-muted transition hover:text-accent-600">
+                        {{ group.grouper }}
+                    </button>
+                {% endfor %}
+            </div>
         </div>
     {% else %}
-        <div class="flex flex-col items-center gap-3 px-4 py-16 text-center">
-            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-accent-50">
-                <i data-lucide="users" class="h-7 w-7 text-accent-500"></i>
+        <div class="flex flex-col items-center gap-2 px-4 py-16 text-center">
+            <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50">
+                <i data-lucide="users" class="h-6 w-6 text-accent-500"></i>
             </div>
-            <p class="text-base font-semibold text-ink">
+            <p class="text-[13px] font-semibold text-ink">
                 {% if query %}No contacts match "{{ query }}"{% else %}No contacts yet{% endif %}
             </p>
-            <p class="max-w-xs text-sm text-muted">Sync your device contacts or search for people by username.</p>
+            <p class="max-w-xs text-[11px] leading-5 text-muted">Sync your device contacts or search for people by username.</p>
         </div>
     {% endif %}
 </div>

@@ -3,108 +3,171 @@
 {% block title %}Withdraw · Pheral{% endblock %}
 {% block page_title %}Withdraw{% endblock %}
 
-{% block content %}
-<div class="mx-auto max-w-md px-4 pb-10 pt-4 md:pt-6" x-data="{ amount: '', accountId: '{{ accounts.first.pk|default:"" }}' }">
+{% block extra_head %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
 
-    <div class="mb-5 flex items-center gap-2 md:hidden">
+{% block content %}
+<div class="mx-auto max-w-md px-4 pb-10 pt-4 md:pt-6"
+     x-data="{
+        amount: '',
+        accountId: '{{ accounts.first.pk|default:'' }}',
+        step: 'form',
+        expandedId: null,
+        balance: {{ wallet.balance|default:0 }},
+        pct(p) { this.amount = (this.balance * p).toFixed(2); },
+        get selectedAccount() {
+            return this.accounts.find(a => a.id === this.accountId);
+        },
+     }">
+
+    <div class="mb-4 flex items-center gap-2 md:hidden">
         <a href="{% url 'wallet' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink">
-            <i data-lucide="chevron-left" class="h-5 w-5"></i>
+            <i data-lucide="chevron-left" class="h-[18px] w-[18px]"></i>
         </a>
-        <h1 class="text-2xl font-bold tracking-tight text-ink">Withdraw</h1>
+        <h1 class="text-lg font-bold tracking-tight text-ink">Withdraw</h1>
     </div>
 
-    <!-- Available balance -->
     {% if wallet %}
-        <div class="mb-6 rounded-3xl bg-gradient-to-br from-accent-600 via-accent-500 to-accent-400 p-5 text-white">
-            <p class="text-xs font-medium uppercase tracking-wide text-white/80">Available to withdraw</p>
-            <p class="mt-1 text-3xl font-extrabold tracking-tight">
-                {{ wallet.currency.symbol }}{{ wallet.balance|floatformat:2 }}
-            </p>
+        <div class="mb-4 rounded-3xl bg-gradient-to-br from-accent-600 via-accent-500 to-accent-400 p-4 text-white">
+            <p class="text-[10px] font-medium uppercase tracking-wide text-white/80">Available to withdraw</p>
+            <p class="mt-0.5 text-[26px] font-extrabold tracking-tight">{{ wallet.currency.symbol }}{{ wallet.balance|floatformat:2 }}</p>
         </div>
     {% endif %}
 
     {% if not accounts %}
-        <!-- No bank account yet -->
-        <div class="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line bg-surface py-12 text-center">
-            <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50">
-                <i data-lucide="landmark" class="h-6 w-6 text-accent-500"></i>
+        <div class="flex flex-col items-center gap-2.5 rounded-2xl border border-dashed border-line bg-surface py-12 text-center">
+            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-accent-50">
+                <i data-lucide="landmark" class="h-5 w-5 text-accent-500"></i>
             </div>
-            <p class="text-sm font-semibold text-ink">No bank account added</p>
-            <p class="max-w-xs text-sm text-muted">Add a bank account to withdraw your funds.</p>
-            <a href="{% url 'add_bank_account' %}"
-               class="mt-2 rounded-full bg-accent-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-600">
+            <p class="text-[13px] font-semibold text-ink">No bank account added</p>
+            <p class="max-w-xs text-[11px] leading-5 text-muted">Add a bank account to withdraw your funds.</p>
+            <a href="{% url 'add_bank_account' %}" class="mt-1 rounded-full bg-accent-500 px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-accent-600">
                 Add bank account
             </a>
         </div>
     {% else %}
-        <form method="post" class="rounded-2xl border border-line bg-white p-5">
-            {% csrf_token %}
 
-            <!-- Amount -->
-            <label class="mb-2 block text-sm font-semibold text-ink">Amount</label>
-            <div class="mb-1 flex items-center gap-2 rounded-2xl bg-surface px-4 py-3">
-                <span class="text-lg font-semibold text-muted">{{ currency.symbol|default:"₦" }}</span>
-                <input
-                    type="number" name="amount" x-model="amount" step="0.01" min="1" required
-                    inputmode="decimal" placeholder="0.00"
-                    class="w-full bg-transparent text-2xl font-bold text-ink placeholder-line focus:outline-none">
-                <button type="button" @click="amount = '{{ wallet.balance|stringformat:"f" }}'"
-                        class="shrink-0 rounded-full bg-accent-50 px-3 py-1.5 text-xs font-semibold text-accent-600 transition hover:bg-accent-100">
-                    Max
-                </button>
+        <!-- STEP 1: FORM -->
+        <div x-show="step === 'form'">
+            <div class="rounded-2xl border border-line bg-white p-4">
+
+                <label class="mb-1.5 block text-[12px] font-semibold text-ink">Amount</label>
+                <div class="mb-1.5 flex items-center gap-2 rounded-2xl bg-surface px-3.5 py-2.5">
+                    <span class="text-[15px] font-semibold text-muted">{{ currency.symbol|default:"₦" }}</span>
+                    <input type="number" name="amount" x-model="amount" step="0.01" min="1" required inputmode="decimal" placeholder="0.00"
+                           class="w-full bg-transparent text-[20px] font-bold text-ink placeholder-line focus:outline-none">
+                </div>
+
+                <div class="mb-4 grid grid-cols-4 gap-1.5">
+                    <button type="button" @click="pct(0.25)" class="rounded-full border border-line py-1.5 text-[10px] font-semibold text-muted transition hover:bg-surface">25%</button>
+                    <button type="button" @click="pct(0.5)" class="rounded-full border border-line py-1.5 text-[10px] font-semibold text-muted transition hover:bg-surface">50%</button>
+                    <button type="button" @click="pct(0.75)" class="rounded-full border border-line py-1.5 text-[10px] font-semibold text-muted transition hover:bg-surface">75%</button>
+                    <button type="button" @click="pct(1)" class="rounded-full bg-accent-50 py-1.5 text-[10px] font-semibold text-accent-600 transition hover:bg-accent-100">Max</button>
+                </div>
+
+                <div class="mb-2 flex items-center justify-between">
+                    <label class="block text-[12px] font-semibold text-ink">Withdraw to</label>
+                    <a href="{% url 'add_bank_account' %}" class="flex items-center gap-1 text-[11px] font-medium text-accent-600 hover:underline">
+                        <i data-lucide="plus" class="h-3 w-3"></i> Add new
+                    </a>
+                </div>
+
+                <div class="space-y-1.5">
+                    {% for account in accounts %}
+                        <div class="rounded-2xl border transition"
+                             :class="accountId === '{{ account.pk }}' ? 'border-accent-500 bg-accent-50' : 'border-line'">
+                            <label class="flex cursor-pointer items-center gap-2.5 p-2.5">
+                                <input type="radio" name="bank_account" value="{{ account.pk }}" x-model="accountId" class="sr-only" {% if forloop.first %}checked{% endif %}>
+                                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white"
+                                      :class="accountId === '{{ account.pk }}' ? 'ring-2 ring-accent-300' : 'border border-line'">
+                                    <i data-lucide="landmark" class="h-3.5 w-3.5"></i>
+                                </span>
+                                <span class="min-w-0 flex-1">
+                                    <span class="block truncate text-[12px] font-semibold text-ink">{{ account.account_name }}</span>
+                                    <span class="block truncate text-[10px] text-muted">{{ account.bank_name }} · ····{{ account.account_number|slice:"-4:" }}</span>
+                                </span>
+                                <button type="button" @click.prevent="expandedId = expandedId === '{{ account.pk }}' ? null : '{{ account.pk }}'"
+                                        class="shrink-0 rounded-full p-1 text-muted hover:bg-white" aria-label="Show details">
+                                    <i data-lucide="chevron-down" class="h-3.5 w-3.5 transition" :class="expandedId === '{{ account.pk }}' ? 'rotate-180' : ''"></i>
+                                </button>
+                                <span class="flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full border-2"
+                                      :class="accountId === '{{ account.pk }}' ? 'border-accent-500 bg-accent-500' : 'border-line'">
+                                    <i x-show="accountId === '{{ account.pk }}'" data-lucide="check" class="h-2.5 w-2.5 text-white"></i>
+                                </span>
+                            </label>
+                            <div x-show="expandedId === '{{ account.pk }}'" x-cloak x-collapse class="border-t border-line px-2.5 py-2">
+                                <p class="text-[10px] text-muted">Full account number</p>
+                                <p class="mt-0.5 font-mono text-[12px] text-ink">{{ account.account_number }}</p>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
             </div>
-            <p class="mb-5 text-xs text-muted">
-                Available: {{ currency.symbol|default:"₦" }}{{ wallet.balance|floatformat:2 }}
-            </p>
 
-            <!-- Bank account picker -->
-            <div class="mb-2 flex items-center justify-between">
-                <label class="block text-sm font-semibold text-ink">Withdraw to</label>
-                <a href="{% url 'add_bank_account' %}" class="flex items-center gap-1 text-xs font-medium text-accent-600 hover:underline">
-                    <i data-lucide="plus" class="h-3.5 w-3.5"></i> Add new
-                </a>
-            </div>
-
-            <div class="mb-6 space-y-2">
-                {% for account in accounts %}
-                    <label class="flex cursor-pointer items-center gap-3 rounded-2xl border p-3.5 transition"
-                           :class="accountId === '{{ account.pk }}' ? 'border-accent-500 bg-accent-50' : 'border-line hover:bg-surface'">
-                        <input type="radio" name="bank_account" value="{{ account.pk }}"
-                               x-model="accountId" class="peer sr-only" {% if forloop.first %}checked{% endif %}>
-
-                        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-ink"
-                              :class="accountId === '{{ account.pk }}' ? 'ring-2 ring-accent-300' : 'border border-line'">
-                            <i data-lucide="landmark" class="h-4.5 w-4.5"></i>
-                        </span>
-
-                        <span class="min-w-0 flex-1">
-                            <span class="block truncate text-sm font-semibold text-ink">{{ account.account_name }}</span>
-                            <span class="block truncate text-xs text-muted">
-                                {{ account.bank_name }} · {{ account.account_number }}
-                            </span>
-                        </span>
-
-                        <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2"
-                              :class="accountId === '{{ account.pk }}' ? 'border-accent-500 bg-accent-500' : 'border-line'">
-                            <i x-show="accountId === '{{ account.pk }}'" data-lucide="check" class="h-3 w-3 text-white"></i>
-                        </span>
-                    </label>
-                {% endfor %}
-            </div>
-
-            <button type="submit"
+            <button type="button" @click="step = 'review'"
                     :disabled="!amount || Number(amount) <= 0 || !accountId"
                     :class="(!amount || Number(amount) <= 0 || !accountId) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-accent-600'"
-                    class="flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white transition">
-                <i data-lucide="arrow-up-from-line" class="h-4 w-4"></i>
-                Withdraw funds
+                    class="mt-4 flex w-full items-center justify-center gap-1.5 rounded-2xl bg-accent-500 py-3 text-[13px] font-semibold text-white transition">
+                Review withdrawal
             </button>
+        </div>
 
-            <p class="mt-3 flex items-center justify-center gap-1.5 text-center text-xs text-muted">
-                <i data-lucide="clock" class="h-3.5 w-3.5"></i>
-                Withdrawals are usually processed within a few minutes
-            </p>
+        <!-- STEP 2: REVIEW -->
+        <div x-show="step === 'review'" x-cloak>
+            <div class="rounded-2xl border border-line bg-white p-4">
+                <p class="mb-3 text-[12px] font-semibold text-ink">Confirm withdrawal</p>
+
+                <div class="mb-4 flex flex-col items-center rounded-2xl bg-surface py-5">
+                    <p class="text-[10px] text-muted">You'll withdraw</p>
+                    <p class="mt-0.5 text-[26px] font-extrabold text-ink" x-text="'{{ currency.symbol|default:'₦' }}' + Number(amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})"></p>
+                </div>
+
+                <div class="divide-y divide-line rounded-2xl border border-line text-[12px]">
+                    <div class="flex items-center justify-between px-3.5 py-2.5">
+                        <span class="text-muted">To</span>
+                        <span class="font-medium text-ink" x-text="selectedAccount ? selectedAccount.name + ' — ' + selectedAccount.bank : ''"></span>
+                    </div>
+                    <div class="flex items-center justify-between px-3.5 py-2.5">
+                        <span class="text-muted">Arrival</span>
+                        <span class="font-medium text-ink">Within a few minutes</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4 flex gap-2.5">
+                <button type="button" @click="step = 'form'" class="flex-1 rounded-2xl border border-line py-3 text-[13px] font-semibold text-ink transition hover:bg-surface">
+                    Back
+                </button>
+                <button type="submit" form="withdraw-form" class="flex-[2] flex items-center justify-center gap-1.5 rounded-2xl bg-accent-500 py-3 text-[13px] font-semibold text-white transition hover:bg-accent-600">
+                    <i data-lucide="arrow-up-from-line" class="h-3.5 w-3.5"></i> Confirm withdrawal
+                </button>
+            </div>
+        </div>
+
+        <form method="post" id="withdraw-form" class="hidden">
+            {% csrf_token %}
+            <input type="hidden" name="amount" :value="amount">
+            <input type="hidden" name="bank_account" :value="accountId">
         </form>
+
+        <p class="mt-3 flex items-center justify-center gap-1.5 text-center text-[10px] text-muted">
+            <i data-lucide="clock" class="h-3 w-3"></i> Withdrawals are usually processed within a few minutes
+        </p>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('accountsList', () => ({
+            accounts: [
+                {% for account in accounts %}
+                { id: '{{ account.pk }}', name: '{{ account.account_name|escapejs }}', bank: '{{ account.bank_name|escapejs }}' },
+                {% endfor %}
+            ],
+        }));
+    });
+</script>
 {% endblock %}

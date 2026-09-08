@@ -1,403 +1,157 @@
-
 {% extends "base.html" %}
 
 {% block title %}Hire · Pheral{% endblock %}
 {% block page_title %}Hire{% endblock %}
 
 {% block extra_head %}
-<style>
-    [x-cloak] { display: none !important; }
-
-    .job-card {
-        transition:
-            transform 160ms ease,
-            border-color 160ms ease,
-            background-color 160ms ease,
-            box-shadow 160ms ease;
-    }
-
-    .job-card:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 8px 24px rgba(28, 23, 48, 0.05);
-    }
-
-    .job-card:active {
-        transform: translateY(0);
-    }
-
-    .hide-scrollbar::-webkit-scrollbar {
-        display: none;
-    }
-
-    .hide-scrollbar {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-    }
-</style>
+<style>[x-cloak] { display: none !important; }</style>
 {% endblock %}
 
 {% block content %}
+<div class="mx-auto w-full max-w-2xl" x-data="{ q: '', sort: 'newest' }">
 
-<div
-    class="mx-auto w-full max-w-xl md:max-w-3xl"
-    x-data="{ q: '', sort: 'newest' }"
->
-
-    <!-- ============================================================
-         HEADER
-    ============================================================= -->
-    <div class="px-4 pt-3 md:px-6 md:pt-6">
-
-        <div class="flex items-center justify-between gap-4">
-
-            <div class="min-w-0">
-
-                <div class="flex items-center gap-2">
-
-                    <h1 class="text-lg font-bold tracking-tight text-ink md:text-xl">
-                        Hire
-                    </h1>
-
-                    {% if jobs %}
-                        <span class="rounded-full bg-accent-50 px-2 py-0.5 text-[9px] font-semibold text-accent-700">
-                            {{ jobs|length }}
-                        </span>
-                    {% endif %}
-
-                </div>
-
-                <p class="mt-0.5 text-[11px] text-muted md:text-xs">
-                    Find people to get the job done.
-                </p>
-
-            </div>
-
-            <!-- Desktop action -->
-            <a
-                href="{% url 'create_hire_job' %}"
-                class="hidden shrink-0 items-center gap-1.5 rounded-xl bg-accent-500 px-3.5 py-2 text-[11px] font-semibold text-white shadow-sm transition hover:bg-accent-600 md:inline-flex"
-            >
-                <i data-lucide="plus" class="h-3.5 w-3.5"></i>
-                Post a job
-            </a>
-
-        </div>
-
+    <!-- Mobile heading -->
+    <div class="flex items-center justify-between px-4 pt-3 md:hidden">
+        <h1 class="text-lg font-bold tracking-tight text-ink">Hire</h1>
+        <a href="{% url 'create_hire_job' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink" aria-label="Post a job">
+            <i data-lucide="square-pen" class="h-[18px] w-[18px]"></i>
+        </a>
     </div>
 
+    <div class="px-4 pt-3 md:px-6 md:pt-5">
 
-    {% if jobs %}
-
-        <!-- ========================================================
-             SEARCH
-        ========================================================= -->
-        <div class="px-4 pt-4 md:px-6">
-
-            <div class="flex h-9 items-center gap-2 rounded-xl bg-surface px-3.5">
-
-                <i
-                    data-lucide="search"
-                    class="h-3.5 w-3.5 shrink-0 text-muted"
-                ></i>
-
-                <input
-                    type="text"
-                    x-model="q"
-                    placeholder="Search jobs"
-                    autocomplete="off"
-                    class="w-full bg-transparent text-xs text-ink placeholder-muted focus:outline-none"
-                >
-
-                <button
-                    x-show="q !== ''"
-                    x-cloak
-                    @click="q = ''"
-                    class="shrink-0 rounded-full p-0.5 text-muted hover:text-ink"
-                    aria-label="Clear search"
-                >
-                    <i data-lucide="x" class="h-3.5 w-3.5"></i>
-                </button>
-
+        <!-- Stat strip -->
+        <div class="mb-3 grid grid-cols-3 gap-2">
+            <div class="rounded-xl border border-line bg-white px-3 py-2.5 text-center">
+                <p class="text-[15px] font-bold text-ink">{{ jobs|length }}</p>
+                <p class="text-[10px] text-muted">Open jobs</p>
             </div>
-
+            <div class="rounded-xl border border-line bg-white px-3 py-2.5 text-center">
+                <p class="text-[15px] font-bold text-ink">{{ jobs|length }}</p>
+                <p class="text-[10px] text-muted">Hiring now</p>
+            </div>
+            <a href="{% url 'create_hire_job' %}" class="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-accent-500 px-3 py-2.5 text-center transition hover:bg-accent-600">
+                <i data-lucide="plus" class="h-3.5 w-3.5 text-white"></i>
+                <p class="text-[10px] font-semibold text-white">Post a job</p>
+            </a>
         </div>
 
+        <!-- Search -->
+        <div class="mb-2.5 flex h-9 items-center gap-2 rounded-xl bg-surface px-3">
+            <i data-lucide="search" class="h-3.5 w-3.5 shrink-0 text-muted"></i>
+            <input
+                type="text" x-model="q" placeholder="Search open jobs" autocomplete="off"
+                class="w-full bg-transparent text-[12px] text-ink placeholder-muted focus:outline-none">
+        </div>
 
-        <!-- ========================================================
-             FILTER / SORT BAR
-        ========================================================= -->
-        <div class="hide-scrollbar mt-3 flex items-center gap-1.5 overflow-x-auto px-4 md:px-6">
-
-            <button
-                @click="sort = 'newest'"
-                :class="
-                    sort === 'newest'
-                        ? 'bg-accent-500 text-white shadow-sm'
-                        : 'bg-surface text-muted hover:text-ink'
-                "
-                class="shrink-0 rounded-full px-3.5 py-1.5 text-[10px] font-semibold transition"
-            >
-                Latest
+        <!-- Sort -->
+        <div class="mb-3 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            <button @click="sort = 'newest'"
+                    :class="sort === 'newest' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'"
+                    class="shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">
+                Newest
             </button>
-
-            <button
-                @click="sort = 'budget'"
-                :class="
-                    sort === 'budget'
-                        ? 'bg-accent-500 text-white shadow-sm'
-                        : 'bg-surface text-muted hover:text-ink'
-                "
-                class="shrink-0 rounded-full px-3.5 py-1.5 text-[10px] font-semibold transition"
-            >
+            <button @click="sort = 'budget_high'"
+                    :class="sort === 'budget_high' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'"
+                    class="shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">
                 Highest budget
             </button>
-
-            <div class="ml-auto hidden items-center gap-1 text-[10px] text-muted md:flex">
-                <i data-lucide="briefcase-business" class="h-3 w-3"></i>
-                Open opportunities
-            </div>
-
+            <button @click="sort = 'budget_low'"
+                    :class="sort === 'budget_low' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'"
+                    class="shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">
+                Lowest budget
+            </button>
         </div>
 
-
-        <!-- ========================================================
-             JOB LIST
-        ========================================================= -->
-        <div
-            class="space-y-2.5 px-4 py-4 md:px-6 md:py-5"
-            x-data="{
-                init() {
-                    this.$watch('sort', () => this.applySort());
-                    this.applySort();
-                },
-
-                applySort() {
-                    const container = this.$el;
-                    const cards = Array.from(
-                        container.querySelectorAll('[data-job]')
-                    );
-
-                    cards.sort((a, b) => {
-
-                        if (this.sort === 'budget') {
-                            return (
-                                parseFloat(b.dataset.budget) -
-                                parseFloat(a.dataset.budget)
-                            );
-                        }
-
-                        return (
-                            parseInt(b.dataset.created) -
-                            parseInt(a.dataset.created)
+        {% if jobs %}
+            <div
+                x-data="{
+                    jobs: [
+                        {% for job in jobs %}
+                        {
+                            id: {{ job.id }},
+                            title: '{{ job.title|escapejs }}',
+                            description: '{{ job.description|truncatechars:140|escapejs }}',
+                            budget: {{ job.budget }},
+                            currency: '{{ job.currency.symbol|escapejs }}',
+                            currencyCode: '{{ job.currency.code|escapejs }}',
+                            employer: '{{ job.employer.username|escapejs }}',
+                            employerName: '{{ job.employer.display_name|default:job.employer.username|escapejs }}',
+                            createdAgo: '{{ job.created_at|timesince|escapejs }}',
+                            timestamp: {{ job.created_at|date:'U' }},
+                        },
+                        {% endfor %}
+                    ],
+                    get filtered() {
+                        let list = this.jobs.filter(j =>
+                            this.q === '' ||
+                            j.title.toLowerCase().includes(this.q.toLowerCase()) ||
+                            j.employerName.toLowerCase().includes(this.q.toLowerCase())
                         );
-                    });
-
-                    cards.forEach(card => container.appendChild(card));
-                },
-            }"
-        >
-
-            {% for job in jobs %}
-
-                <div
-                    data-job
-                    data-budget="{{ job.budget }}"
-                    data-created="{{ job.created_at|date:'U' }}"
-                    x-data="{
-                        name: '{{ job.title|escapejs|lower }}'
-                    }"
-                    x-show="q === '' || name.includes(q.toLowerCase())"
-                >
-
-                    <a
-                        href="{% url 'hire_job_detail' job_id=job.id %}"
-                        class="job-card block rounded-2xl border border-line bg-white p-3.5 md:p-4"
-                    >
-
-                        <!-- Top row -->
-                        <div class="flex items-start gap-3">
-
-                            <!-- Job content -->
-                            <div class="min-w-0 flex-1">
-
-                                <div class="mb-1 flex items-center gap-2">
-
-                                    <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-medium text-emerald-700">
-                                        <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                                        Open
-                                    </span>
-
-                                    <span class="text-[9px] text-muted">
-                                        {{ job.created_at|timesince }} ago
-                                    </span>
-
-                                </div>
-
-                                <h2 class="truncate text-[13px] font-semibold leading-5 text-ink">
-                                    {{ job.title }}
-                                </h2>
-
-                                <p class="mt-0.5 line-clamp-2 text-[11px] leading-[1.55] text-muted">
-                                    {{ job.description }}
-                                </p>
-
-                            </div>
-
-
-                            <!-- Budget -->
-                            <div class="shrink-0 text-right">
-
-                                <span class="block text-[9px] font-medium uppercase tracking-wide text-muted">
-                                    Budget
-                                </span>
-
-                                <span class="mt-0.5 block text-[13px] font-bold tracking-tight text-accent-700">
-                                    {{ job.currency.symbol }}{{ job.budget|floatformat:2 }}
-                                </span>
-
-                            </div>
-
-                        </div>
-
-
-                        <!-- Divider -->
-                        <div class="my-3 h-px bg-line/70"></div>
-
-
-                        <!-- Bottom metadata -->
-                        <div class="flex items-center justify-between gap-3">
-
-                            <div class="flex min-w-0 items-center gap-2">
-
-                                {% if job.employer.avatar %}
-
-                                    <img
-                                        src="{{ job.employer.avatar.url }}"
-                                        alt=""
-                                        class="h-7 w-7 shrink-0 rounded-full object-cover"
-                                        loading="lazy"
-                                        decoding="async"
-                                    >
-
-                                {% else %}
-
-                                    <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[9px] font-bold text-accent-700">
-                                        {{ job.employer.username|first|upper }}
-                                    </div>
-
-                                {% endif %}
-
-                                <div class="min-w-0">
-
-                                    <p class="truncate text-[10px] font-medium text-ink">
-                                        {{ job.employer.display_name|default:job.employer.username }}
-                                    </p>
-
-                                    <p class="truncate text-[9px] text-muted">
-                                        Posted {{ job.created_at|timesince }} ago
-                                    </p>
-
-                                </div>
-
-                            </div>
-
-
-                            <!-- View indicator -->
-                            <div class="flex shrink-0 items-center gap-1 text-[10px] font-medium text-muted transition group-hover:text-accent-600">
-
-                                View details
-
-                                <i
-                                    data-lucide="arrow-up-right"
-                                    class="h-3 w-3"
-                                ></i>
-
-                            </div>
-
-                        </div>
-
-                    </a>
-
-                </div>
-
-            {% endfor %}
-
-        </div>
-
-
-        <!-- ========================================================
-             NO SEARCH RESULTS
-        ========================================================= -->
-        <div
-            x-show="q !== '' && !Array.from($el.parentElement.querySelectorAll('[data-job]')).some(el => el.style.display !== 'none')"
-            x-cloak
-            class="px-4 py-16 text-center md:px-6"
-        >
-
-            <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-surface">
-                <i
-                    data-lucide="search-x"
-                    class="h-5 w-5 text-muted"
-                ></i>
-            </div>
-
-            <p class="mt-3 text-xs font-semibold text-ink">
-                No jobs found
-            </p>
-
-            <p class="mx-auto mt-1 max-w-xs text-[10px] leading-5 text-muted">
-                Try a different search term.
-            </p>
-
-        </div>
-
-
-    {% else %}
-
-        <!-- ========================================================
-             EMPTY STATE
-        ========================================================= -->
-        <div class="flex flex-col items-center px-4 py-20 text-center">
-
-            <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-50">
-                <i
-                    data-lucide="briefcase-business"
-                    class="h-6 w-6 text-accent-500"
-                ></i>
-            </div>
-
-            <p class="mt-4 text-[13px] font-semibold text-ink">
-                Nothing open yet
-            </p>
-
-            <p class="mt-1 max-w-xs text-[11px] leading-5 text-muted">
-                Post an opportunity and find someone on Pheral who can help.
-            </p>
-
-            <a
-                href="{% url 'create_hire_job' %}"
-                class="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-accent-500 px-4 py-2.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-accent-600"
+                        if (this.sort === 'budget_high') list = [...list].sort((a, b) => b.budget - a.budget);
+                        else if (this.sort === 'budget_low') list = [...list].sort((a, b) => a.budget - b.budget);
+                        else list = [...list].sort((a, b) => b.timestamp - a.timestamp);
+                        return list;
+                    },
+                }"
             >
-                <i data-lucide="plus" class="h-3.5 w-3.5"></i>
-                Post a job
-            </a>
+                <template x-for="job in filtered" :key="job.id">
+                    <a :href="'{% url 'hire' %}job/' + job.id + '/'"
+                       class="mb-2.5 flex items-start gap-3 rounded-2xl border border-line bg-white p-3.5 transition hover:border-accent-200 hover:bg-surface">
 
-        </div>
+                        <span class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-600">
+                            <i data-lucide="briefcase" class="h-4.5 w-4.5"></i>
+                        </span>
 
-    {% endif %}
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-start justify-between gap-2">
+                                <p class="truncate text-[13px] font-semibold leading-5 text-ink" x-text="job.title"></p>
+                                <span class="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-semibold text-emerald-600">Open</span>
+                            </div>
 
+                            <p class="mt-0.5 truncate text-[11px] leading-4 text-muted" x-text="job.description"></p>
+
+                            <div class="mt-2 flex items-center justify-between gap-2">
+                                <span class="flex items-center gap-1 text-[11px] font-semibold text-ink">
+                                    <span x-text="job.currency"></span><span x-text="job.budget.toLocaleString(undefined, {minimumFractionDigits: 2})"></span>
+                                    <span class="font-normal text-muted" x-text="job.currencyCode"></span>
+                                </span>
+                                <span class="flex items-center gap-1 text-[10px] text-muted">
+                                    <span x-text="'@' + job.employer"></span>
+                                    <span class="h-0.5 w-0.5 rounded-full bg-line"></span>
+                                    <span x-text="job.createdAgo + ' ago'"></span>
+                                </span>
+                            </div>
+                        </div>
+                    </a>
+                </template>
+
+                <div x-show="filtered.length === 0" x-cloak class="flex flex-col items-center gap-2 py-14 text-center">
+                    <div class="flex h-12 w-12 items-center justify-center rounded-full bg-accent-50">
+                        <i data-lucide="search-x" class="h-5 w-5 text-accent-500"></i>
+                    </div>
+                    <p class="text-[12px] font-semibold text-ink">No jobs match your search</p>
+                    <p class="text-[11px] text-muted">Try a different keyword or clear the search.</p>
+                </div>
+            </div>
+        {% else %}
+            <div class="flex flex-col items-center gap-2 py-20 text-center">
+                <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50">
+                    <i data-lucide="briefcase" class="h-6 w-6 text-accent-500"></i>
+                </div>
+                <p class="text-[13px] font-semibold text-ink">No open jobs right now</p>
+                <p class="max-w-xs text-[11px] leading-5 text-muted">Be the first to post a job and find someone to hire.</p>
+                <a href="{% url 'create_hire_job' %}" class="mt-1 rounded-full bg-accent-500 px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-accent-600">
+                    Post a job
+                </a>
+            </div>
+        {% endif %}
+    </div>
 </div>
 
-
-<!-- ================================================================
-     MOBILE FLOATING ACTION
-================================================================= -->
-<a
-    href="{% url 'create_hire_job' %}"
-    class="fixed bottom-20 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-white shadow-lg transition hover:bg-accent-600 md:hidden"
-    aria-label="Post a job"
->
+<a href="{% url 'create_hire_job' %}"
+   class="fixed bottom-20 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-white shadow-lg transition hover:bg-accent-600 md:hidden"
+   aria-label="Post a job">
     <i data-lucide="plus" class="h-5 w-5"></i>
 </a>
-
 {% endblock %}

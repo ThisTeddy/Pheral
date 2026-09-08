@@ -8,65 +8,107 @@
 {% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-lg px-4 py-4"
-     x-data="{
-        content: '',
-        mediaPreview: null,
-        mediaIsVideo: false,
-        mediaName: '',
-        onMediaPicked(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            this.mediaName = file.name;
-            this.mediaIsVideo = file.type.startsWith('video/');
-            this.mediaPreview = URL.createObjectURL(file);
-        },
-        clearMedia() {
-            this.mediaPreview = null;
-            this.mediaName = '';
-            this.$refs.mediaInput.value = '';
-        },
-     }">
+<div class="mx-auto max-w-lg px-4 py-4" x-data="{
+    content: '',
+    mediaPreview: null,
+    mediaIsVideo: false,
+    mediaName: '',
+    showEmoji: false,
+    showPreview: false,
+    emojis: ['😀','😂','😍','🔥','🎉','👏','🙌','💯','😢','😮','🤔','👍','❤️','✨','😅','🙏'],
+    onMediaPicked(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        this.mediaName = file.name;
+        this.mediaIsVideo = file.type.startsWith('video/');
+        this.mediaPreview = URL.createObjectURL(file);
+    },
+    clearMedia() {
+        this.mediaPreview = null;
+        this.mediaName = '';
+        this.$refs.mediaInput.value = '';
+    },
+    insertEmoji(emoji) {
+        this.content += emoji;
+        this.$refs.contentInput.focus();
+    },
+}">
 
     <div class="flex items-center justify-between">
         <a href="{% url 'feed' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink" aria-label="Cancel">
             <i data-lucide="x" class="h-5 w-5"></i>
         </a>
-        <h1 class="text-base font-semibold text-ink">New post</h1>
-        <span class="w-8"></span>
+        <h1 class="text-[13px] font-semibold text-ink">New post</h1>
+        <button type="button" @click="showPreview = !showPreview" class="text-[11px] font-semibold text-accent-600" x-text="showPreview ? 'Edit' : 'Preview'"></button>
     </div>
 
-    <form method="post" action="{% url 'create_post' %}" enctype="multipart/form-data" class="mt-4 space-y-4">
+    <!-- Live preview -->
+    <div x-show="showPreview" x-cloak class="mt-4 overflow-hidden rounded-2xl border border-line bg-white">
+        <div class="flex items-center gap-2.5 px-3.5 pt-3">
+            {% if request.user.avatar %}
+                <img src="{{ request.user.avatar.url }}" alt="" class="h-9 w-9 rounded-full object-cover">
+            {% else %}
+                <div class="flex h-9 w-9 items-center justify-center rounded-full bg-accent-100 text-[12px] font-semibold text-accent-700">
+                    {{ request.user.username|first|upper }}
+                </div>
+            {% endif %}
+            <div class="min-w-0">
+                <p class="truncate text-[13px] font-semibold leading-4 text-ink">{{ request.user.display_name|default:request.user.username }}</p>
+                <p class="text-[10px] text-muted">@{{ request.user.username }} · now</p>
+            </div>
+        </div>
+        <p x-show="content" class="whitespace-pre-wrap break-words px-3.5 pt-2.5 text-[13px] leading-5 text-ink" x-text="content"></p>
+        <p x-show="!content" class="px-3.5 pt-2.5 text-[13px] italic text-muted">Nothing written yet</p>
+        <template x-if="mediaPreview">
+            <div class="mt-2.5 overflow-hidden bg-black">
+                <template x-if="mediaIsVideo"><video :src="mediaPreview" controls class="max-h-80 w-full"></video></template>
+                <template x-if="!mediaIsVideo"><img :src="mediaPreview" alt="" class="max-h-80 w-full object-cover"></template>
+            </div>
+        </template>
+        <div class="flex items-center gap-4 px-3.5 py-2.5 text-muted">
+            <span class="flex items-center gap-1.5 text-[12px]"><i data-lucide="heart" class="h-4 w-4"></i> 0</span>
+            <span class="flex items-center gap-1.5 text-[12px]"><i data-lucide="message-circle" class="h-4 w-4"></i> 0</span>
+        </div>
+    </div>
+
+    <form x-show="!showPreview" method="post" action="{% url 'create_post' %}" enctype="multipart/form-data" class="mt-4 space-y-3.5">
         {% csrf_token %}
 
-        <!-- Author row -->
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2.5">
             {% if request.user.avatar %}
-                <img src="{{ request.user.avatar.url }}" alt="" class="h-10 w-10 rounded-full object-cover">
+                <img src="{{ request.user.avatar.url }}" alt="" class="h-9 w-9 rounded-full object-cover">
             {% else %}
-                <div class="flex h-10 w-10 items-center justify-center rounded-full bg-accent-100 text-sm font-semibold text-accent-700">
+                <div class="flex h-9 w-9 items-center justify-center rounded-full bg-accent-100 text-[12px] font-semibold text-accent-700">
                     {{ request.user.username|first|upper }}
                 </div>
             {% endif %}
             <div>
-                <p class="text-sm font-semibold text-ink">{{ request.user.display_name|default:request.user.username }}</p>
-                <p class="text-xs text-muted">Posting to Feed</p>
+                <p class="text-[13px] font-semibold text-ink">{{ request.user.display_name|default:request.user.username }}</p>
+                <p class="text-[10px] text-muted">Posting to Feed</p>
             </div>
         </div>
 
-        <!-- Content -->
         <textarea
-            name="content"
-            x-model="content"
-            rows="5"
-            maxlength="5000"
-            placeholder="What's on your mind?"
-            autofocus
-            class="w-full resize-none rounded-2xl border border-line bg-white px-4 py-3 text-[15px] text-ink placeholder-muted focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100"
+            name="content" x-model="content" x-ref="contentInput" rows="5" maxlength="5000"
+            placeholder="What's on your mind?" autofocus
+            class="w-full resize-none rounded-2xl border border-line bg-white px-3.5 py-3 text-[13px] text-ink placeholder-muted focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100"
         ></textarea>
-        <p class="-mt-3 text-right text-xs text-muted" x-text="content.length + ' / 5000'"></p>
 
-        <!-- Media preview -->
+        <div class="flex items-center justify-between">
+            <div class="relative">
+                <button type="button" @click="showEmoji = !showEmoji" class="flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-muted transition hover:bg-surface hover:text-ink">
+                    <i data-lucide="smile-plus" class="h-3.5 w-3.5"></i> Emoji
+                </button>
+                <div x-show="showEmoji" x-cloak x-transition @click.outside="showEmoji = false"
+                     class="absolute left-0 top-full z-20 mt-1 grid w-56 grid-cols-8 gap-1 rounded-xl border border-line bg-white p-2 shadow-lg">
+                    <template x-for="emoji in emojis" :key="emoji">
+                        <button type="button" @click="insertEmoji(emoji)" class="rounded-lg p-1 text-base hover:bg-surface" x-text="emoji"></button>
+                    </template>
+                </div>
+            </div>
+            <p class="text-[10px] text-muted" x-text="content.length + ' / 5000'"></p>
+        </div>
+
         <template x-if="mediaPreview">
             <div class="relative overflow-hidden rounded-2xl border border-line">
                 <button type="button" @click="clearMedia()"
@@ -74,25 +116,20 @@
                         aria-label="Remove media">
                     <i data-lucide="x" class="h-4 w-4"></i>
                 </button>
-                <template x-if="mediaIsVideo">
-                    <video :src="mediaPreview" controls class="max-h-80 w-full bg-black"></video>
-                </template>
-                <template x-if="!mediaIsVideo">
-                    <img :src="mediaPreview" alt="" class="max-h-80 w-full object-cover">
-                </template>
+                <template x-if="mediaIsVideo"><video :src="mediaPreview" controls class="max-h-80 w-full bg-black"></video></template>
+                <template x-if="!mediaIsVideo"><img :src="mediaPreview" alt="" class="max-h-80 w-full object-cover"></template>
             </div>
         </template>
 
-        <!-- Media picker -->
         <input x-ref="mediaInput" type="file" name="media" accept="image/*,video/*" class="hidden" @change="onMediaPicked($event)">
         <button type="button" @click="$refs.mediaInput.click()"
-                class="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-line py-3 text-sm font-medium text-muted transition hover:bg-surface hover:text-ink">
-            <i data-lucide="image-plus" class="h-4 w-4"></i>
+                class="flex w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-line py-2.5 text-[12px] font-medium text-muted transition hover:bg-surface hover:text-ink">
+            <i data-lucide="image-plus" class="h-3.5 w-3.5"></i>
             <span x-text="mediaPreview ? 'Change photo or video' : 'Add a photo or video'"></span>
         </button>
 
         <button type="submit" :disabled="!content.trim() && !mediaPreview"
-                class="w-full rounded-full bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
+                class="w-full rounded-full bg-accent-500 py-3 text-[13px] font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
             Post
         </button>
     </form>
