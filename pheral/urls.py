@@ -28,7 +28,7 @@ urlpatterns = [
     ),
 
     path(
-        "login_view/",
+        "login/",
         views.login_view,
         name="login_view",
     ),
