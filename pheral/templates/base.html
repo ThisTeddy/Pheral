@@ -1,286 +1,640 @@
 {% load static %}
+
 <!DOCTYPE html>
+
 <html lang="en" class="h-full bg-white">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>{% block title %}Pheral{% endblock %}</title>
 
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-    <!-- Tailwind (Play CDN) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
-                    },
-                    colors: {
-                        ink: '#1C1730',
-                        muted: '#8B84A3',
-                        line: '#EAE6F4',
-                        surface: '#FAF9FE',
-                        accent: {
-                            50:  '#F5F1FE',
-                            100: '#EBE3FD',
-                            200: '#D3C2FA',
-                            400: '#9A6BF0',
-                            500: '#7C3AED',
-                            600: '#6D28D9',
-                            700: '#5B21B6',
-                        },
-                    },
-                    boxShadow: {
-                        nav: '0 -1px 0 0 rgba(28,23,48,0.06)',
+<title>{% block title %}Pheral{% endblock %}</title>
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<!-- Tailwind -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<script>
+    tailwind.config = {
+        theme: {
+            extend: {
+                fontFamily: {
+                    sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                },
+
+                colors: {
+                    ink: '#1C1730',
+                    muted: '#8B84A3',
+                    line: '#EAE6F4',
+                    surface: '#FAF9FE',
+
+                    accent: {
+                        50: '#F5F1FE',
+                        100: '#EBE3FD',
+                        200: '#D3C2FA',
+                        400: '#9A6BF0',
+                        500: '#7C3AED',
+                        600: '#6D28D9',
+                        700: '#5B21B6',
                     },
                 },
+
+                boxShadow: {
+                    nav: '0 -1px 0 0 rgba(28,23,48,0.06)',
+                },
             },
-        };
-    </script>
+        },
+    };
+</script>
 
-    <!-- Alpine.js -->
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<!-- Alpine -->
+<script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
 
-    <!-- Lucide icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
+<!-- Lucide -->
+<script src="https://unpkg.com/lucide@latest"></script>
 
-    <style>
-        [x-cloak] { display: none !important; }
-        html, body { -webkit-tap-highlight-color: transparent; }
-    </style>
+<style>
+    [x-cloak] {
+        display: none !important;
+    }
 
-    {% block extra_head %}{% endblock %}
+    html,
+    body {
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+        font-size: 14px;
+    }
+
+    button,
+    a,
+    input,
+    textarea,
+    select {
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    img {
+        display: block;
+    }
+</style>
+
+{% block extra_head %}{% endblock %}
+
+
 </head>
 
-<body class="h-full bg-white font-sans text-ink antialiased" x-data="{ searchOpen: false }">
+<body
+    class="min-h-full bg-white font-sans text-ink antialiased"
+    x-data="{ searchOpen: false }"
+>
 
-    <div class="md:flex md:min-h-full">
+<div class="min-h-screen">
 
-        {% if request.user.is_authenticated %}
-        <!-- ============================================================
-             DESKTOP SIDEBAR (md and up)
-        ============================================================= -->
-        <aside class="hidden md:flex md:fixed md:inset-y-0 md:left-0 md:z-40 md:w-24 md:flex-col md:items-center md:border-r md:border-line md:bg-white md:py-6">
 
-            <a href="" class="mb-8 flex h-10 w-10 items-center justify-center rounded-2xl bg-accent-500 text-white">
-                <span class="text-lg font-extrabold tracking-tight">P</span>
+{% if request.user.is_authenticated %}
+
+<!-- ============================================================
+     DESKTOP SIDEBAR
+============================================================= -->
+<aside
+    class="fixed inset-y-0 left-0 z-40 hidden w-[76px] flex-col items-center border-r border-line bg-white py-5 md:flex"
+>
+
+    <!-- Logo -->
+    <a
+        href=""
+        class="mb-7 flex h-9 w-9 items-center justify-center rounded-xl bg-accent-500 text-white shadow-sm"
+        aria-label="Pheral home"
+    >
+        <span class="text-base font-extrabold tracking-tight">P</span>
+    </a>
+
+
+    <!-- Navigation -->
+    <nav class="flex flex-1 flex-col items-center gap-1.5">
+
+        {% with nav_name=request.resolver_match.url_name %}
+
+        <!-- Chat -->
+        <a
+            href="{% url 'chat_list' %}"
+            class="group flex w-[60px] flex-col items-center gap-0.5 rounded-xl py-2 transition
+            {% if nav_name == 'chat_list' or nav_name == 'chat' or nav_name == 'chat_user' or nav_name == 'start_chat' or nav_name == 'group_list' or nav_name == 'group_create' or nav_name == 'group_chat' or nav_name == 'group_add_member' or nav_name == 'group_profile' %}
+                bg-accent-50 text-accent-600
+            {% else %}
+                text-muted hover:bg-surface hover:text-ink
+            {% endif %}"
+        >
+            <i data-lucide="message-circle" class="h-[18px] w-[18px]"></i>
+            <span class="text-[10px] font-medium">Chat</span>
+        </a>
+
+        {% endwith %}
+
+
+        <!-- Hire -->
+        <a
+            href="{% url 'hire' %}"
+            class="group flex w-[60px] flex-col items-center gap-0.5 rounded-xl py-2 transition
+            {% if request.resolver_match.url_name in 'hire,create_hire_job,hire_job_detail,send_hire_request' %}
+                bg-accent-50 text-accent-600
+            {% else %}
+                text-muted hover:bg-surface hover:text-ink
+            {% endif %}"
+        >
+            <i data-lucide="briefcase" class="h-[18px] w-[18px]"></i>
+            <span class="text-[10px] font-medium">Hire</span>
+        </a>
+
+
+        <!-- Status -->
+        <a
+            href="{% url 'status_list' %}"
+            class="group flex w-[60px] flex-col items-center gap-0.5 rounded-xl py-2 transition
+            {% if request.resolver_match.url_name in 'status_list,create_status,status_detail' %}
+                bg-accent-50 text-accent-600
+            {% else %}
+                text-muted hover:bg-surface hover:text-ink
+            {% endif %}"
+        >
+            <i data-lucide="circle-dashed" class="h-[18px] w-[18px]"></i>
+            <span class="text-[10px] font-medium">Status</span>
+        </a>
+
+
+        <!-- Feed -->
+        <a
+            href="{% url 'feed' %}"
+            class="group flex w-[60px] flex-col items-center gap-0.5 rounded-xl py-2 transition
+            {% if request.resolver_match.url_name in 'feed,create_post' %}
+                bg-accent-50 text-accent-600
+            {% else %}
+                text-muted hover:bg-surface hover:text-ink
+            {% endif %}"
+        >
+            <i data-lucide="newspaper" class="h-[18px] w-[18px]"></i>
+            <span class="text-[10px] font-medium">Feed</span>
+        </a>
+
+
+        <!-- Wallet -->
+        <a
+            href="{% url 'wallet' %}"
+            class="group flex w-[60px] flex-col items-center gap-0.5 rounded-xl py-2 transition
+            {% if request.resolver_match.url_name in 'wallet,top_up,top_up_callback,pay_user,global_pay,currency_converter,receipt_detail,bank_accounts,add_bank_account,resolve_bank_account,withdraw' %}
+                bg-accent-50 text-accent-600
+            {% else %}
+                text-muted hover:bg-surface hover:text-ink
+            {% endif %}"
+        >
+            <i data-lucide="wallet" class="h-[18px] w-[18px]"></i>
+            <span class="text-[10px] font-medium">Wallet</span>
+        </a>
+
+    </nav>
+
+
+    <!-- Profile -->
+    <div
+        class="relative"
+        x-data="{ open: false }"
+        @click.outside="open = false"
+    >
+
+        <button
+            type="button"
+            @click="open = !open"
+            class="block"
+            aria-label="Profile menu"
+        >
+
+            <span
+                class="flex w-[60px] flex-col items-center gap-0.5 rounded-xl py-2 transition
+                {% if request.resolver_match.url_name in 'profile,profile_user,profile_edit' %}
+                    bg-accent-50 text-accent-600
+                {% else %}
+                    text-muted hover:bg-surface hover:text-ink
+                {% endif %}"
+            >
+
+                {% if request.user.avatar %}
+
+                    <img
+                        src="{{ request.user.avatar.url }}"
+                        alt=""
+                        class="h-5 w-5 rounded-full object-cover ring-1 ring-white"
+                    >
+
+                {% else %}
+
+                    <i data-lucide="circle-user" class="h-[18px] w-[18px]"></i>
+
+                {% endif %}
+
+                <span class="text-[10px] font-medium">Me</span>
+
+            </span>
+
+        </button>
+
+
+        <!-- Profile menu -->
+        <div
+            x-show="open"
+            x-cloak
+            x-transition
+            class="absolute bottom-0 left-full ml-2 w-36 rounded-xl border border-line bg-white p-1 shadow-lg"
+        >
+
+            <a
+                href="{% url 'profile' %}"
+                class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-ink hover:bg-surface"
+            >
+                <i data-lucide="user" class="h-3.5 w-3.5"></i>
+                Profile
             </a>
 
-            <nav class="flex flex-1 flex-col items-center gap-2">
+            <a
+                href="{% url 'profile_edit' %}"
+                class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-ink hover:bg-surface"
+            >
+                <i data-lucide="settings" class="h-3.5 w-3.5"></i>
+                Edit profile
+            </a>
 
-                {% with nav_name=request.resolver_match.url_name %}
-                <a href="{% url 'chat_list' %}"
-                   class="group flex w-16 flex-col items-center gap-1 rounded-2xl py-2.5 transition
-                          {% if nav_name == 'chat_list' or nav_name == 'chat' or nav_name == 'chat_user' or nav_name == 'start_chat' or nav_name == 'group_list' or nav_name == 'group_create' or nav_name == 'group_chat' or nav_name == 'group_add_member' or nav_name == 'group_profile' %}bg-accent-50 text-accent-600{% else %}text-muted hover:bg-surface hover:text-ink{% endif %}">
-                    <i data-lucide="message-circle" class="h-5 w-5"></i>
-                    <span class="text-[11px] font-medium">Chat</span>
-                </a>
-                {% endwith %}
+            <a
+                href="{% url 'logout' %}"
+                class="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs text-red-600 hover:bg-red-50"
+            >
+                <i data-lucide="log-out" class="h-3.5 w-3.5"></i>
+                Log out
+            </a>
 
-                <a href="{% url 'hire' %}"
-                   class="group flex w-16 flex-col items-center gap-1 rounded-2xl py-2.5 transition
-                          {% if request.resolver_match.url_name in 'hire,create_hire_job,hire_job_detail,send_hire_request' %}bg-accent-50 text-accent-600{% else %}text-muted hover:bg-surface hover:text-ink{% endif %}">
-                    <i data-lucide="briefcase" class="h-5 w-5"></i>
-                    <span class="text-[11px] font-medium">Hire</span>
-                </a>
-
-                <a href="{% url 'status_list' %}"
-                   class="group flex w-16 flex-col items-center gap-1 rounded-2xl py-2.5 transition
-                          {% if request.resolver_match.url_name in 'status_list,create_status,status_detail' %}bg-accent-50 text-accent-600{% else %}text-muted hover:bg-surface hover:text-ink{% endif %}">
-                    <i data-lucide="circle-dashed" class="h-5 w-5"></i>
-                    <span class="text-[11px] font-medium">Status</span>
-                </a>
-
-                <a href="{% url 'feed' %}"
-                   class="group flex w-16 flex-col items-center gap-1 rounded-2xl py-2.5 transition
-                          {% if request.resolver_match.url_name in 'feed,create_post' %}bg-accent-50 text-accent-600{% else %}text-muted hover:bg-surface hover:text-ink{% endif %}">
-                    <i data-lucide="newspaper" class="h-5 w-5"></i>
-                    <span class="text-[11px] font-medium">Feed</span>
-                </a>
-
-                <a href="{% url 'wallet' %}"
-                   class="group flex w-16 flex-col items-center gap-1 rounded-2xl py-2.5 transition
-                          {% if request.resolver_match.url_name in 'wallet,top_up,top_up_callback,pay_user,global_pay,currency_converter,receipt_detail,bank_accounts,add_bank_account,resolve_bank_account,withdraw' %}bg-accent-50 text-accent-600{% else %}text-muted hover:bg-surface hover:text-ink{% endif %}">
-                    <i data-lucide="wallet" class="h-5 w-5"></i>
-                    <span class="text-[11px] font-medium">Wallet</span>
-                </a>
-
-            </nav>
-
-            <div class="flex flex-col items-center gap-3" x-data="{ open: false }" @click.outside="open = false">
-                <div class="relative">
-                    <button @click="open = !open" class="block">
-                        <a href="{% url 'profile' %}"
-                           class="flex w-16 flex-col items-center gap-1 rounded-2xl py-2.5 transition
-                                  {% if request.resolver_match.url_name in 'profile,profile_user,profile_edit' %}bg-accent-50 text-accent-600{% else %}text-muted hover:bg-surface hover:text-ink{% endif %}"
-                           @click.stop>
-                            {% if request.user.avatar %}
-                                <img src="{{ request.user.avatar.url }}" alt="" class="h-6 w-6 rounded-full object-cover ring-2 ring-white">
-                            {% else %}
-                                <i data-lucide="circle-user" class="h-5 w-5"></i>
-                            {% endif %}
-                            <span class="text-[11px] font-medium">Me</span>
-                        </a>
-                    </button>
-
-                    <div x-show="open" x-cloak x-transition
-                         class="absolute bottom-0 left-full ml-2 w-40 rounded-2xl border border-line bg-white p-1.5 shadow-lg">
-                        <a href="{% url 'profile' %}" class="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-ink hover:bg-surface">
-                            <i data-lucide="user" class="h-4 w-4"></i> Profile
-                        </a>
-                        <a href="{% url 'profile_edit' %}" class="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-ink hover:bg-surface">
-                            <i data-lucide="settings" class="h-4 w-4"></i> Edit profile
-                        </a>
-                        <a href="{% url 'logout' %}" class="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-red-600 hover:bg-red-50">
-                            <i data-lucide="log-out" class="h-4 w-4"></i> Log out
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </aside>
-        {% endif %}
-
-        <!-- ============================================================
-             MAIN COLUMN
-        ============================================================= -->
-        <div class="flex min-h-full w-full flex-col {% if request.user.is_authenticated %}md:pl-24{% endif %}">
-
-            {% if request.user.is_authenticated %}
-            <!-- Top bar -->
-            <header class="sticky top-0 z-30 border-b border-line bg-white/90 backdrop-blur">
-                <div class="flex items-center justify-between px-4 py-3 md:px-8">
-
-                    <div class="flex items-center gap-2 md:hidden">
-                        <span class="flex h-8 w-8 items-center justify-center rounded-xl bg-accent-500 text-sm font-extrabold text-white">P</span>
-                        <span class="text-base font-bold tracking-tight">Pheral</span>
-                    </div>
-
-                    <h1 class="hidden text-lg font-semibold text-ink md:block">{% block page_title %}{% endblock %}</h1>
-                     <div class="flex items-center gap-1">
-                        <a href="{% url 'agent' %}" class="rounded-full p-2 transition hover:bg-surface hover:text-ink {% if request.resolver_match.url_name == 'agent' or request.resolver_match.url_name == 'agent_command' %}text-accent-600{% else %}text-muted{% endif %}" aria-label="Agent mode">
-                            <i data-lucide="bot" class="h-5 w-5"></i>
-                        </a>
-                        <button @click="searchOpen = !searchOpen" class="rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink" aria-label="Search">
-                            <i data-lucide="search" class="h-5 w-5"></i>
-                        </button>
-                        <a href="{% url 'notifications' %}" class="relative rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink" aria-label="Notifications">
-                            <i data-lucide="bell" class="h-5 w-5"></i>
-                            {% if unread_notifications %}
-                                <span class="absolute right-1.5 top-1.5 flex h-2 w-2 rounded-full bg-accent-500 ring-2 ring-white"></span>
-                            {% endif %}
-                        </a>
-                    </div>
-                </div>
-
-                <div x-show="searchOpen" x-cloak x-transition.origin.top
-                     class="border-t border-line px-4 py-3 md:px-8">
-                    <form method="get" action="{% url 'search' %}" class="flex items-center gap-2">
-                        <div class="flex flex-1 items-center gap-2 rounded-2xl bg-surface px-4 py-2.5">
-                            <i data-lucide="search" class="h-4 w-4 text-muted"></i>
-                            <input
-                                type="text"
-                                name="q"
-                                placeholder="Search Pheral"
-                                autocomplete="off"
-                                x-ref="searchInput"
-                                x-init="$watch('searchOpen', v => v && setTimeout(() => $refs.searchInput.focus(), 50))"
-                                class="w-full bg-transparent text-sm text-ink placeholder-muted focus:outline-none">
-                        </div>
-                    </form>
-                </div>
-            </header>
-            {% endif %}
-
-            {% if messages %}
-                <div class="space-y-2 px-4 pt-4 md:px-8">
-                    {% for message in messages %}
-                        <div class="flex items-start gap-2 rounded-2xl border px-4 py-3 text-sm
-                                    {% if message.tags == 'error' %}border-red-100 bg-red-50 text-red-700
-                                    {% elif message.tags == 'success' %}border-accent-100 bg-accent-50 text-accent-700
-                                    {% else %}border-line bg-surface text-ink{% endif %}">
-                            {{ message }}
-                        </div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-
-            <!-- Page content -->
-            <main class="flex-1 {% if request.user.is_authenticated %}pb-24 md:pb-10{% endif %}">
-                {% block content %}{% endblock %}
-            </main>
         </div>
+
     </div>
 
+</aside>
+
+{% endif %}
+
+
+
+<!-- ============================================================
+     MAIN COLUMN
+============================================================= -->
+
+<div
+    class="min-h-screen w-full
     {% if request.user.is_authenticated %}
-    <!-- ============================================================
-         MOBILE BOTTOM NAV (below md)
-    ============================================================= -->
-    <nav class="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white shadow-nav md:hidden"
-         style="padding-bottom: env(safe-area-inset-bottom);">
-        <div class="grid grid-cols-6">
+        md:pl-[76px]
+    {% endif %}"
+>
 
-            {% with nav_name=request.resolver_match.url_name %}
-            <a href="{% url 'chat_list' %}"
-               class="flex flex-col items-center gap-1 py-2.5
-                      {% if nav_name == 'chat_list' or nav_name == 'chat' or nav_name == 'chat_user' or nav_name == 'start_chat' or nav_name == 'group_list' or nav_name == 'group_create' or nav_name == 'group_chat' or nav_name == 'group_add_member' or nav_name == 'group_profile' %}text-accent-600{% else %}text-muted{% endif %}">
-                <i data-lucide="message-circle" class="h-5 w-5"></i>
-                <span class="text-[10px] font-medium">Chat</span>
-            </a>
-            {% endwith %}
 
-            <a href="{% url 'hire' %}"
-               class="flex flex-col items-center gap-1 py-2.5
-                      {% if request.resolver_match.url_name in 'hire,create_hire_job,hire_job_detail,send_hire_request' %}text-accent-600{% else %}text-muted{% endif %}">
-                <i data-lucide="briefcase" class="h-5 w-5"></i>
-                <span class="text-[10px] font-medium">Hire</span>
-            </a>
+    {% if request.user.is_authenticated %}
 
-            <a href="{% url 'status_list' %}"
-               class="flex flex-col items-center gap-1 py-2.5
-                      {% if request.resolver_match.url_name in 'status_list,create_status,status_detail' %}text-accent-600{% else %}text-muted{% endif %}">
-                <i data-lucide="circle-dashed" class="h-5 w-5"></i>
-                <span class="text-[10px] font-medium">Status</span>
-            </a>
+    <!-- ========================================================
+         TOP BAR
+    ========================================================= -->
 
-            <a href="{% url 'feed' %}"
-               class="flex flex-col items-center gap-1 py-2.5
-                      {% if request.resolver_match.url_name in 'feed,create_post' %}text-accent-600{% else %}text-muted{% endif %}">
-                <i data-lucide="newspaper" class="h-5 w-5"></i>
-                <span class="text-[10px] font-medium">Feed</span>
-            </a>
+    <header
+        class="sticky top-0 z-30 border-b border-line bg-white/95 backdrop-blur"
+    >
 
-            <a href="{% url 'wallet' %}"
-               class="flex flex-col items-center gap-1 py-2.5
-                      {% if request.resolver_match.url_name in 'wallet,top_up,top_up_callback,pay_user,global_pay,currency_converter,receipt_detail,bank_accounts,add_bank_account,resolve_bank_account,withdraw' %}text-accent-600{% else %}text-muted{% endif %}">
-                <i data-lucide="wallet" class="h-5 w-5"></i>
-                <span class="text-[10px] font-medium">Wallet</span>
-            </a>
+        <div
+            class="mx-auto flex h-[54px] max-w-5xl items-center justify-between px-4 md:h-[58px] md:px-7"
+        >
 
-            <a href="{% url 'profile' %}"
-               class="flex flex-col items-center gap-1 py-2.5
-                      {% if request.resolver_match.url_name in 'profile,profile_user,profile_edit' %}text-accent-600{% else %}text-muted{% endif %}">
-                {% if request.user.avatar %}
-                    <img src="{{ request.user.avatar.url }}" alt="" class="h-5 w-5 rounded-full object-cover">
-                {% else %}
-                    <i data-lucide="circle-user" class="h-5 w-5"></i>
-                {% endif %}
-                <span class="text-[10px] font-medium">Me</span>
-            </a>
+            <!-- Mobile brand -->
+            <div class="flex items-center gap-2 md:hidden">
+
+                <span
+                    class="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-500 text-[12px] font-extrabold text-white"
+                >
+                    P
+                </span>
+
+                <span class="text-sm font-bold tracking-tight">
+                    Pheral
+                </span>
+
+            </div>
+
+
+            <!-- Desktop page title -->
+            <h1
+                class="hidden text-[15px] font-semibold tracking-tight text-ink md:block"
+            >
+                {% block page_title %}{% endblock %}
+            </h1>
+
+
+            <!-- Header actions -->
+            <div class="ml-auto flex items-center gap-0.5">
+
+                <!-- Agent -->
+                <a
+                    href="{% url 'agent' %}"
+                    class="rounded-full p-2 transition hover:bg-surface hover:text-ink
+                    {% if request.resolver_match.url_name == 'agent' or request.resolver_match.url_name == 'agent_command' %}
+                        text-accent-600
+                    {% else %}
+                        text-muted
+                    {% endif %}"
+                    aria-label="Agent mode"
+                >
+                    <i data-lucide="bot" class="h-[18px] w-[18px]"></i>
+                </a>
+
+
+                <!-- Search -->
+                <button
+                    type="button"
+                    @click="searchOpen = !searchOpen"
+                    class="rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink"
+                    aria-label="Search"
+                >
+                    <i data-lucide="search" class="h-[18px] w-[18px]"></i>
+                </button>
+
+
+                <!-- Notifications -->
+                <a
+                    href="{% url 'notifications' %}"
+                    class="relative rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink"
+                    aria-label="Notifications"
+                >
+                    <i data-lucide="bell" class="h-[18px] w-[18px]"></i>
+
+                    {% if unread_notifications %}
+                        <span
+                            class="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent-500 ring-2 ring-white"
+                        ></span>
+                    {% endif %}
+
+                </a>
+
+            </div>
 
         </div>
-    </nav>
+
+
+        <!-- Search panel -->
+        <div
+            x-show="searchOpen"
+            x-cloak
+            x-transition.origin.top
+            class="border-t border-line"
+        >
+
+            <div class="mx-auto max-w-5xl px-4 py-2.5 md:px-7">
+
+                <form
+                    method="get"
+                    action="{% url 'search' %}"
+                    class="flex items-center gap-2"
+                >
+
+                    <div
+                        class="flex h-10 flex-1 items-center gap-2 rounded-xl bg-surface px-3"
+                    >
+
+                        <i
+                            data-lucide="search"
+                            class="h-3.5 w-3.5 text-muted"
+                        ></i>
+
+                        <input
+                            type="text"
+                            name="q"
+                            placeholder="Search Pheral"
+                            autocomplete="off"
+                            x-ref="searchInput"
+                            x-init="$watch('searchOpen', v => v && setTimeout(() => $refs.searchInput.focus(), 50))"
+                            class="w-full bg-transparent text-[13px] text-ink placeholder-muted focus:outline-none"
+                        >
+
+                    </div>
+
+                </form>
+
+            </div>
+
+        </div>
+
+    </header>
+
     {% endif %}
 
-    <script>
-        lucide.createIcons();
-        document.addEventListener('alpine:navigated', () => lucide.createIcons());
-    </script>
 
-    {% block extra_scripts %}{% endblock %}
+
+    <!-- ========================================================
+         FLASH MESSAGES
+    ========================================================= -->
+
+    {% if messages %}
+
+        <div class="mx-auto max-w-5xl space-y-1.5 px-4 pt-3 md:px-7">
+
+            {% for message in messages %}
+
+                <div
+                    class="flex items-start gap-2 rounded-xl border px-3 py-2.5 text-xs
+                    {% if message.tags == 'error' %}
+                        border-red-100 bg-red-50 text-red-700
+                    {% elif message.tags == 'success' %}
+                        border-accent-100 bg-accent-50 text-accent-700
+                    {% else %}
+                        border-line bg-surface text-ink
+                    {% endif %}"
+                >
+                    {{ message }}
+                </div>
+
+            {% endfor %}
+
+        </div>
+
+    {% endif %}
+
+
+
+    <!-- ========================================================
+         PAGE CONTENT
+    ========================================================= -->
+
+    <main
+        class="min-h-[calc(100vh-54px)]
+        {% if request.user.is_authenticated %}
+            pb-20 md:min-h-[calc(100vh-58px)] md:pb-8
+        {% endif %}"
+    >
+
+        {% block content %}{% endblock %}
+
+    </main>
+
+</div>
+
+
+
+{% if request.user.is_authenticated %}
+
+<!-- ============================================================
+     MOBILE BOTTOM NAV
+============================================================= -->
+
+<nav
+    class="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 shadow-nav backdrop-blur md:hidden"
+    style="padding-bottom: env(safe-area-inset-bottom);"
+>
+
+    <div class="grid h-[58px] grid-cols-6">
+
+        {% with nav_name=request.resolver_match.url_name %}
+
+        <!-- Chat -->
+        <a
+            href="{% url 'chat_list' %}"
+            class="flex flex-col items-center justify-center gap-0.5
+            {% if nav_name == 'chat_list' or nav_name == 'chat' or nav_name == 'chat_user' or nav_name == 'start_chat' or nav_name == 'group_list' or nav_name == 'group_create' or nav_name == 'group_chat' or nav_name == 'group_add_member' or nav_name == 'group_profile' %}
+                text-accent-600
+            {% else %}
+                text-muted
+            {% endif %}"
+        >
+            <i data-lucide="message-circle" class="h-[18px] w-[18px]"></i>
+            <span class="text-[9px] font-medium">Chat</span>
+        </a>
+
+        {% endwith %}
+
+
+        <!-- Hire -->
+        <a
+            href="{% url 'hire' %}"
+            class="flex flex-col items-center justify-center gap-0.5
+            {% if request.resolver_match.url_name in 'hire,create_hire_job,hire_job_detail,send_hire_request' %}
+                text-accent-600
+            {% else %}
+                text-muted
+            {% endif %}"
+        >
+            <i data-lucide="briefcase" class="h-[18px] w-[18px]"></i>
+            <span class="text-[9px] font-medium">Hire</span>
+        </a>
+
+
+        <!-- Status -->
+        <a
+            href="{% url 'status_list' %}"
+            class="flex flex-col items-center justify-center gap-0.5
+            {% if request.resolver_match.url_name in 'status_list,create_status,status_detail' %}
+                text-accent-600
+            {% else %}
+                text-muted
+            {% endif %}"
+        >
+            <i data-lucide="circle-dashed" class="h-[18px] w-[18px]"></i>
+            <span class="text-[9px] font-medium">Status</span>
+        </a>
+
+
+        <!-- Feed -->
+        <a
+            href="{% url 'feed' %}"
+            class="flex flex-col items-center justify-center gap-0.5
+            {% if request.resolver_match.url_name in 'feed,create_post' %}
+                text-accent-600
+            {% else %}
+                text-muted
+            {% endif %}"
+        >
+            <i data-lucide="newspaper" class="h-[18px] w-[18px]"></i>
+            <span class="text-[9px] font-medium">Feed</span>
+        </a>
+
+
+        <!-- Wallet -->
+        <a
+            href="{% url 'wallet' %}"
+            class="flex flex-col items-center justify-center gap-0.5
+            {% if request.resolver_match.url_name in 'wallet,top_up,top_up_callback,pay_user,global_pay,currency_converter,receipt_detail,bank_accounts,add_bank_account,resolve_bank_account,withdraw' %}
+                text-accent-600
+            {% else %}
+                text-muted
+            {% endif %}"
+        >
+            <i data-lucide="wallet" class="h-[18px] w-[18px]"></i>
+            <span class="text-[9px] font-medium">Wallet</span>
+        </a>
+
+
+        <!-- Profile -->
+        <a
+            href="{% url 'profile' %}"
+            class="flex flex-col items-center justify-center gap-0.5
+            {% if request.resolver_match.url_name in 'profile,profile_user,profile_edit' %}
+                text-accent-600
+            {% else %}
+                text-muted
+            {% endif %}"
+        >
+
+            {% if request.user.avatar %}
+
+                <img
+                    src="{{ request.user.avatar.url }}"
+                    alt=""
+                    class="h-[18px] w-[18px] rounded-full object-cover"
+                >
+
+            {% else %}
+
+                <i data-lucide="circle-user" class="h-[18px] w-[18px]"></i>
+
+            {% endif %}
+
+            <span class="text-[9px] font-medium">Me</span>
+
+        </a>
+
+    </div>
+
+</nav>
+
+{% endif %}
+
+
+
+<!-- ============================================================
+     ICON INITIALIZATION
+============================================================= -->
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+    });
+
+    document.addEventListener("alpine:navigated", function () {
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+    });
+</script>
+
+
+{% block extra_scripts %}{% endblock %}
+
+
 </body>
 </html>

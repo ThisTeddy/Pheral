@@ -1,85 +1,242 @@
+
 {% extends "base.html" %}
 
 {% block title %}Status · Pheral{% endblock %}
 {% block page_title %}Status{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-2xl">
+<div class="mx-auto w-full max-w-3xl">
 
-    <h1 class="px-4 pt-4 text-2xl font-bold tracking-tight text-ink md:hidden">Status</h1>
+    <!-- Header -->
+    <div class="flex items-end justify-between px-4 pt-4 md:px-8 md:pt-7">
+        <div>
+            <h1 class="text-xl font-semibold tracking-tight text-ink md:text-lg">
+                Status
+            </h1>
+            <p class="mt-0.5 text-[11px] text-muted md:text-xs">
+                Share what’s happening
+            </p>
+        </div>
+
+        <a
+            href="{% url 'create_status' %}"
+            class="hidden items-center gap-1.5 rounded-xl bg-accent-500 px-3.5 py-2 text-[12px] font-semibold text-white transition hover:bg-accent-600 md:inline-flex"
+        >
+            <i data-lucide="plus" class="h-3.5 w-3.5"></i>
+            New status
+        </a>
+    </div>
+
 
     <!-- My status -->
-    <div class="px-4 pt-4">
-        <a href="{% if my_status %}{% url 'status_detail' status_id=my_status.latest.id %}{% else %}{% url 'create_status' %}{% endif %}"
-           class="flex items-center gap-3 rounded-2xl px-2 py-2 transition hover:bg-surface">
+    <section class="px-4 pt-5 md:px-8">
+
+        <a
+            href="{% if my_status %}{% url 'status_detail' status_id=my_status.latest.id %}{% else %}{% url 'create_status' %}{% endif %}"
+            class="group flex items-center gap-3.5 rounded-2xl border border-line bg-white px-3 py-3 transition hover:border-accent-200 hover:bg-surface md:px-4"
+        >
+
+            <!-- Avatar -->
             <div class="relative shrink-0">
+
                 <div class="{% if my_status %}rounded-full p-[2px] ring-2 ring-accent-500{% endif %}">
                     {% if request.user.avatar %}
-                        <img src="{{ request.user.avatar.url }}" alt="" class="h-14 w-14 rounded-full object-cover">
+                        <img
+                            src="{{ request.user.avatar.url }}"
+                            alt=""
+                            class="h-12 w-12 rounded-full object-cover md:h-11 md:w-11"
+                        >
                     {% else %}
-                        <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-100 text-lg font-semibold text-accent-700">
+                        <div class="flex h-12 w-12 items-center justify-center rounded-full bg-accent-100 text-sm font-semibold text-accent-700 md:h-11 md:w-11">
                             {{ request.user.username|first|upper }}
                         </div>
                     {% endif %}
                 </div>
+
                 {% if not my_status %}
-                    <span class="absolute bottom-0 right-0 flex h-5 w-5 items-center justify-center rounded-full bg-accent-500 text-white ring-2 ring-white">
-                        <i data-lucide="plus" class="h-3.5 w-3.5"></i>
+                    <span class="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-accent-500 text-white ring-2 ring-white">
+                        <i data-lucide="plus" class="h-3 w-3"></i>
                     </span>
                 {% endif %}
+
             </div>
+
+
+            <!-- Info -->
             <div class="min-w-0 flex-1">
-                <p class="text-[15px] font-semibold text-ink">My status</p>
-                <p class="truncate text-xs text-muted">
+
+                <div class="flex items-center justify-between gap-3">
+                    <p class="text-[13px] font-semibold text-ink md:text-sm">
+                        My status
+                    </p>
+
                     {% if my_status %}
-                        {{ my_status.count }} update{{ my_status.count|pluralize }} · tap to view
+                        <span class="shrink-0 text-[10px] font-medium text-accent-600">
+                            {{ my_status.count }} update{{ my_status.count|pluralize }}
+                        </span>
+                    {% endif %}
+                </div>
+
+                <p class="mt-0.5 truncate text-[11px] text-muted">
+                    {% if my_status %}
+                        {{ my_status.latest.created_at|timesince }} ago · Tap to view
                     {% else %}
-                        Tap to add a status update
+                        Share a photo, thought or update
                     {% endif %}
                 </p>
+
             </div>
+
+
+            <!-- Arrow -->
+            <i
+                data-lucide="chevron-right"
+                class="h-4 w-4 shrink-0 text-muted transition group-hover:translate-x-0.5 group-hover:text-accent-500"
+            ></i>
+
         </a>
-    </div>
+
+    </section>
+
 
     <!-- Recent updates -->
     {% if other_statuses %}
-        <p class="px-4 pb-2 pt-4 text-xs font-semibold uppercase tracking-wide text-muted">Recent updates</p>
-        <div class="px-4 pb-4">
-            {% for group in other_statuses %}
-                <a href="{% url 'status_detail' status_id=group.latest.id %}"
-                   class="flex items-center gap-3 rounded-2xl px-2 py-2 transition hover:bg-surface">
-                    <div class="relative shrink-0 rounded-full p-[2px] ring-2 ring-accent-500">
-                        {% if group.user.avatar %}
-                            <img src="{{ group.user.avatar.url }}" alt="" class="h-14 w-14 rounded-full object-cover">
-                        {% else %}
-                            <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-100 text-lg font-semibold text-accent-700">
-                                {{ group.user.username|first|upper }}
-                            </div>
-                        {% endif %}
-                    </div>
-                    <div class="min-w-0 flex-1">
-                        <p class="truncate text-[15px] font-semibold text-ink">{{ group.user.display_name|default:group.user.username }}</p>
-                        <p class="truncate text-xs text-muted">
-                            {{ group.count }} update{{ group.count|pluralize }} · {{ group.latest.created_at|timesince }} ago
-                        </p>
-                    </div>
-                </a>
-            {% endfor %}
-        </div>
-    {% else %}
-        <div class="flex flex-col items-center gap-3 px-4 py-16 text-center">
-            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-accent-50">
-                <i data-lucide="circle-dashed" class="h-7 w-7 text-accent-500"></i>
+
+        <div class="px-4 pb-2 pt-7 md:px-8">
+
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+                        Recent updates
+                    </p>
+                    <p class="mt-0.5 text-[10px] text-muted/80">
+                        From people you know
+                    </p>
+                </div>
+
+                <span class="text-[10px] text-muted">
+                    24h
+                </span>
             </div>
-            <p class="text-base font-semibold text-ink">No status updates yet</p>
-            <p class="max-w-xs text-sm text-muted">Updates from your contacts will show up here for 24 hours.</p>
+
         </div>
+
+
+        <section class="px-4 md:px-8">
+            <div class="overflow-hidden rounded-2xl border border-line bg-white">
+
+                {% for group in other_statuses %}
+
+                    <a
+                        href="{% url 'status_detail' status_id=group.latest.id %}"
+                        class="group flex items-center gap-3.5 border-b border-line px-3 py-3 last:border-b-0 transition hover:bg-surface md:px-4"
+                    >
+
+                        <!-- Avatar -->
+                        <div class="relative shrink-0 rounded-full p-[2px] ring-2 ring-accent-500">
+
+                            {% if group.user.avatar %}
+                                <img
+                                    src="{{ group.user.avatar.url }}"
+                                    alt=""
+                                    class="h-11 w-11 rounded-full object-cover"
+                                >
+                            {% else %}
+                                <div class="flex h-11 w-11 items-center justify-center rounded-full bg-accent-100 text-sm font-semibold text-accent-700">
+                                    {{ group.user.username|first|upper }}
+                                </div>
+                            {% endif %}
+
+                        </div>
+
+
+                        <!-- Status info -->
+                        <div class="min-w-0 flex-1">
+
+                            <div class="flex items-center justify-between gap-3">
+
+                                <p class="truncate text-[13px] font-semibold text-ink">
+                                    {{ group.user.display_name|default:group.user.username }}
+                                </p>
+
+                                <span class="shrink-0 text-[10px] text-muted">
+                                    {{ group.latest.created_at|timesince }}
+                                </span>
+
+                            </div>
+
+                            <div class="mt-0.5 flex items-center gap-1.5">
+
+                                <span class="text-[11px] text-muted">
+                                    {{ group.count }} update{{ group.count|pluralize }}
+                                </span>
+
+                                <span class="h-0.5 w-0.5 rounded-full bg-line"></span>
+
+                                <span class="text-[11px] text-muted">
+                                    Tap to view
+                                </span>
+
+                            </div>
+
+                        </div>
+
+
+                        <i
+                            data-lucide="chevron-right"
+                            class="h-4 w-4 shrink-0 text-muted transition group-hover:translate-x-0.5 group-hover:text-accent-500"
+                        ></i>
+
+                    </a>
+
+                {% endfor %}
+
+            </div>
+        </section>
+
+    {% else %}
+
+        <!-- Empty state -->
+        <section class="px-4 pt-14 md:px-8 md:pt-16">
+
+            <div class="mx-auto flex max-w-sm flex-col items-center rounded-3xl border border-line bg-surface/60 px-6 py-10 text-center">
+
+                <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-50">
+                    <i data-lucide="circle-dashed" class="h-6 w-6 text-accent-500"></i>
+                </div>
+
+                <p class="mt-4 text-sm font-semibold text-ink">
+                    Nothing here yet
+                </p>
+
+                <p class="mt-1.5 max-w-xs text-[11px] leading-5 text-muted">
+                    Updates from your contacts will appear here and remain visible for 24 hours.
+                </p>
+
+                <a
+                    href="{% url 'create_status' %}"
+                    class="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-accent-500 px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-accent-600"
+                >
+                    <i data-lucide="plus" class="h-3.5 w-3.5"></i>
+                    Create status
+                </a>
+
+            </div>
+
+        </section>
+
     {% endif %}
+
 </div>
 
-<a href="{% url 'create_status' %}"
-   class="fixed bottom-24 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-accent-500 text-white shadow-lg transition hover:bg-accent-600 md:hidden"
-   aria-label="Add status">
-    <i data-lucide="camera" class="h-6 w-6"></i>
+
+<!-- Floating create button -->
+<a
+    href="{% url 'create_status' %}"
+    class="fixed bottom-24 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-500 text-white shadow-lg shadow-accent-500/20 transition hover:bg-accent-600 active:scale-95 md:hidden"
+    aria-label="Add status"
+>
+    <i data-lucide="camera" class="h-5 w-5"></i>
 </a>
+
 {% endblock %}

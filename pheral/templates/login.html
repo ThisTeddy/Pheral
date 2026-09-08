@@ -1,783 +1,107 @@
 {% load static %}
-
 <!DOCTYPE html>
-
-<html lang="en">
+<html lang="en" class="h-full bg-white">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Log in · Pheral</title>
 
+    <link rel="manifest" href="{% url 'pwa_manifest' %}">
+    <meta name="theme-color" content="#7C3AED">
+    <link rel="apple-touch-icon" href="{% static 'images/pheral-logo.png' %}">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Pheral">
+    <link rel="icon" type="image/png" href="{% static 'images/pheral-logo.png' %}">
 
-<meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-<meta name="theme-color" content="#ffffff">
-
-<title>Log in — Pheral</title>
-
-<script src="https://cdn.tailwindcss.com"></script>
-
-<script
-    defer
-    src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
-></script>
-
-<script>
-    tailwind.config = {
-        theme: {
-            extend: {
-                fontFamily: {
-                    sans: [
-                        "Inter",
-                        "ui-sans-serif",
-                        "system-ui",
-                        "-apple-system",
-                        "BlinkMacSystemFont",
-                        "Segoe UI",
-                        "sans-serif"
-                    ]
-                }
-            }
-        }
-    };
-</script>
-
-<style>
-    [x-cloak] {
-        display: none !important;
-    }
-
-    html {
-        background: #ffffff;
-    }
-
-    body {
-        -webkit-font-smoothing: antialiased;
-        text-rendering: optimizeLegibility;
-    }
-
-    input {
-        outline: none;
-    }
-
-    input:focus {
-        border-color: #7c3aed;
-        box-shadow: 0 0 0 1px #7c3aed;
-    }
-
-    ::selection {
-        background: #ede9fe;
-        color: #5b21b6;
-    }
-</style>
-
-
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['"Plus Jakarta Sans"', 'sans-serif'] },
+                    colors: {
+                        ink: '#1C1730', muted: '#8B84A3', line: '#EAE6F4', surface: '#FAF9FE',
+                        accent: { 50: '#F5F1FE', 100: '#EBE3FD', 200: '#D3C2FA', 400: '#9A6BF0', 500: '#7C3AED', 600: '#6D28D9', 700: '#5B21B6' },
+                    },
+                },
+            },
+        };
+    </script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>[x-cloak]{display:none!important} html,body{-webkit-tap-highlight-color:transparent}</style>
 </head>
 
-<body
-    x-data
-    class="min-h-screen bg-white text-zinc-950"
->
+<body class="flex h-full min-h-screen flex-col bg-white font-sans text-ink antialiased" x-data="{ showPassword: false }">
 
-<!-- =========================================================
-     STICKY HEADER
-========================================================= -->
-
-<header
-    x-data="{ open: false }"
-    class="
-        sticky
-        top-0
-        z-50
-        border-b
-        border-zinc-100
-        bg-white/95
-        backdrop-blur
-    "
->
-
-
-<div
-    class="
-        mx-auto
-        flex
-        h-16
-        max-w-7xl
-        items-center
-        justify-between
-        px-5
-        sm:px-8
-        lg:px-10
-    "
->
-
-    <!-- LOGO -->
-
-    <a
-        href="{% url 'landing' %}"
-        class="flex items-center gap-2.5"
-    >
-
-        <img
-            src="{% static 'images/pheral-logo.png' %}"
-            alt="Pheral"
-            class="h-7 w-7 object-contain"
-        >
-
-        <span
-            class="
-                text-sm
-                font-semibold
-                tracking-[-0.02em]
-            "
-        >
-            Pheral
-        </span>
-
-    </a>
-
-
-    <!-- DESKTOP REGISTER -->
-
-    <div class="hidden text-xs text-zinc-500 sm:block">
-
-        Don't have an account?
-
-        <a
-            href="{% url 'register' %}"
-            class="
-                ml-1
-                font-medium
-                text-zinc-950
-                hover:text-violet-600
-            "
-        >
-            Sign up
+    <header class="flex items-center gap-2 px-5 py-5 md:px-10">
+        <a href="{% url 'landing' %}" class="flex items-center gap-2">
+            <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-accent-500 text-sm font-extrabold text-white">P</span>
+            <span class="text-lg font-bold tracking-tight">Pheral</span>
         </a>
+    </header>
 
-    </div>
+    <main class="flex flex-1 items-center justify-center px-5 pb-10">
+        <div class="w-full max-w-sm">
 
-
-    <!-- MOBILE MENU BUTTON -->
-
-    <button
-        type="button"
-        @click="open = !open"
-        :aria-expanded="open"
-        aria-label="Open navigation menu"
-        class="
-            flex
-            h-9
-            w-9
-            items-center
-            justify-center
-            border
-            border-zinc-200
-            bg-white
-            text-zinc-700
-            transition
-            hover:bg-zinc-50
-            sm:hidden
-        "
-    >
-
-        <svg
-            x-show="!open"
-            xmlns="http://www.w3.org/2000/svg"
-            width="17"
-            height="17"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-        >
-            <line x1="4" y1="6" x2="20" y2="6"></line>
-            <line x1="4" y1="12" x2="20" y2="12"></line>
-            <line x1="4" y1="18" x2="20" y2="18"></line>
-        </svg>
-
-
-        <svg
-            x-show="open"
-            x-cloak
-            xmlns="http://www.w3.org/2000/svg"
-            width="17"
-            height="17"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.8"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-        >
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-        </svg>
-
-    </button>
-
-</div>
-
-
-<!-- MOBILE MENU -->
-
-<div
-    x-show="open"
-    x-cloak
-    x-transition:enter="transition ease-out duration-150"
-    x-transition:enter-start="opacity-0 -translate-y-1"
-    x-transition:enter-end="opacity-100 translate-y-0"
-    x-transition:leave="transition ease-in duration-100"
-    x-transition:leave-start="opacity-100 translate-y-0"
-    x-transition:leave-end="opacity-0 -translate-y-1"
-    @click.outside="open = false"
-    class="
-        absolute
-        left-4
-        right-4
-        top-[72px]
-        border
-        border-zinc-200
-        bg-white
-        shadow-sm
-        sm:hidden
-    "
->
-
-    <div class="p-2">
-
-        <a
-            href="{% url 'landing' %}"
-            @click="open = false"
-            class="
-                flex
-                items-center
-                justify-between
-                px-3
-                py-3
-                text-xs
-                font-medium
-                text-zinc-700
-                hover:bg-zinc-50
-            "
-        >
-            Home
-
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-            >
-                <path d="m9 18 6-6-6-6"></path>
-            </svg>
-
-        </a>
-
-
-        <a
-            href="{% url 'register' %}"
-            @click="open = false"
-            class="
-                flex
-                items-center
-                justify-between
-                border-t
-                border-zinc-100
-                px-3
-                py-3
-                text-xs
-                font-medium
-                text-zinc-700
-                hover:bg-zinc-50
-            "
-        >
-            Create account
-
-            <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-            >
-                <path d="m9 18 6-6-6-6"></path>
-            </svg>
-
-        </a>
-
-    </div>
-
-</div>
-
-
-</header>
-
-<!-- =========================================================
-     MAIN
-========================================================= -->
-
-<main>
-
-
-<div
-    class="
-        mx-auto
-        grid
-        min-h-[calc(100vh-64px)]
-        max-w-7xl
-        lg:grid-cols-2
-    "
->
-
-
-    <!-- =================================================
-         LEFT SIDE
-    ================================================== -->
-
-    <section
-        class="
-            hidden
-            border-r
-            border-zinc-100
-            bg-zinc-50
-            px-10
-            py-16
-            lg:flex
-            lg:flex-col
-            lg:justify-between
-        "
-    >
-
-        <div>
-
-            <p
-                class="
-                    text-[10px]
-                    font-semibold
-                    uppercase
-                    tracking-[.16em]
-                    text-violet-600
-                "
-            >
-                Pheral
-            </p>
-
-
-            <h1
-                class="
-                    mt-8
-                    max-w-lg
-                    text-5xl
-                    font-semibold
-                    leading-[1.03]
-                    tracking-[-.05em]
-                "
-            >
-                Everything you need
-                to connect and transact.
-            </h1>
-
-
-            <p
-                class="
-                    mt-7
-                    max-w-md
-                    text-sm
-                    leading-7
-                    text-zinc-500
-                "
-            >
-                Access your conversations, payments and
-                professional connections from one account.
-            </p>
-
-        </div>
-
-
-        <div
-            class="
-                border-t
-                border-zinc-200
-                pt-5
-            "
-        >
-
-            <div class="grid grid-cols-3 gap-6">
-
-                <div>
-
-                    <p class="text-xs font-semibold">
-                        Chat
-                    </p>
-
-                    <p class="mt-1 text-[10px] text-zinc-400">
-                        Conversations
-                    </p>
-
-                </div>
-
-
-                <div>
-
-                    <p class="text-xs font-semibold">
-                        Pay
-                    </p>
-
-                    <p class="mt-1 text-[10px] text-zinc-400">
-                        Direct payments
-                    </p>
-
-                </div>
-
-
-                <div>
-
-                    <p class="text-xs font-semibold">
-                        Hire
-                    </p>
-
-                    <p class="mt-1 text-[10px] text-zinc-400">
-                        Professional services
-                    </p>
-
-                </div>
-
-            </div>
-
-        </div>
-
-    </section>
-
-
-    <!-- =================================================
-         LOGIN FORM
-    ================================================== -->
-
-    <section
-        class="
-            flex
-            items-center
-            px-5
-            py-12
-            sm:px-10
-            lg:px-16
-            xl:px-24
-        "
-    >
-
-        <div class="w-full max-w-md">
-
-
-            <!-- HEADING -->
-
-            <div class="mb-8">
-
-                <h2
-                    class="
-                        text-3xl
-                        font-semibold
-                        tracking-[-.04em]
-                    "
-                >
-                    Missed Us? 
-                </h2>
-
-                <p
-                    class="
-                        mt-2
-                        text-sm
-                        leading-6
-                        text-zinc-500
-                    "
-                >
-                   Missed U too ! Login then
-                </p>
-
-            </div>
-
-
-            <!-- MESSAGES -->
+            <h1 class="mb-1 text-2xl font-bold tracking-tight text-ink">Welcome back</h1>
+            <p class="mb-6 text-sm text-muted">Log in with your phone number and password.</p>
 
             {% if messages %}
-
-                <div class="mb-6 space-y-2">
-
+                <div class="mb-4 space-y-2">
                     {% for message in messages %}
-
-                        <div
-                            class="
-                                border
-                                border-red-200
-                                bg-red-50
-                                px-4
-                                py-3
-                                text-xs
-                                leading-5
-                                text-red-700
-                            "
-                        >
+                        <div class="flex items-start gap-2 rounded-2xl border px-4 py-3 text-sm
+                                    {% if message.tags == 'error' %}border-red-100 bg-red-50 text-red-700
+                                    {% else %}border-accent-100 bg-accent-50 text-accent-700{% endif %}">
                             {{ message }}
                         </div>
-
                     {% endfor %}
-
                 </div>
-
             {% endif %}
 
-
-            <!-- FORM -->
-
-            <form
-                method="POST"
-                action="{% url 'login_view' %}"
-                class="space-y-5"
-            >
-
+            <form method="post" class="space-y-4">
                 {% csrf_token %}
 
-
-                <!-- USERNAME -->
-
                 <div>
-
-                    <label
-                        for="phone_number"
-                        class="
-                            mb-2
-                            block
-                            text-xs
-                            font-medium
-                            text-zinc-800
-                        "
-                    >
-                        Phone Number
-                    </label>
-
-                    <input
-id="phone_number"
-name="phone_number"
-type="tel"
-value="{{ request.POST.phone_number }}"
-placeholder="+234 801 234 5678"
-autocomplete="tel"
-required
-class="
-h-11
-w-full
-border
-border-zinc-200
-bg-white
-px-3.5
-text-sm
-text-zinc-900
-placeholder:text-zinc-400
-transition
-"
-
->
-
-
+                    <label class="mb-1.5 block text-xs font-medium text-muted">Phone number</label>
+                    <input type="tel" name="phone_number" required maxlength="30" autocomplete="tel" placeholder="+234…"
+                           class="w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
                 </div>
 
-
-                <!-- PASSWORD -->
-
                 <div>
-
-                    <div
-                        class="
-                            mb-2
-                            flex
-                            items-center
-                            justify-between
-                        "
-                    >
-
-                        <label
-                            for="password"
-                            class="
-                                text-xs
-                                font-medium
-                                text-zinc-800
-                            "
-                        >
-                            Password
-                        </label>
-
-                        <a
-                            href="{% url 'forgot_password' %}"
-                            class="
-                                text-[10px]
-                                font-medium
-                                text-zinc-400
-                                hover:text-violet-600
-                            "
-                        >
-                            Forgot password?
-                        </a>
-
+                    <div class="mb-1.5 flex items-center justify-between">
+                        <label class="block text-xs font-medium text-muted">Password</label>
+                        <a href="{% url 'forgot_password' %}" class="text-xs font-medium text-accent-600 hover:underline">Forgot password?</a>
                     </div>
-
-
-                    <input
-                        id="password"
-                        name="password"
-                        type="password"
-                        placeholder="Password"
-                        autocomplete="current-password"
-                        required
-                        class="
-                            h-11
-                            w-full
-                            border
-                            border-zinc-200
-                            bg-white
-                            px-3.5
-                            text-sm
-                            text-zinc-900
-                            placeholder:text-zinc-400
-                            transition
-                        "
-                    >
-
+                    <div class="relative">
+                        <input :type="showPassword ? 'text' : 'password'" name="password" required autocomplete="current-password"
+                               class="w-full rounded-2xl border border-line bg-surface px-4 py-2.5 pr-11 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                        <button type="button" @click="showPassword = !showPassword"
+                                class="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted" aria-label="Toggle password visibility">
+                            <i data-lucide="eye" class="h-4 w-4" x-show="!showPassword"></i>
+                            <i data-lucide="eye-off" class="h-4 w-4" x-show="showPassword" x-cloak></i>
+                        </button>
+                    </div>
                 </div>
 
-
-                <!-- SUBMIT -->
-
-                <button
-                    type="submit"
-                    class="
-                        flex
-                        h-11
-                        w-full
-                        items-center
-                        justify-center
-                        bg-zinc-950
-                        px-5
-                        text-sm
-                        font-medium
-                        text-white
-                        transition
-                        hover:bg-zinc-800
-                    "
-                >
+                <button type="submit"
+                        class="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600">
                     Log in
                 </button>
-
             </form>
 
-
-            <!-- REGISTER -->
-
-            <div
-                class="
-                    mt-7
-                    border-t
-                    border-zinc-100
-                    pt-6
-                "
-            >
-
-                <p
-                    class="
-                        text-center
-                        text-xs
-                        text-zinc-500
-                    "
-                >
-                    Don't have an account?
-
-                    <a
-                        href="{% url 'register' %}"
-                        class="
-                            ml-1
-                            font-medium
-                            text-zinc-950
-                            hover:text-violet-600
-                        "
-                    >
-                        Create one
-                    </a>
-
-                </p>
-
-            </div>
-
-
-            <!-- TERMS -->
-
-            <p
-                class="
-                    mt-6
-                    text-center
-                    text-[10px]
-                    leading-5
-                    text-zinc-400
-                "
-            >
-                By continuing, you agree to Pheral's
-                terms and policies.
+            <p class="mt-6 text-center text-sm text-muted">
+                New to Pheral?
+                <a href="{% url 'register' %}" class="font-semibold text-accent-600 hover:underline">Create an account</a>
             </p>
-
         </div>
+    </main>
 
-    </section>
-
-</div>
-
-
-</main>
-
-<!-- FOOTER -->
-
-<footer
-    class="
-        border-t
-        border-zinc-100
-        px-5
-        py-5
-        sm:px-8
-    "
->
-
-
-<div
-    class="
-        mx-auto
-        flex
-        max-w-7xl
-        items-center
-        justify-between
-    "
->
-
-    <span class="text-[10px] text-zinc-400">
-        © {% now "Y" %} Pheral
-    </span>
-
-    <span class="text-[10px] text-zinc-400">
-        Pheral
-    </span>
-
-</div>
-
-
-</footer>
-
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script>lucide.createIcons();</script>
 </body>
 </html>

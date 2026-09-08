@@ -1,109 +1,403 @@
+
 {% extends "base.html" %}
 
 {% block title %}Hire · Pheral{% endblock %}
 {% block page_title %}Hire{% endblock %}
 
 {% block extra_head %}
-<style>[x-cloak] { display: none !important; }</style>
+<style>
+    [x-cloak] { display: none !important; }
+
+    .job-card {
+        transition:
+            transform 160ms ease,
+            border-color 160ms ease,
+            background-color 160ms ease,
+            box-shadow 160ms ease;
+    }
+
+    .job-card:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 24px rgba(28, 23, 48, 0.05);
+    }
+
+    .job-card:active {
+        transform: translateY(0);
+    }
+
+    .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-2xl" x-data="{ q: '', sort: 'newest' }">
 
-    <div class="flex items-center justify-between px-4 pt-4">
-        <h1 class="text-2xl font-bold tracking-tight text-ink md:hidden">Hire</h1>
-        <p class="hidden text-sm text-muted md:block">Open jobs from people on Pheral</p>
-        <a href="{% url 'create_hire_job' %}"
-           class="hidden items-center gap-1.5 rounded-full bg-accent-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-accent-600 md:inline-flex">
-            <i data-lucide="plus" class="h-4 w-4"></i> Post a job
-        </a>
+<div
+    class="mx-auto w-full max-w-xl md:max-w-3xl"
+    x-data="{ q: '', sort: 'newest' }"
+>
+
+    <!-- ============================================================
+         HEADER
+    ============================================================= -->
+    <div class="px-4 pt-3 md:px-6 md:pt-6">
+
+        <div class="flex items-center justify-between gap-4">
+
+            <div class="min-w-0">
+
+                <div class="flex items-center gap-2">
+
+                    <h1 class="text-lg font-bold tracking-tight text-ink md:text-xl">
+                        Hire
+                    </h1>
+
+                    {% if jobs %}
+                        <span class="rounded-full bg-accent-50 px-2 py-0.5 text-[9px] font-semibold text-accent-700">
+                            {{ jobs|length }}
+                        </span>
+                    {% endif %}
+
+                </div>
+
+                <p class="mt-0.5 text-[11px] text-muted md:text-xs">
+                    Find people to get the job done.
+                </p>
+
+            </div>
+
+            <!-- Desktop action -->
+            <a
+                href="{% url 'create_hire_job' %}"
+                class="hidden shrink-0 items-center gap-1.5 rounded-xl bg-accent-500 px-3.5 py-2 text-[11px] font-semibold text-white shadow-sm transition hover:bg-accent-600 md:inline-flex"
+            >
+                <i data-lucide="plus" class="h-3.5 w-3.5"></i>
+                Post a job
+            </a>
+
+        </div>
+
     </div>
 
+
     {% if jobs %}
-        <!-- Search -->
-        <div class="px-4 pt-4">
-            <div class="flex items-center gap-2 rounded-2xl bg-surface px-4 py-2.5">
-                <i data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></i>
-                <input type="text" x-model="q" placeholder="Search jobs" autocomplete="off"
-                       class="w-full bg-transparent text-sm text-ink placeholder-muted focus:outline-none">
+
+        <!-- ========================================================
+             SEARCH
+        ========================================================= -->
+        <div class="px-4 pt-4 md:px-6">
+
+            <div class="flex h-9 items-center gap-2 rounded-xl bg-surface px-3.5">
+
+                <i
+                    data-lucide="search"
+                    class="h-3.5 w-3.5 shrink-0 text-muted"
+                ></i>
+
+                <input
+                    type="text"
+                    x-model="q"
+                    placeholder="Search jobs"
+                    autocomplete="off"
+                    class="w-full bg-transparent text-xs text-ink placeholder-muted focus:outline-none"
+                >
+
+                <button
+                    x-show="q !== ''"
+                    x-cloak
+                    @click="q = ''"
+                    class="shrink-0 rounded-full p-0.5 text-muted hover:text-ink"
+                    aria-label="Clear search"
+                >
+                    <i data-lucide="x" class="h-3.5 w-3.5"></i>
+                </button>
+
             </div>
+
         </div>
 
-        <!-- Sort -->
-        <div class="mt-3 flex items-center gap-2 px-4">
-            <button @click="sort = 'newest'" :class="sort === 'newest' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'"
-                    class="rounded-full px-4 py-1.5 text-sm font-medium transition">Newest</button>
-            <button @click="sort = 'budget'" :class="sort === 'budget' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'"
-                    class="rounded-full px-4 py-1.5 text-sm font-medium transition">Highest budget</button>
+
+        <!-- ========================================================
+             FILTER / SORT BAR
+        ========================================================= -->
+        <div class="hide-scrollbar mt-3 flex items-center gap-1.5 overflow-x-auto px-4 md:px-6">
+
+            <button
+                @click="sort = 'newest'"
+                :class="
+                    sort === 'newest'
+                        ? 'bg-accent-500 text-white shadow-sm'
+                        : 'bg-surface text-muted hover:text-ink'
+                "
+                class="shrink-0 rounded-full px-3.5 py-1.5 text-[10px] font-semibold transition"
+            >
+                Latest
+            </button>
+
+            <button
+                @click="sort = 'budget'"
+                :class="
+                    sort === 'budget'
+                        ? 'bg-accent-500 text-white shadow-sm'
+                        : 'bg-surface text-muted hover:text-ink'
+                "
+                class="shrink-0 rounded-full px-3.5 py-1.5 text-[10px] font-semibold transition"
+            >
+                Highest budget
+            </button>
+
+            <div class="ml-auto hidden items-center gap-1 text-[10px] text-muted md:flex">
+                <i data-lucide="briefcase-business" class="h-3 w-3"></i>
+                Open opportunities
+            </div>
+
         </div>
 
-        <div class="space-y-3 px-4 py-4"
-             x-data="{
+
+        <!-- ========================================================
+             JOB LIST
+        ========================================================= -->
+        <div
+            class="space-y-2.5 px-4 py-4 md:px-6 md:py-5"
+            x-data="{
                 init() {
                     this.$watch('sort', () => this.applySort());
                     this.applySort();
                 },
+
                 applySort() {
                     const container = this.$el;
-                    const cards = Array.from(container.querySelectorAll('[data-job]'));
+                    const cards = Array.from(
+                        container.querySelectorAll('[data-job]')
+                    );
+
                     cards.sort((a, b) => {
+
                         if (this.sort === 'budget') {
-                            return parseFloat(b.dataset.budget) - parseFloat(a.dataset.budget);
+                            return (
+                                parseFloat(b.dataset.budget) -
+                                parseFloat(a.dataset.budget)
+                            );
                         }
-                        return parseInt(b.dataset.created) - parseInt(a.dataset.created);
+
+                        return (
+                            parseInt(b.dataset.created) -
+                            parseInt(a.dataset.created)
+                        );
                     });
+
                     cards.forEach(card => container.appendChild(card));
                 },
-             }">
+            }"
+        >
+
             {% for job in jobs %}
-                <div data-job data-budget="{{ job.budget }}" data-created="{{ job.created_at|date:'U' }}"
-                     x-data="{ name: '{{ job.title|escapejs|lower }}' }"
-                     x-show="q === '' || name.includes(q.toLowerCase())">
-                    <a href="{% url 'hire_job_detail' job_id=job.id %}"
-                       class="block rounded-2xl border border-line p-4 transition hover:border-accent-200 hover:bg-surface">
-                        <div class="flex items-start justify-between gap-3">
+
+                <div
+                    data-job
+                    data-budget="{{ job.budget }}"
+                    data-created="{{ job.created_at|date:'U' }}"
+                    x-data="{
+                        name: '{{ job.title|escapejs|lower }}'
+                    }"
+                    x-show="q === '' || name.includes(q.toLowerCase())"
+                >
+
+                    <a
+                        href="{% url 'hire_job_detail' job_id=job.id %}"
+                        class="job-card block rounded-2xl border border-line bg-white p-3.5 md:p-4"
+                    >
+
+                        <!-- Top row -->
+                        <div class="flex items-start gap-3">
+
+                            <!-- Job content -->
                             <div class="min-w-0 flex-1">
-                                <p class="truncate text-[15px] font-semibold text-ink">{{ job.title }}</p>
-                                <p class="mt-0.5 line-clamp-2 text-sm text-muted">{{ job.description }}</p>
+
+                                <div class="mb-1 flex items-center gap-2">
+
+                                    <span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-medium text-emerald-700">
+                                        <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                                        Open
+                                    </span>
+
+                                    <span class="text-[9px] text-muted">
+                                        {{ job.created_at|timesince }} ago
+                                    </span>
+
+                                </div>
+
+                                <h2 class="truncate text-[13px] font-semibold leading-5 text-ink">
+                                    {{ job.title }}
+                                </h2>
+
+                                <p class="mt-0.5 line-clamp-2 text-[11px] leading-[1.55] text-muted">
+                                    {{ job.description }}
+                                </p>
+
                             </div>
-                            <span class="shrink-0 rounded-full bg-accent-50 px-3 py-1 text-sm font-semibold text-accent-700">
-                                {{ job.currency.symbol }}{{ job.budget|floatformat:2 }}
-                            </span>
+
+
+                            <!-- Budget -->
+                            <div class="shrink-0 text-right">
+
+                                <span class="block text-[9px] font-medium uppercase tracking-wide text-muted">
+                                    Budget
+                                </span>
+
+                                <span class="mt-0.5 block text-[13px] font-bold tracking-tight text-accent-700">
+                                    {{ job.currency.symbol }}{{ job.budget|floatformat:2 }}
+                                </span>
+
+                            </div>
+
                         </div>
 
-                        <div class="mt-3 flex items-center gap-2">
-                            {% if job.employer.avatar %}
-                                <img src="{{ job.employer.avatar.url }}" alt="" class="h-6 w-6 rounded-full object-cover">
-                            {% else %}
-                                <div class="flex h-6 w-6 items-center justify-center rounded-full bg-accent-100 text-[10px] font-semibold text-accent-700">
-                                    {{ job.employer.username|first|upper }}
+
+                        <!-- Divider -->
+                        <div class="my-3 h-px bg-line/70"></div>
+
+
+                        <!-- Bottom metadata -->
+                        <div class="flex items-center justify-between gap-3">
+
+                            <div class="flex min-w-0 items-center gap-2">
+
+                                {% if job.employer.avatar %}
+
+                                    <img
+                                        src="{{ job.employer.avatar.url }}"
+                                        alt=""
+                                        class="h-7 w-7 shrink-0 rounded-full object-cover"
+                                        loading="lazy"
+                                        decoding="async"
+                                    >
+
+                                {% else %}
+
+                                    <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[9px] font-bold text-accent-700">
+                                        {{ job.employer.username|first|upper }}
+                                    </div>
+
+                                {% endif %}
+
+                                <div class="min-w-0">
+
+                                    <p class="truncate text-[10px] font-medium text-ink">
+                                        {{ job.employer.display_name|default:job.employer.username }}
+                                    </p>
+
+                                    <p class="truncate text-[9px] text-muted">
+                                        Posted {{ job.created_at|timesince }} ago
+                                    </p>
+
                                 </div>
-                            {% endif %}
-                            <span class="text-xs text-muted">
-                                {{ job.employer.display_name|default:job.employer.username }} · posted {{ job.created_at|timesince }} ago
-                            </span>
+
+                            </div>
+
+
+                            <!-- View indicator -->
+                            <div class="flex shrink-0 items-center gap-1 text-[10px] font-medium text-muted transition group-hover:text-accent-600">
+
+                                View details
+
+                                <i
+                                    data-lucide="arrow-up-right"
+                                    class="h-3 w-3"
+                                ></i>
+
+                            </div>
+
                         </div>
+
                     </a>
+
                 </div>
+
             {% endfor %}
+
         </div>
-    {% else %}
-        <div class="flex flex-col items-center gap-3 px-4 py-20 text-center">
-            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-accent-50">
-                <i data-lucide="briefcase" class="h-7 w-7 text-accent-500"></i>
+
+
+        <!-- ========================================================
+             NO SEARCH RESULTS
+        ========================================================= -->
+        <div
+            x-show="q !== '' && !Array.from($el.parentElement.querySelectorAll('[data-job]')).some(el => el.style.display !== 'none')"
+            x-cloak
+            class="px-4 py-16 text-center md:px-6"
+        >
+
+            <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-surface">
+                <i
+                    data-lucide="search-x"
+                    class="h-5 w-5 text-muted"
+                ></i>
             </div>
-            <p class="text-base font-semibold text-ink">No open jobs right now</p>
-            <p class="max-w-xs text-sm text-muted">Be the first to post a job and find help on Pheral.</p>
-            <a href="{% url 'create_hire_job' %}" class="mt-2 rounded-full bg-accent-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-600">
+
+            <p class="mt-3 text-xs font-semibold text-ink">
+                No jobs found
+            </p>
+
+            <p class="mx-auto mt-1 max-w-xs text-[10px] leading-5 text-muted">
+                Try a different search term.
+            </p>
+
+        </div>
+
+
+    {% else %}
+
+        <!-- ========================================================
+             EMPTY STATE
+        ========================================================= -->
+        <div class="flex flex-col items-center px-4 py-20 text-center">
+
+            <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-50">
+                <i
+                    data-lucide="briefcase-business"
+                    class="h-6 w-6 text-accent-500"
+                ></i>
+            </div>
+
+            <p class="mt-4 text-[13px] font-semibold text-ink">
+                Nothing open yet
+            </p>
+
+            <p class="mt-1 max-w-xs text-[11px] leading-5 text-muted">
+                Post an opportunity and find someone on Pheral who can help.
+            </p>
+
+            <a
+                href="{% url 'create_hire_job' %}"
+                class="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-accent-500 px-4 py-2.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-accent-600"
+            >
+                <i data-lucide="plus" class="h-3.5 w-3.5"></i>
                 Post a job
             </a>
+
         </div>
+
     {% endif %}
+
 </div>
 
-<a href="{% url 'create_hire_job' %}"
-   class="fixed bottom-24 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-accent-500 text-white shadow-lg transition hover:bg-accent-600 md:hidden"
-   aria-label="Post a job">
-    <i data-lucide="plus" class="h-6 w-6"></i>
+
+<!-- ================================================================
+     MOBILE FLOATING ACTION
+================================================================= -->
+<a
+    href="{% url 'create_hire_job' %}"
+    class="fixed bottom-20 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-white shadow-lg transition hover:bg-accent-600 md:hidden"
+    aria-label="Post a job"
+>
+    <i data-lucide="plus" class="h-5 w-5"></i>
 </a>
+
 {% endblock %}
