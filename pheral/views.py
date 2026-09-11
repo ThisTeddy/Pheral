@@ -247,6 +247,40 @@ def _fail_top_up(pheral_transaction):
             locked_txn.save(update_fields=["status", "completed_at"])
         return locked_txn
 
+def convert_amount(amount, source_currency, target_currency):
+    """
+    Convert `amount` from source_currency to target_currency,
+    rounding to target_currency's own decimal_places (so JPY/UGX/XOF
+    — seeded with 0 decimal places — don't get fake fractional
+    amounts). Returns None if no rate path exists.
+    """
+    if source_currency.pk == target_currency.pk:
+        return amount
+
+    def direct_rate(src, tgt):
+        row = ExchangeRate.objects.filter(source_currency=src, target_currency=tgt, is_active=True).first()
+        if row:
+            return row.rate
+        inverse = ExchangeRate.objects.filter(source_currency=tgt, target_currency=src, is_active=True).first()
+        if inverse and inverse.rate:
+            return Decimal("1") / inverse.rate
+        return None
+
+    quantize_to = Decimal("1").scaleb(-target_currency.decimal_places)
+
+    rate = direct_rate(source_currency, target_currency)
+    if rate is not None:
+        return (amount * rate).quantize(quantize_to)
+
+    if source_currency.code != "NGN" and target_currency.code != "NGN":
+        ngn = Currency.objects.filter(code="NGN").first()
+        if ngn:
+            leg1 = direct_rate(source_currency, ngn)
+            leg2 = direct_rate(ngn, target_currency)
+            if leg1 is not None and leg2 is not None:
+                return (amount * leg1 * leg2).quantize(quantize_to)
+
+    return None
 
 # ============================================================
 # LANDING / PUBLIC
@@ -1138,113 +1172,287 @@ def group_profile(request, conversation_id):
     })
 
 
-# ============================================================
-# PAYMENTS (race-condition safe)
-# ============================================================
-
 @login_required
+@transaction.atomic
 def pay_user(request, username):
-    recipient = get_object_or_404(User, username__iexact=username)
+    recipient = get_object_or_404(
+        User,
+        username__iexact=username,
+    )
 
     if recipient == request.user:
-        messages.error(request, "You cannot pay yourself.")
-        return redirect("profile", username=recipient.username)
+        messages.error(
+            request,
+            "You cannot pay yourself.",
+        )
+        return redirect(
+            "profile",
+            username=recipient.username,
+        )
 
+    currencies = list(
+        Currency.objects.filter(
+            is_active=True
+        ).order_by("code")
+    )
+
+    if not currencies:
+        messages.error(
+            request,
+            "No active currency is configured.",
+        )
+        return redirect(
+            "profile",
+            username=recipient.username,
+        )
+
+    # Initial currency shown on page load.
     currency = get_default_currency()
 
-    if not currency:
-        messages.error(request, "No active currency is configured.")
-        return redirect("profile", username=recipient.username)
+    if not currency or not currency.is_active:
+        currency = currencies[0]
 
-    sender_wallet = get_or_create_wallet(request.user, currency)
-    recipient_wallet = get_or_create_wallet(recipient, currency)
+    # Build every wallet balance for the UI.
+    wallet_data = []
+
+    for active_currency in currencies:
+        wallet = get_or_create_wallet(
+            request.user,
+            active_currency,
+        )
+
+        wallet_data.append(
+            {
+                "code": active_currency.code,
+                "name": active_currency.name,
+                "symbol": active_currency.symbol,
+                "balance": float(wallet.balance),
+            }
+        )
 
     if request.method == "POST":
-        amount = parse_amount(request.POST.get("amount"))
-        description = request.POST.get("description", "").strip()
+
+        amount = parse_amount(
+            request.POST.get("amount")
+        )
+
+        description = request.POST.get(
+            "description",
+            "",
+        ).strip()
+
+        currency_code = (
+            request.POST.get("currency") or ""
+        ).strip().upper()
+
+        selected_currency = next(
+            (
+                item
+                for item in currencies
+                if item.code.upper() == currency_code
+            ),
+            None,
+        )
+
+        if not selected_currency:
+            messages.error(
+                request,
+                "Please select a valid currency.",
+            )
+
+            return render(
+                request,
+                "pay.html",
+                {
+                    "recipient": recipient,
+                    "currency": currency,
+                    "currencies": currencies,
+                    "wallet_data": wallet_data,
+                },
+            )
+
+        # Keep the page showing the currency the user selected
+        # if validation fails.
+        currency = selected_currency
 
         if amount is None:
-            messages.error(request, "Enter a valid payment amount.")
-            return render(request, "pay.html", {"recipient": recipient, "currency": currency})
+            messages.error(
+                request,
+                "Enter a valid payment amount.",
+            )
 
-        wallet_token = get_or_create_wallet_token(request.user)
+            return render(
+                request,
+                "pay.html",
+                {
+                    "recipient": recipient,
+                    "currency": currency,
+                    "currencies": currencies,
+                    "wallet_data": wallet_data,
+                },
+            )
+
+        # Get the exact wallet selected by the user.
+        sender_wallet = get_or_create_wallet(
+            request.user,
+            selected_currency,
+        )
+
+        if sender_wallet.balance < amount:
+            messages.error(
+                request,
+                "Insufficient wallet balance.",
+            )
+
+            return render(
+                request,
+                "pay.html",
+                {
+                    "recipient": recipient,
+                    "currency": currency,
+                    "currencies": currencies,
+                    "wallet_data": wallet_data,
+                },
+            )
+
+        recipient_wallet = get_or_create_wallet(
+            recipient,
+            selected_currency,
+        )
+
+        # Ensure the user has an active wallet token.
+        wallet_token = get_or_create_wallet_token(
+            request.user
+        )
 
         if not wallet_token.is_active:
-            messages.error(request, "Wallet authorization is inactive.")
+            messages.error(
+                request,
+                "Wallet authorization is inactive.",
+            )
             return redirect("home")
 
-        with transaction.atomic():
+        balance_before = sender_wallet.balance
 
-            # select_for_update locks both wallet rows for the
-            # duration of this block — a second concurrent payment
-            # from the same sender must wait for this one to finish
-            # before it can read the balance, closing the
-            # double-spend race condition.
-            locked_sender_wallet = Wallet.objects.select_for_update().get(pk=sender_wallet.pk)
-            locked_recipient_wallet = Wallet.objects.select_for_update().get(pk=recipient_wallet.pk)
+        sender_wallet.balance -= amount
 
-            if locked_sender_wallet.balance < amount:
-                messages.error(request, "Insufficient wallet balance.")
-                return render(request, "pay.html", {"recipient": recipient, "currency": currency})
+        sender_wallet.save(
+            update_fields=[
+                "balance",
+                "updated_at",
+            ]
+        )
 
-            balance_before = locked_sender_wallet.balance
-            locked_sender_wallet.balance -= amount
-            locked_sender_wallet.save(update_fields=["balance", "updated_at"])
+        recipient_before = recipient_wallet.balance
 
-            recipient_before = locked_recipient_wallet.balance
-            locked_recipient_wallet.balance += amount
-            locked_recipient_wallet.save(update_fields=["balance", "updated_at"])
+        recipient_wallet.balance += amount
 
-            pheral_transaction = PheralTransaction.objects.create(
-                sender=request.user, recipient=recipient,
-                sender_wallet=locked_sender_wallet, recipient_wallet=locked_recipient_wallet,
-                transaction_type=PheralTransaction.TransactionType.TRANSFER,
-                amount=amount, currency=currency, fee=Decimal("0.00"),
-                status=PheralTransaction.Status.COMPLETED,
-                description=description, completed_at=timezone.now(),
-            )
+        recipient_wallet.save(
+            update_fields=[
+                "balance",
+                "updated_at",
+            ]
+        )
 
-            LedgerEntry.objects.create(
-                transaction=pheral_transaction, wallet=locked_sender_wallet,
-                entry_type=LedgerEntry.EntryType.DEBIT, amount=amount,
-                balance_before=balance_before, balance_after=locked_sender_wallet.balance,
-                description=description,
-            )
+        pheral_transaction = PheralTransaction.objects.create(
+            sender=request.user,
+            recipient=recipient,
+            sender_wallet=sender_wallet,
+            recipient_wallet=recipient_wallet,
+            transaction_type=(
+                PheralTransaction.TransactionType.TRANSFER
+            ),
+            amount=amount,
+            currency=selected_currency,
+            fee=Decimal("0.00"),
+            status=PheralTransaction.Status.COMPLETED,
+            description=description,
+            completed_at=timezone.now(),
+        )
 
-            LedgerEntry.objects.create(
-                transaction=pheral_transaction, wallet=locked_recipient_wallet,
-                entry_type=LedgerEntry.EntryType.CREDIT, amount=amount,
-                balance_before=recipient_before, balance_after=locked_recipient_wallet.balance,
-                description=description,
-            )
+        LedgerEntry.objects.create(
+            transaction=pheral_transaction,
+            wallet=sender_wallet,
+            entry_type=LedgerEntry.EntryType.DEBIT,
+            amount=amount,
+            balance_before=balance_before,
+            balance_after=sender_wallet.balance,
+            description=description,
+        )
 
-            receipt = Receipt.objects.create(
-                transaction=pheral_transaction, payer=request.user, recipient=recipient,
-                amount=amount, currency=currency, description=description,
-            )
+        LedgerEntry.objects.create(
+            transaction=pheral_transaction,
+            wallet=recipient_wallet,
+            entry_type=LedgerEntry.EntryType.CREDIT,
+            amount=amount,
+            balance_before=recipient_before,
+            balance_after=recipient_wallet.balance,
+            description=description,
+        )
 
-            conversation = get_or_create_direct_conversation(request.user, recipient)
+        receipt = Receipt.objects.create(
+            transaction=pheral_transaction,
+            payer=request.user,
+            recipient=recipient,
+            amount=amount,
+            currency=selected_currency,
+            description=description,
+        )
 
-            Message.objects.create(
-                conversation=conversation, sender=request.user,
-                message_type=Message.MessageType.PAYMENT,
-                content=f"₦{amount:,.2f} sent", transaction=pheral_transaction, receipt=receipt,
-            )
+        conversation = get_or_create_direct_conversation(
+            request.user,
+            recipient,
+        )
 
-            Notification.objects.create(
-                user=recipient, notification_type=Notification.NotificationType.PAYMENT,
-                title="Payment received",
-                body=f"@{request.user.username} sent {currency.symbol}{amount:,.2f}",
-                link="",
-            )
+        Message.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            message_type=Message.MessageType.PAYMENT,
+            content=(
+                f"{selected_currency.symbol}"
+                f"{amount:,.2f} sent"
+            ),
+            transaction=pheral_transaction,
+            receipt=receipt,
+        )
 
-            wallet_token.last_used_at = timezone.now()
-            wallet_token.save(update_fields=["last_used_at"])
+        Notification.objects.create(
+            user=recipient,
+            notification_type=(
+                Notification.NotificationType.PAYMENT
+            ),
+            title="Payment received",
+            body=(
+                f"@{request.user.username} sent "
+                f"{selected_currency.symbol}"
+                f"{amount:,.2f}"
+            ),
+            link="",
+        )
 
-        return redirect("chat", conversation_id=conversation.pk)
+        wallet_token.last_used_at = timezone.now()
 
-    return render(request, "pay.html", {"recipient": recipient, "currency": currency})
+        wallet_token.save(
+            update_fields=[
+                "last_used_at",
+            ]
+        )
 
+        return redirect(
+            "chat",
+            conversation_id=conversation.pk,
+        )
+
+    return render(
+        request,
+        "pay.html",
+        {
+            "recipient": recipient,
+            "currency": currency,
+            "currencies": currencies,
+            "wallet_data": wallet_data,
+        },
+    )
 
 @login_required
 def wallet(request):
@@ -1268,23 +1476,105 @@ def wallet(request):
 
 @login_required
 def top_up(request):
+    """
+    Top up a Pheral wallet using the currency selected by the user.
+
+    The currency selector changes the UI instantly on the page.
+    The selected currency and amount are submitted to Flutterwave
+    only when the user starts the payment.
+    """
+
+    currencies = list(
+        Currency.objects.filter(
+            is_active=True
+        ).order_by("code")
+    )
+
+    if not currencies:
+        messages.error(
+            request,
+            "No wallet currencies are configured.",
+        )
+        return redirect("wallet")
+
+    # Initial/default currency shown when the page loads.
     currency = get_default_currency()
-    wallet_obj = get_or_create_wallet(request.user, currency) if currency else None
+
+    if not currency or not currency.is_active:
+        currency = currencies[0]
+
+    # Prepare wallet + currency information for Alpine.
+    wallet_data = []
+
+    for active_currency in currencies:
+        wallet_obj = get_or_create_wallet(
+            request.user,
+            active_currency,
+        )
+
+        wallet_data.append(
+            {
+                "code": active_currency.code,
+                "name": active_currency.name,
+                "symbol": active_currency.symbol,
+                "balance": float(wallet_obj.balance),
+            }
+        )
 
     if request.method == "POST":
-        amount = parse_amount(request.POST.get("amount"))
+        amount = parse_amount(
+            request.POST.get("amount")
+        )
+
+        currency_code = (
+            request.POST.get("currency") or ""
+        ).strip().upper()
+
+        selected_currency = next(
+            (
+                item
+                for item in currencies
+                if item.code.upper() == currency_code
+            ),
+            None,
+        )
 
         if amount is None:
-            messages.error(request, "Enter a valid top-up amount.")
+            messages.error(
+                request,
+                "Enter a valid top-up amount.",
+            )
+
             return render(
                 request,
                 "top_up.html",
-                {"currency": currency, "wallet": wallet_obj},
+                {
+                    "currency": currency,
+                    "currencies": currencies,
+                    "wallet_data": wallet_data,
+                },
             )
 
-        if not wallet_obj:
-            messages.error(request, "No wallet currency is configured.")
-            return redirect("wallet")
+        if not selected_currency:
+            messages.error(
+                request,
+                "Please select a valid currency.",
+            )
+
+            return render(
+                request,
+                "top_up.html",
+                {
+                    "currency": currency,
+                    "currencies": currencies,
+                    "wallet_data": wallet_data,
+                },
+            )
+
+        wallet_obj = get_or_create_wallet(
+            request.user,
+            selected_currency,
+        )
 
         if not settings.FLW_SECRET_KEY:
             messages.error(
@@ -1296,9 +1586,11 @@ def top_up(request):
         pheral_transaction = PheralTransaction.objects.create(
             sender=request.user,
             sender_wallet=wallet_obj,
-            transaction_type=PheralTransaction.TransactionType.TOP_UP,
+            transaction_type=(
+                PheralTransaction.TransactionType.TOP_UP
+            ),
             amount=amount,
-            currency=currency,
+            currency=selected_currency,
             status=PheralTransaction.Status.PENDING,
         )
 
@@ -1309,15 +1601,17 @@ def top_up(request):
         payload = {
             "tx_ref": pheral_transaction.reference,
             "amount": float(amount),
-            "currency": currency.code,
+            "currency": selected_currency.code,
             "redirect_url": callback_url,
             "customer": {
                 "email": (
                     request.user.email
                     or f"{request.user.username}@pheral.app"
                 ),
-                "name": request.user.get_full_name()
-                or request.user.username,
+                "name": (
+                    request.user.get_full_name()
+                    or request.user.username
+                ),
             },
             "meta": {
                 "user_id": request.user.id,
@@ -1325,7 +1619,10 @@ def top_up(request):
             },
             "customizations": {
                 "title": "Pheral Wallet Top Up",
-                "description": "Add funds to your Pheral wallet",
+                "description": (
+                    f"Add funds to your "
+                    f"{selected_currency.code} wallet"
+                ),
             },
         }
 
@@ -1334,7 +1631,9 @@ def top_up(request):
                 "https://api.flutterwave.com/v3/payments",
                 json=payload,
                 headers={
-                    "Authorization": f"Bearer {settings.FLW_SECRET_KEY}",
+                    "Authorization": (
+                        f"Bearer {settings.FLW_SECRET_KEY}"
+                    ),
                     "Content-Type": "application/json",
                 },
                 timeout=15,
@@ -1342,46 +1641,66 @@ def top_up(request):
 
             data = response.json()
 
-        except (requests.RequestException, ValueError):
+        except (
+            requests.RequestException,
+            ValueError,
+        ):
             data = {"status": "error"}
 
         if data.get("status") != "success":
             pheral_transaction.status = (
                 PheralTransaction.Status.FAILED
             )
-            pheral_transaction.save(update_fields=["status"])
+
+            pheral_transaction.save(
+                update_fields=["status"]
+            )
 
             messages.error(
                 request,
                 "Could not start payment. Please try again.",
             )
+
             return redirect("wallet")
 
-        payment_link = data.get("data", {}).get("link")
+        payment_link = (
+            data.get("data", {}).get("link")
+        )
 
         if not payment_link:
             pheral_transaction.status = (
                 PheralTransaction.Status.FAILED
             )
-            pheral_transaction.save(update_fields=["status"])
+
+            pheral_transaction.save(
+                update_fields=["status"]
+            )
 
             messages.error(
                 request,
                 "Payment checkout could not be created.",
             )
+
             return redirect("wallet")
 
         pheral_transaction.external_reference = (
             pheral_transaction.reference
         )
-        pheral_transaction.save(update_fields=["external_reference"])
+
+        pheral_transaction.save(
+            update_fields=["external_reference"]
+        )
 
         return redirect(payment_link)
 
     return render(
         request,
         "top_up.html",
-        {"currency": currency, "wallet": wallet_obj},
+        {
+            "currency": currency,
+            "currencies": currencies,
+            "wallet_data": wallet_data,
+        },
     )
 
 @login_required
@@ -2837,3 +3156,303 @@ def verify_otp(request):
         return redirect("chat")
 
     return render(request, "verify_otp.html")
+
+# ============================================================
+# AIRTIME / DATA PURCHASE — views.py additions
+#
+# Add these imports near the top of views.py if not already there:
+#   import uuid
+#   import requests
+#   from django.conf import settings
+#   from django.http import JsonResponse
+#
+# Add to settings.py:
+#   FLUTTERWAVE_SECRET_KEY = os.environ.get("FLUTTERWAVE_SECRET_KEY", "")
+#
+# This reuses get_default_currency, get_or_create_wallet, and
+# parse_amount from the wallet backend — make sure that's already
+# in place before adding this.
+# ============================================================
+
+FLUTTERWAVE_BASE_URL = "https://api.flutterwave.com/v3"
+
+
+def _flutterwave_headers():
+    return {
+        "Authorization": f"Bearer {settings.FLUTTERWAVE_SECRET_KEY}",
+        "Content-Type": "application/json",
+    }
+
+
+def _local_phone_format(phone_number):
+    """
+    Flutterwave's NG billers generally expect the local 11-digit
+    format (08012345678), not +234. Convert from whatever format
+    normalize_phone_number() produced.
+    """
+    digits = "".join(ch for ch in str(phone_number) if ch.isdigit())
+    if digits.startswith("234") and len(digits) == 13:
+        return "0" + digits[3:]
+    return digits
+
+
+def _debit_wallet_for_bill(user, amount, currency, transaction_type, description, metadata):
+    """
+    Debit the wallet and create a PENDING transaction *before* calling
+    Flutterwave — mirrors the withdraw() pattern: debit first, then
+    call the provider, then refund automatically if the provider call
+    fails. This is the only ordering that can't accidentally let
+    someone submit the same purchase twice before the balance updates.
+    """
+    wallet_obj = get_or_create_wallet(user, currency)
+
+    with transaction.atomic():
+        locked_wallet = Wallet.objects.select_for_update().get(pk=wallet_obj.pk)
+
+        if locked_wallet.balance < amount:
+            return None, "Insufficient wallet balance."
+
+        balance_before = locked_wallet.balance
+        locked_wallet.balance -= amount
+        locked_wallet.save(update_fields=["balance", "updated_at"])
+
+        pheral_transaction = PheralTransaction.objects.create(
+            sender=user, sender_wallet=locked_wallet,
+            transaction_type=transaction_type,
+            amount=amount, currency=currency,
+            status=PheralTransaction.Status.PENDING,
+            description=description,
+            metadata=metadata,
+        )
+
+        LedgerEntry.objects.create(
+            transaction=pheral_transaction, wallet=locked_wallet,
+            entry_type=LedgerEntry.EntryType.DEBIT, amount=amount,
+            balance_before=balance_before, balance_after=locked_wallet.balance,
+            description=description,
+        )
+
+    return pheral_transaction, None
+
+
+def _refund_failed_bill(pheral_transaction):
+    with transaction.atomic():
+        locked_txn = PheralTransaction.objects.select_for_update().get(pk=pheral_transaction.pk)
+        if locked_txn.status != PheralTransaction.Status.PENDING:
+            return locked_txn
+
+        locked_wallet = Wallet.objects.select_for_update().get(pk=locked_txn.sender_wallet_id)
+        balance_before = locked_wallet.balance
+        locked_wallet.balance += locked_txn.amount
+        locked_wallet.save(update_fields=["balance", "updated_at"])
+
+        locked_txn.status = PheralTransaction.Status.FAILED
+        locked_txn.completed_at = timezone.now()
+        locked_txn.save(update_fields=["status", "completed_at"])
+
+        LedgerEntry.objects.create(
+            transaction=locked_txn, wallet=locked_wallet,
+            entry_type=LedgerEntry.EntryType.CREDIT, amount=locked_txn.amount,
+            balance_before=balance_before, balance_after=locked_wallet.balance,
+            description="Purchase failed — refunded",
+        )
+        return locked_txn
+
+
+def _complete_bill(pheral_transaction, external_reference):
+    pheral_transaction.status = PheralTransaction.Status.COMPLETED
+    pheral_transaction.external_reference = external_reference
+    pheral_transaction.completed_at = timezone.now()
+    pheral_transaction.save(update_fields=["status", "external_reference", "completed_at"])
+    return pheral_transaction
+
+
+def _call_flutterwave_bill(*, biller_name, customer_phone, amount, item_code=None):
+    """
+    ⚠️ VERIFY THIS AGAINST FLUTTERWAVE'S CURRENT DOCS BEFORE GOING LIVE.
+    Flutterwave's Bills API (POST /v3/bills) payload shape has shifted
+    across their v3 doc revisions — specifically whether a data bundle
+    is selected via `type` set to the plan's item_code, or via a
+    separate `biller_code` field. This implementation uses `type` as
+    the item_code when one is provided (data bundles), and falls back
+    to a plain "AIRTIME" type otherwise. Confirm against
+    https://developer.flutterwave.com/docs/bill-payments before
+    relying on this in production, and adjust just this function if
+    the field name has changed — nothing else in this file needs to
+    know about that detail.
+    """
+    reference = f"PHR-BILL-{uuid.uuid4().hex[:10].upper()}"
+
+    payload = {
+        "country": "NG",
+        "customer": customer_phone,
+        "amount": float(amount),
+        "recurrence": "ONCE",
+        "type": item_code if item_code else "AIRTIME",
+        "biller_name": biller_name,
+        "reference": reference,
+    }
+
+    try:
+        response = requests.post(
+            f"{FLUTTERWAVE_BASE_URL}/bills",
+            json=payload,
+            headers=_flutterwave_headers(),
+            timeout=20,
+        )
+        data = response.json()
+    except (requests.RequestException, ValueError):
+        return False, reference, None
+
+    success = data.get("status") == "success"
+    flw_reference = (data.get("data") or {}).get("reference", reference)
+    return success, reference, flw_reference
+
+
+def fetch_data_plans(network):
+    """
+    Live-fetches available data bundle plans + current prices from
+    Flutterwave rather than storing them locally, since VTU pricing
+    changes often enough that a cached/seeded plan list would go
+    stale. Returns a list of {name, amount, item_code} dicts, or an
+    empty list if the lookup fails (template shows an error state).
+
+    ⚠️ Also verify this endpoint shape against current Flutterwave
+    docs — /v3/bill-categories's response format for listing
+    individual data bundle items under a biller has varied by API
+    version.
+    """
+    if not getattr(settings, "FLUTTERWAVE_SECRET_KEY", ""):
+        return []
+
+    try:
+        response = requests.get(
+            f"{FLUTTERWAVE_BASE_URL}/bill-categories",
+            params={"country": "NG", "biller_name": network.flutterwave_data_biller},
+            headers=_flutterwave_headers(),
+            timeout=20,
+        )
+        data = response.json()
+    except (requests.RequestException, ValueError):
+        return []
+
+    if data.get("status") != "success":
+        return []
+
+    plans = []
+    for item in data.get("data", []):
+        plans.append({
+            "name": item.get("name") or item.get("biller_name", "Data plan"),
+            "amount": item.get("amount"),
+            "item_code": item.get("item_code") or item.get("biller_code"),
+        })
+    return [p for p in plans if p["amount"] and p["item_code"]]
+
+
+# ============================================================
+# VIEWS
+# ============================================================
+
+@login_required
+def airtime_purchase(request):
+    currency = get_default_currency()
+    wallet_obj = get_or_create_wallet(request.user, currency) if currency else None
+    networks = NetworkProvider.objects.filter(is_active=True)
+
+    if request.method == "POST":
+        network = networks.filter(pk=request.POST.get("network")).first()
+        phone_number = request.POST.get("phone_number", "").strip()
+        amount = parse_amount(request.POST.get("amount"))
+
+        if not network:
+            messages.error(request, "Select a network.")
+            return render(request, "airtime.html", {"networks": networks, "wallet": wallet_obj, "currency": currency})
+
+        if not phone_number:
+            messages.error(request, "Enter a phone number.")
+            return render(request, "airtime.html", {"networks": networks, "wallet": wallet_obj, "currency": currency})
+
+        if amount is None:
+            messages.error(request, "Enter a valid amount.")
+            return render(request, "airtime.html", {"networks": networks, "wallet": wallet_obj, "currency": currency})
+
+        pheral_transaction, error = _debit_wallet_for_bill(
+            request.user, amount, currency,
+            PheralTransaction.TransactionType.AIRTIME,
+            description=f"{network.name} airtime — {phone_number}",
+            metadata={"network": network.code, "phone_number": phone_number},
+        )
+        if error:
+            messages.error(request, error)
+            return render(request, "airtime.html", {"networks": networks, "wallet": wallet_obj, "currency": currency})
+
+        success, our_reference, flw_reference = _call_flutterwave_bill(
+            biller_name=network.flutterwave_airtime_biller,
+            customer_phone=_local_phone_format(phone_number),
+            amount=amount,
+        )
+
+        if success:
+            _complete_bill(pheral_transaction, flw_reference or our_reference)
+            messages.success(request, f"{currency.symbol}{amount:,.2f} airtime sent to {phone_number}.")
+        else:
+            _refund_failed_bill(pheral_transaction)
+            messages.error(request, "Airtime purchase failed. Your wallet has been refunded.")
+
+        return redirect("wallet")
+
+    return render(request, "airtime.html", {"networks": networks, "wallet": wallet_obj, "currency": currency})
+
+
+@login_required
+def data_purchase(request):
+    currency = get_default_currency()
+    wallet_obj = get_or_create_wallet(request.user, currency) if currency else None
+    networks = NetworkProvider.objects.filter(is_active=True)
+
+    if request.method == "POST":
+        network = networks.filter(pk=request.POST.get("network")).first()
+        phone_number = request.POST.get("phone_number", "").strip()
+        plan_amount = parse_amount(request.POST.get("plan_amount"))
+        plan_name = request.POST.get("plan_name", "").strip()
+        item_code = request.POST.get("item_code", "").strip()
+
+        if not (network and phone_number and plan_amount and item_code):
+            messages.error(request, "Select a network, phone number, and data plan.")
+            return render(request, "data.html", {"networks": networks, "wallet": wallet_obj, "currency": currency})
+
+        pheral_transaction, error = _debit_wallet_for_bill(
+            request.user, plan_amount, currency,
+            PheralTransaction.TransactionType.DATA,
+            description=f"{network.name} {plan_name} — {phone_number}",
+            metadata={"network": network.code, "phone_number": phone_number, "plan": plan_name},
+        )
+        if error:
+            messages.error(request, error)
+            return render(request, "data.html", {"networks": networks, "wallet": wallet_obj, "currency": currency})
+
+        success, our_reference, flw_reference = _call_flutterwave_bill(
+            biller_name=network.flutterwave_data_biller,
+            customer_phone=_local_phone_format(phone_number),
+            amount=plan_amount,
+            item_code=item_code,
+        )
+
+        if success:
+            _complete_bill(pheral_transaction, flw_reference or our_reference)
+            messages.success(request, f"{plan_name} sent to {phone_number}.")
+        else:
+            _refund_failed_bill(pheral_transaction)
+            messages.error(request, "Data purchase failed. Your wallet has been refunded.")
+
+        return redirect("wallet")
+
+    return render(request, "data.html", {"networks": networks, "wallet": wallet_obj, "currency": currency})
+
+
+@login_required
+def data_plans_api(request, network_id):
+    """AJAX endpoint: returns live data plans for the selected network."""
+    network = get_object_or_404(NetworkProvider, pk=network_id, is_active=True)
+    plans = fetch_data_plans(network)
+    return JsonResponse({"plans": plans})

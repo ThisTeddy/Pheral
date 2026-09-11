@@ -1,100 +1,464 @@
 {% extends "base.html" %}
-{% load static %}
 
-{% block title %}Pay {{ recipient.username }} · Pheral{% endblock %}
-{% block page_title %}Pay {{ recipient.username }}{% endblock %}
+{% block title %}Pay · Pheral{% endblock %}
 
-{% block extra_head %}
-<style>[x-cloak] { display: none !important; }</style>
-{% endblock %}
+{% block page_title %}Pay{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-md px-4 pb-10 pt-4 md:pt-6" x-data="{ amount: '', description: '', step: 'form' }">
 
-    <div class="mb-5 flex items-center gap-2 md:hidden">
-        <a href="{% url 'profile_user' recipient.username %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink">
-            <i data-lucide="chevron-left" class="h-[18px] w-[18px]"></i>
+<div
+    class="mx-auto max-w-lg px-4 py-4"
+    x-data="{
+        selected: '{{ currency.code|escapejs }}',
+        amount: '',
+
+        currencies: [
+            {% for wallet in wallet_data %}
+            {
+                code: '{{ wallet.code|escapejs }}',
+                name: '{{ wallet.name|escapejs }}',
+                symbol: '{{ wallet.symbol|escapejs }}',
+                balance: {{ wallet.balance }}
+            }{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ],
+
+        get current() {
+            return this.currencies.find(
+                currency => currency.code === this.selected
+            ) || this.currencies[0];
+        },
+
+        setQuickAmount(value) {
+            this.amount = value.toString();
+        },
+
+        get canPay() {
+            return (
+                this.amount &&
+                parseFloat(this.amount) > 0 &&
+                parseFloat(this.amount) <= Number(this.current.balance)
+            );
+        }
+    }"
+>
+
+    <!-- Mobile heading -->
+    <div class="mb-5 flex items-center gap-3 md:hidden">
+
+        <a
+            href="javascript:history.back()"
+            class="flex h-9 w-9 items-center justify-center rounded-full text-muted transition hover:bg-surface hover:text-ink"
+            aria-label="Go back"
+        >
+            <i
+                data-lucide="arrow-left"
+                class="h-5 w-5"
+            ></i>
         </a>
-        <h1 class="text-lg font-bold tracking-tight text-ink">Pay</h1>
+
+        <h1 class="text-xl font-bold tracking-tight text-ink">
+            Pay
+        </h1>
+
     </div>
 
-    <div class="mb-6 flex flex-col items-center text-center">
-        <div class="mb-2.5 h-16 w-16 overflow-hidden rounded-full bg-accent-100">
+
+    <!-- Recipient -->
+    <section class="rounded-3xl border border-line bg-white p-5">
+
+        <div class="flex items-center gap-3">
+
             {% if recipient.avatar %}
-                <img src="{{ recipient.avatar.url }}" alt="" class="h-full w-full object-cover">
+
+                <img
+                    src="{{ recipient.avatar.url }}"
+                    alt=""
+                    class="h-12 w-12 shrink-0 rounded-full object-cover"
+                >
+
             {% else %}
-                <div class="flex h-full w-full items-center justify-center text-xl font-bold text-accent-700">
-                    {{ recipient.first_name|default:recipient.username|slice:":1"|upper }}
+
+                <div
+                    class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-accent-100 text-accent-700"
+                >
+                    <span class="text-sm font-bold">
+                        {{ recipient.display_name|first|upper }}
+                    </span>
                 </div>
+
             {% endif %}
+
+
+            <div class="min-w-0 flex-1">
+
+                <div class="flex items-center gap-1.5">
+
+                    <p class="truncate text-sm font-semibold text-ink">
+                        {{ recipient.display_name }}
+                    </p>
+
+                    {% if recipient.is_phone_verified %}
+                        <i
+                            data-lucide="badge-check"
+                            class="h-3.5 w-3.5 shrink-0 text-accent-500"
+                        ></i>
+                    {% endif %}
+
+                </div>
+
+                <p class="mt-0.5 truncate text-xs text-muted">
+                    @{{ recipient.username }}
+                </p>
+
+            </div>
+
+            <div
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-50 text-accent-600"
+            >
+                <i
+                    data-lucide="arrow-up-right"
+                    class="h-4 w-4"
+                ></i>
+            </div>
+
         </div>
-        <p class="text-[13px] font-semibold text-ink">{{ recipient.display_name|default:recipient.username }}</p>
-        <p class="text-[11px] text-muted">@{{ recipient.username }}</p>
+
+    </section>
+
+
+    <!-- Currency selector -->
+    <div class="mt-4">
+
+        <label class="mb-1.5 block text-sm font-medium text-ink">
+            Pay with
+        </label>
+
+        <div class="relative">
+
+            <select
+                x-model="selected"
+                name="currency"
+                form="payment-form"
+                class="w-full appearance-none rounded-2xl border border-line bg-white px-4 py-3 pr-10 text-sm font-semibold text-ink outline-none transition focus:border-accent-400 focus:ring-2 focus:ring-accent-100"
+            >
+
+                {% for wallet in wallet_data %}
+                    <option value="{{ wallet.code }}">
+                        {{ wallet.code }} · {{ wallet.name }}
+                    </option>
+                {% endfor %}
+
+            </select>
+
+            <i
+                data-lucide="chevron-down"
+                class="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+            ></i>
+
+        </div>
+
     </div>
 
-    <!-- STEP 1: FORM -->
-    <div x-show="step === 'form'">
-        <div class="mb-6 flex flex-col items-center">
-            <div class="mb-1.5 flex items-start gap-1">
-                <span class="mt-2 text-[26px] text-muted">{{ currency.symbol }}</span>
-                <input type="text" inputmode="decimal" x-model="amount" placeholder="0.00" autocomplete="off"
-                       class="w-[220px] bg-transparent text-center text-[44px] font-bold text-ink placeholder-line focus:outline-none">
+
+    <!-- Selected wallet -->
+    <section class="mt-4 rounded-3xl bg-accent-500 p-5 text-white">
+
+        <div class="flex items-center justify-between">
+
+            <div>
+
+                <p class="text-xs font-medium text-white/70">
+                    Available balance
+                </p>
+
+                <p
+                    class="mt-0.5 text-sm font-semibold text-white"
+                    x-text="current.name"
+                ></p>
+
             </div>
-            <p class="text-[11px] text-muted">{{ currency.code }}</p>
+
+            <span
+                class="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white"
+                x-text="current.code"
+            ></span>
+
         </div>
 
-        <div class="mb-2">
-            <input type="text" x-model="description" maxlength="255" placeholder="What's this for? (optional)"
-                   class="w-full rounded-2xl border border-line bg-white px-3.5 py-3 text-[12px] text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-accent-100">
+
+        <p class="mt-4 text-2xl font-bold tracking-tight">
+
+            <span x-text="current.symbol"></span>
+
+            <span
+                x-text="
+                    Number(current.balance).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    })
+                "
+            ></span>
+
+        </p>
+
+    </section>
+
+
+    <!-- Amount -->
+    <section class="mt-5">
+
+        <label
+            for="amount"
+            class="mb-1.5 block text-sm font-medium text-ink"
+        >
+            Amount to send
+        </label>
+
+        <div
+            class="flex items-center gap-2 rounded-2xl border border-line bg-white px-4 py-3 transition focus-within:border-accent-400 focus-within:ring-2 focus-within:ring-accent-100"
+        >
+
+            <span
+                class="text-lg font-semibold text-muted"
+                x-text="current.symbol"
+            ></span>
+
+            <input
+                id="amount"
+                type="number"
+                name="amount"
+                form="payment-form"
+                x-model="amount"
+                step="0.01"
+                min="0.01"
+                required
+                inputmode="decimal"
+                placeholder="0.00"
+                class="w-full bg-transparent text-lg font-semibold text-ink placeholder-muted focus:outline-none"
+            >
+
+            <span
+                class="shrink-0 text-xs font-medium text-muted"
+                x-text="current.code"
+            ></span>
+
         </div>
-        <p class="mb-5 text-right text-[10px] text-muted"><span x-text="description.length"></span>/255</p>
 
-        <div class="mb-6 flex gap-2">
-            <button type="button" @click="amount = '1000'" class="flex-1 rounded-full bg-accent-50 py-2 text-[11px] font-semibold text-accent-600 transition hover:bg-accent-100">{{ currency.symbol }}1,000</button>
-            <button type="button" @click="amount = '5000'" class="flex-1 rounded-full bg-accent-50 py-2 text-[11px] font-semibold text-accent-600 transition hover:bg-accent-100">{{ currency.symbol }}5,000</button>
-            <button type="button" @click="amount = '10000'" class="flex-1 rounded-full bg-accent-50 py-2 text-[11px] font-semibold text-accent-600 transition hover:bg-accent-100">{{ currency.symbol }}10,000</button>
+
+        <!-- Balance warning -->
+        <p
+            x-show="
+                amount &&
+                parseFloat(amount) > Number(current.balance)
+            "
+            x-cloak
+            class="mt-2 flex items-center gap-1.5 text-xs font-medium text-red-500"
+        >
+            <i
+                data-lucide="circle-alert"
+                class="h-3.5 w-3.5"
+            ></i>
+
+            Insufficient balance
+        </p>
+
+    </section>
+
+
+    <!-- Quick amounts -->
+    <section class="mt-5">
+
+        <div class="mb-2 flex items-center justify-between">
+
+            <span class="text-xs font-medium text-muted">
+                Quick amounts
+            </span>
+
+            <span
+                class="text-xs font-medium text-accent-600"
+                x-text="current.code"
+            ></span>
+
         </div>
 
-        <button type="button" @click="step = 'review'" :disabled="!amount || Number(amount) <= 0"
-                :class="(!amount || Number(amount) <= 0) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-accent-600'"
-                class="w-full rounded-2xl bg-ink py-3.5 text-[13px] font-semibold text-white transition">
-            Review payment
-        </button>
-    </div>
 
-    <!-- STEP 2: REVIEW -->
-    <div x-show="step === 'review'" x-cloak>
-        <div class="mb-5 flex flex-col items-center rounded-2xl bg-surface py-6">
-            <p class="text-[10px] text-muted">You're sending</p>
-            <p class="mt-0.5 text-[30px] font-extrabold text-ink" x-text="'{{ currency.symbol }}' + Number(amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})"></p>
-            <p class="text-[10px] text-muted">to {{ recipient.display_name|default:recipient.username }}</p>
-        </div>
+        <div class="flex flex-wrap gap-2">
 
-        <div class="mb-6 divide-y divide-line rounded-2xl border border-line text-[12px]">
-            <div class="flex items-center justify-between px-3.5 py-2.5">
-                <span class="text-muted">Recipient</span>
-                <span class="font-medium text-ink">@{{ recipient.username }}</span>
-            </div>
-            <div class="flex items-center justify-between px-3.5 py-2.5" x-show="description">
-                <span class="text-muted">Note</span>
-                <span class="max-w-[60%] truncate text-right font-medium text-ink" x-text="description"></span>
-            </div>
-        </div>
-
-        <div class="flex gap-2.5">
-            <button type="button" @click="step = 'form'" class="flex-1 rounded-2xl border border-line py-3.5 text-[13px] font-semibold text-ink transition hover:bg-surface">
-                Back
+            <button
+                type="button"
+                @click="setQuickAmount(1000)"
+                class="rounded-full border border-line bg-white px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface active:scale-[0.98]"
+            >
+                <span x-text="current.symbol"></span>1,000
             </button>
-            <button type="submit" form="pay-form" class="flex-[2] rounded-2xl bg-ink py-3.5 text-[13px] font-semibold text-white transition hover:bg-ink/90">
-                Send {{ currency.symbol }}<span x-text="Number(amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})"></span>
-            </button>
-        </div>
-    </div>
 
-    <form method="post" id="pay-form" class="hidden">
+            <button
+                type="button"
+                @click="setQuickAmount(2000)"
+                class="rounded-full border border-line bg-white px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface active:scale-[0.98]"
+            >
+                <span x-text="current.symbol"></span>2,000
+            </button>
+
+            <button
+                type="button"
+                @click="setQuickAmount(5000)"
+                class="rounded-full border border-line bg-white px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface active:scale-[0.98]"
+            >
+                <span x-text="current.symbol"></span>5,000
+            </button>
+
+            <button
+                type="button"
+                @click="setQuickAmount(10000)"
+                class="rounded-full border border-line bg-white px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface active:scale-[0.98]"
+            >
+                <span x-text="current.symbol"></span>10,000
+            </button>
+
+        </div>
+
+    </section>
+
+
+    <!-- Payment form -->
+    <form
+        id="payment-form"
+        method="post"
+        action="{% url 'pay_user' username=recipient.username %}"
+        class="mt-6 space-y-5"
+    >
+
         {% csrf_token %}
-        <input type="hidden" name="amount" :value="amount">
-        <input type="hidden" name="description" :value="description">
+
+
+        <!-- Selected currency -->
+        <input
+            type="hidden"
+            name="currency"
+            x-model="selected"
+        >
+
+
+        <!-- Description -->
+        <div>
+
+            <div class="mb-1.5 flex items-center justify-between">
+
+                <label
+                    for="description"
+                    class="text-sm font-medium text-ink"
+                >
+                    Note
+                </label>
+
+                <span class="text-[11px] text-muted">
+                    Optional
+                </span>
+
+            </div>
+
+            <div
+                class="rounded-2xl border border-line bg-white px-4 py-3 transition focus-within:border-accent-400 focus-within:ring-2 focus-within:ring-accent-100"
+            >
+
+                <textarea
+                    id="description"
+                    name="description"
+                    rows="2"
+                    maxlength="255"
+                    placeholder="What's this payment for?"
+                    class="w-full resize-none bg-transparent text-[13px] leading-5 text-ink placeholder-muted focus:outline-none"
+                ></textarea>
+
+            </div>
+
+        </div>
+
+
+        <!-- Summary -->
+        <div class="rounded-2xl bg-surface px-4 py-3.5">
+
+            <div class="flex items-center justify-between">
+
+                <span class="text-xs text-muted">
+                    You'll send
+                </span>
+
+                <span class="text-sm font-semibold text-ink">
+
+                    <span x-text="current.symbol"></span>
+
+                    <span
+                        x-text="
+                            amount
+                                ? Number(amount).toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2
+                                })
+                                : '0.00'
+                        "
+                    ></span>
+
+                    <span
+                        class="ml-0.5 text-[11px] font-medium text-muted"
+                        x-text="current.code"
+                    ></span>
+
+                </span>
+
+            </div>
+
+
+            <div class="mt-2 flex items-center justify-between">
+
+                <span class="text-xs text-muted">
+                    Fee
+                </span>
+
+                <span class="text-xs font-medium text-ink">
+                    <span x-text="current.symbol"></span>0.00
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <!-- Submit -->
+        <button
+            type="submit"
+            :disabled="!canPay"
+            class="flex w-full items-center justify-center gap-2 rounded-full bg-accent-500 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-600 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+
+            <i
+                data-lucide="send"
+                class="h-4 w-4"
+            ></i>
+
+            Send payment
+
+        </button>
+
+
+        <!-- Security -->
+        <p
+            class="flex items-center justify-center gap-1.5 text-center text-xs text-muted"
+        >
+
+            <i
+                data-lucide="shield-check"
+                class="h-3.5 w-3.5"
+            ></i>
+
+            Payment goes directly to @{{ recipient.username }}
+
+        </p>
+
     </form>
+
 </div>
+
 {% endblock %}

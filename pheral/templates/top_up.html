@@ -1,66 +1,272 @@
 {% extends "base.html" %}
 
 {% block title %}Top up · Pheral{% endblock %}
+
 {% block page_title %}Top up wallet{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-lg px-4 py-4" x-data="{ amount: '' }">
 
-    <h1 class="text-2xl font-bold tracking-tight text-ink md:hidden">Top up</h1>
+<div
+    class="mx-auto max-w-lg px-4 py-4"
+    x-data="{
+        selected: '{{ currency.code|escapejs }}',
+        amount: '',
 
-    {% if wallet %}
-        <div class="mt-4 rounded-2xl bg-accent-500 p-5 text-white">
-            <p class="text-sm text-white/80">Current balance</p>
-            <p class="mt-1 text-2xl font-bold tracking-tight">{{ currency.symbol }}{{ wallet.balance|floatformat:2 }}</p>
+        currencies: [
+            {% for wallet in wallet_data %}
+            {
+                code: '{{ wallet.code|escapejs }}',
+                name: '{{ wallet.name|escapejs }}',
+                symbol: '{{ wallet.symbol|escapejs }}',
+                balance: {{ wallet.balance }}
+            }{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ],
+
+        get current() {
+            return this.currencies.find(
+                currency => currency.code === this.selected
+            ) || this.currencies[0];
+        },
+
+        setQuickAmount(value) {
+            this.amount = value.toString();
+        }
+    }"
+>
+
+    <!-- Mobile heading -->
+    <h1 class="text-2xl font-bold tracking-tight text-ink md:hidden">
+        Top up
+    </h1>
+
+
+    <!-- Currency selector -->
+    <div class="mt-4">
+
+        <label class="mb-1.5 block text-sm font-medium text-ink">
+            Currency
+        </label>
+
+        <div class="relative">
+
+            <select
+                x-model="selected"
+                name="currency"
+                form="top-up-form"
+                class="w-full appearance-none rounded-2xl border border-line bg-white px-4 py-3 pr-10 text-sm font-semibold text-ink outline-none transition focus:border-accent-400 focus:ring-2 focus:ring-accent-100"
+            >
+
+                <template
+                    x-for="currency in currencies"
+                    :key="currency.code"
+                >
+                    <option
+                        :value="currency.code"
+                        x-text="currency.code + ' · ' + currency.name"
+                    ></option>
+                </template>
+
+            </select>
+
+            <i
+                data-lucide="chevron-down"
+                class="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"
+            ></i>
+
         </div>
-    {% endif %}
 
-    {% if transaction %}
-        <!-- Pending top-up acknowledgement (dev/no-provider flow) -->
-        <div class="mt-5 flex flex-col items-center gap-3 rounded-2xl border border-line p-6 text-center">
-            <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50">
-                <i data-lucide="clock" class="h-6 w-6 text-accent-500"></i>
-            </div>
-            <p class="text-base font-semibold text-ink">Top-up initiated</p>
-            <p class="text-sm text-muted">
-                {{ currency.symbol }}{{ transaction.amount|floatformat:2 }} is pending confirmation.
-                Reference: <span class="font-medium text-ink">{{ transaction.reference }}</span>
+    </div>
+
+
+    <!-- Current balance -->
+    <div
+        class="mt-4 rounded-2xl bg-accent-500 p-5 text-white"
+    >
+
+        <div class="flex items-center justify-between">
+
+            <p class="text-sm text-white/80">
+                Current balance
             </p>
-            <a href="{% url 'wallet' %}" class="mt-2 rounded-full bg-accent-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-600">
-                Back to wallet
-            </a>
-        </div>
-    {% else %}
-        <form method="post" action="{% url 'top_up' %}" class="mt-5 space-y-5">
-            {% csrf_token %}
 
-            <div>
-                <label class="mb-1.5 block text-sm font-medium text-ink">Amount to add</label>
-                <div class="flex items-center gap-2 rounded-2xl border border-line bg-white px-4 py-3 focus-within:border-accent-400 focus-within:ring-2 focus-within:ring-accent-100">
-                    <span class="text-lg font-semibold text-muted">{{ currency.symbol }}</span>
-                    <input type="number" name="amount" x-model="amount" step="0.01" min="0.01" required placeholder="0.00"
-                           class="w-full bg-transparent text-lg font-semibold text-ink placeholder-muted focus:outline-none">
-                    <span class="shrink-0 text-xs font-medium text-muted">{{ currency.code }}</span>
-                </div>
+            <span
+                class="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-semibold text-white"
+                x-text="current.code"
+            ></span>
+
+        </div>
+
+        <p class="mt-1 text-2xl font-bold tracking-tight">
+
+            <span x-text="current.symbol"></span>
+
+            <span
+                x-text="
+                    Number(current.balance).toLocaleString(undefined, {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    })
+                "
+            ></span>
+
+        </p>
+
+    </div>
+
+
+    <!-- Top up form -->
+    <form
+        id="top-up-form"
+        method="post"
+        action="{% url 'top_up' %}"
+        class="mt-5 space-y-5"
+    >
+
+        {% csrf_token %}
+
+
+        <!-- Selected currency sent to backend -->
+        <input
+            type="hidden"
+            name="currency"
+            x-model="selected"
+        >
+
+
+        <!-- Amount -->
+        <div>
+
+            <label class="mb-1.5 block text-sm font-medium text-ink">
+                Amount to add
+            </label>
+
+            <div
+                class="flex items-center gap-2 rounded-2xl border border-line bg-white px-4 py-3 transition focus-within:border-accent-400 focus-within:ring-2 focus-within:ring-accent-100"
+            >
+
+                <!-- Dynamic currency symbol -->
+                <span
+                    class="text-lg font-semibold text-muted"
+                    x-text="current.symbol"
+                ></span>
+
+                <input
+                    type="number"
+                    name="amount"
+                    x-model="amount"
+                    step="0.01"
+                    min="0.01"
+                    required
+                    placeholder="0.00"
+                    class="w-full bg-transparent text-lg font-semibold text-ink placeholder-muted focus:outline-none"
+                >
+
+                <!-- Dynamic currency code -->
+                <span
+                    class="shrink-0 text-xs font-medium text-muted"
+                    x-text="current.code"
+                ></span>
+
             </div>
 
-            <!-- Quick amounts -->
+        </div>
+
+
+        <!-- Quick amounts -->
+        <div>
+
+            <div class="mb-2 flex items-center justify-between">
+
+                <span class="text-xs font-medium text-muted">
+                    Quick amounts
+                </span>
+
+                <span
+                    class="text-xs font-medium text-accent-600"
+                    x-text="current.code"
+                ></span>
+
+            </div>
+
+
             <div class="flex flex-wrap gap-2">
-                <button type="button" @click="amount = '1000'" class="rounded-full border border-line px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface">{{ currency.symbol }}1,000</button>
-                <button type="button" @click="amount = '2000'" class="rounded-full border border-line px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface">{{ currency.symbol }}2,000</button>
-                <button type="button" @click="amount = '5000'" class="rounded-full border border-line px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface">{{ currency.symbol }}5,000</button>
-                <button type="button" @click="amount = '10000'" class="rounded-full border border-line px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface">{{ currency.symbol }}10,000</button>
+
+                <button
+                    type="button"
+                    @click="setQuickAmount(1000)"
+                    class="rounded-full border border-line px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface"
+                >
+                    <span x-text="current.symbol"></span>1,000
+                </button>
+
+
+                <button
+                    type="button"
+                    @click="setQuickAmount(2000)"
+                    class="rounded-full border border-line px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface"
+                >
+                    <span x-text="current.symbol"></span>2,000
+                </button>
+
+
+                <button
+                    type="button"
+                    @click="setQuickAmount(5000)"
+                    class="rounded-full border border-line px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface"
+                >
+                    <span x-text="current.symbol"></span>5,000
+                </button>
+
+
+                <button
+                    type="button"
+                    @click="setQuickAmount(10000)"
+                    class="rounded-full border border-line px-4 py-1.5 text-sm font-medium text-ink transition hover:bg-surface"
+                >
+                    <span x-text="current.symbol"></span>10,000
+                </button>
+
             </div>
 
-            <button type="submit" :disabled="!amount || parseFloat(amount) <= 0"
-                    class="flex w-full items-center justify-center gap-1.5 rounded-full bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
-                <i data-lucide="arrow-down-to-line" class="h-4 w-4"></i> Continue to payment
-            </button>
+        </div>
 
-            <p class="flex items-center justify-center gap-1.5 text-center text-xs text-muted">
-                <i data-lucide="shield-check" class="h-3.5 w-3.5"></i> Secured by Paystack
-            </p>
-        </form>
-    {% endif %}
+
+        <!-- Continue to payment -->
+        <button
+            type="submit"
+            :disabled="
+                !amount ||
+                parseFloat(amount) <= 0 ||
+                !selected
+            "
+            class="flex w-full items-center justify-center gap-1.5 rounded-full bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+
+            <i
+                data-lucide="arrow-down-to-line"
+                class="h-4 w-4"
+            ></i>
+
+            Continue to payment
+
+        </button>
+
+
+        <!-- Payment provider -->
+        <p class="flex items-center justify-center gap-1.5 text-center text-xs text-muted">
+
+            <i
+                data-lucide="shield-check"
+                class="h-3.5 w-3.5"
+            ></i>
+
+            Secured by Flutterwave
+
+        </p>
+
+    </form>
+
 </div>
+
 {% endblock %}

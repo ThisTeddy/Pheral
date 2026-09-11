@@ -474,9 +474,15 @@ urlpatterns = [
         name="mark_message_read",
     ),
 
-
     # ============================================================
-    # PAYSTACK WEBHOOK
+# urls.py additions — add these inside urlpatterns
+# ============================================================
+
+path("airtime/", views.airtime_purchase, name="airtime_purchase"),
+path("data/", views.data_purchase, name="data_purchase"),
+path("api/data-plans/<int:network_id>/", views.data_plans_api, name="data_plans_api"),
+    # ============================================================
+    # FLUTTERWAVE WEBHOOK
     # ============================================================
 
     path(

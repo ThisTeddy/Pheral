@@ -714,3 +714,66 @@ class UserPresence(models.Model):
 
     def __str__(self):
         return f"{self.user.username} presence"
+
+
+# ============================================================
+# MODEL ADDITIONS — models.py
+#
+# 1. Add AIRTIME and DATA to PheralTransaction.TransactionType.
+#    Find this class in models.py and add the two new lines:
+#
+#    class TransactionType(models.TextChoices):
+#        TRANSFER = "transfer", "Transfer"
+#        TOP_UP = "top_up", "Top Up"
+#        WITHDRAWAL = "withdrawal", "Withdrawal"
+#        FX = "fx", "Currency Conversion"
+#        GROUP_TRANSFER = "group_transfer", "Group Transfer"
+#        HIRE_PAYMENT = "hire_payment", "Hire Payment"
+#        REFUND = "refund", "Refund"
+#        AIRTIME = "airtime", "Airtime"          # <-- add
+#        DATA = "data", "Data Bundle"            # <-- add
+#
+# 2. Add this new model anywhere below PheralTransaction:
+# ============================================================
+
+class NetworkProvider(models.Model):
+    """
+    A mobile network Flutterwave can bill against (MTN, Glo, Airtel,
+    9mobile). `flutterwave_airtime_biller` / `flutterwave_data_biller`
+    are the exact biller name strings Flutterwave's Bills API expects
+    for that network — confirm these against your Flutterwave
+    dashboard's bill categories, since they occasionally get renamed.
+    """
+
+    name = models.CharField(max_length=50, unique=True)
+    code = models.CharField(max_length=20, unique=True)  # short slug, e.g. "mtn"
+    flutterwave_airtime_biller = models.CharField(max_length=100)
+    flutterwave_data_biller = models.CharField(max_length=100)
+    logo = models.ImageField(upload_to="networks/", blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+# Seed data (run once via shell or a data migration):
+#
+# from yourapp.models import NetworkProvider
+# NetworkProvider.objects.bulk_create([
+#     NetworkProvider(name="MTN", code="mtn",
+#         flutterwave_airtime_biller="MTN Airtime", flutterwave_data_biller="MTN Data"),
+#     NetworkProvider(name="Glo", code="glo",
+#         flutterwave_airtime_biller="GLO Airtime", flutterwave_data_biller="GLO Data"),
+#     NetworkProvider(name="Airtel", code="airtel",
+#         flutterwave_airtime_biller="Airtel Airtime", flutterwave_data_biller="Airtel Data"),
+#     NetworkProvider(name="9mobile", code="9mobile",
+#         flutterwave_airtime_biller="9mobile Airtime", flutterwave_data_biller="9mobile Data"),
+# ])
+#
+# Double-check the exact biller_name strings against
+# GET https://api.flutterwave.com/v3/bill-categories?country=NG
+# before relying on these — Flutterwave's naming isn't perfectly
+# consistent across their own documentation versions.

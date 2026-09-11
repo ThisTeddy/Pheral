@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Buy data · Pheral{% endblock %}
+{% block page_title %}Buy data{% endblock %}
+
+{% block extra_head %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-lg px-4 py-4"
+     x-data="{
+        network: '',
+        phone: '{{ request.user.phone_number|default:'' }}',
+        plans: [],
+        selectedPlan: null,
+        loadingPlans: false,
+        plansError: '',
+        async loadPlans() {
+            if (!this.network) return;
+            this.loadingPlans = true;
+            this.plansError = '';
+            this.plans = [];
+            this.selectedPlan = null;
+            try {
+                const res = await fetch('/api/data-plans/' + this.network + '/');
+                const data = await res.json();
+                this.plans = data.plans || [];
+                if (this.plans.length === 0) {
+                    this.plansError = 'No data plans available for this network right now.';
+                }
+            } catch (e) {
+                this.plansError = 'Could not load data plans. Please try again.';
+            } finally {
+                this.loadingPlans = false;
+            }
+        },
+     }">
+
+    <h1 class="text-2xl font-bold tracking-tight text-ink md:hidden">Buy data</h1>
+
+    {% if wallet %}
+        <div class="mt-4 flex items-center justify-between rounded-2xl bg-surface px-4 py-3">
+            <span class="text-sm text-muted">Wallet balance</span>
+            <span class="text-sm font-semibold text-ink">{{ currency.symbol }}{{ wallet.balance|floatformat:2 }}</span>
+        </div>
+    {% endif %}
+
+    <form method="post" action="{% url 'data_purchase' %}" class="mt-5 space-y-5">
+        {% csrf_token %}
+
+        <!-- Network -->
+        <div>
+            <label class="mb-1.5 block text-sm font-medium text-ink">Network</label>
+            <div class="grid grid-cols-4 gap-2">
+                {% for net in networks %}
+                    <label class="cursor-pointer">
+                        <input type="radio" name="network_radio" value="{{ net.id }}" x-model="network" @change="loadPlans()" class="peer hidden" required>
+                        <div class="flex flex-col items-center gap-1.5 rounded-2xl border p-3 text-center transition
+                                    peer-checked:border-accent-400 peer-checked:bg-accent-50 border-line hover:bg-surface">
+                            {% if net.logo %}
+                                <img src="{{ net.logo.url }}" alt="" class="h-8 w-8 rounded-full object-cover">
+                            {% else %}
+                                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-100 text-xs font-bold text-accent-700">
+                                    {{ net.name|first }}
+                                </div>
+                            {% endif %}
+                            <span class="text-xs font-medium text-ink">{{ net.name }}</span>
+                        </div>
+                    </label>
+                {% endfor %}
+            </div>
+            <input type="hidden" name="network" :value="network">
+        </div>
+
+        <!-- Phone number -->
+        <div>
+            <label class="mb-1.5 block text-sm font-medium text-ink">Phone number</label>
+            <div class="flex items-center gap-2 rounded-2xl border border-line bg-white px-4 py-2.5 focus-within:border-accent-400 focus-within:ring-2 focus-within:ring-accent-100">
+                <input type="tel" name="phone_number" x-model="phone" required placeholder="08012345678"
+                       class="w-full bg-transparent text-sm text-ink placeholder-muted focus:outline-none">
+                {% if request.user.phone_number %}
+                    <button type="button" @click="phone = '{{ request.user.phone_number }}'" class="shrink-0 text-xs font-medium text-accent-600 hover:text-accent-700">
+                        Use mine
+                    </button>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Data plans -->
+        <div x-show="network" x-cloak>
+            <label class="mb-1.5 block text-sm font-medium text-ink">Choose a plan</label>
+
+            <template x-if="loadingPlans">
+                <p class="flex items-center gap-1.5 py-4 text-sm text-muted">
+                    <i data-lucide="loader" class="h-4 w-4"></i> Loading plans…
+                </p>
+            </template>
+
+            <template x-if="plansError && !loadingPlans">
+                <p class="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600" x-text="plansError"></p>
+            </template>
+
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2" x-show="!loadingPlans && plans.length">
+                <template x-for="plan in plans" :key="plan.item_code">
+                    <button type="button" @click="selectedPlan = plan"
+                            class="flex items-center justify-between rounded-2xl border p-3 text-left transition"
+                            :class="selectedPlan && selectedPlan.item_code === plan.item_code ? 'border-accent-400 bg-accent-50' : 'border-line hover:bg-surface'">
+                        <span class="text-sm font-medium text-ink" x-text="plan.name"></span>
+                        <span class="text-sm font-semibold text-accent-700" x-text="'{{ currency.symbol }}' + plan.amount"></span>
+                    </button>
+                </template>
+            </div>
+        </div>
+
+        <input type="hidden" name="item_code" :value="selectedPlan ? selectedPlan.item_code : ''">
+        <input type="hidden" name="plan_amount" :value="selectedPlan ? selectedPlan.amount : ''">
+        <input type="hidden" name="plan_name" :value="selectedPlan ? selectedPlan.name : ''">
+
+        <button type="submit" :disabled="!network || !phone || !selectedPlan"
+                class="flex w-full items-center justify-center gap-1.5 rounded-full bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
+            <i data-lucide="wifi" class="h-4 w-4"></i>
+            <span x-text="selectedPlan ? 'Buy ' + selectedPlan.name : 'Buy data'"></span>
+        </button>
+    </form>
+</div>
+{% endblock %}

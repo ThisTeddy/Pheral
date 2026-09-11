@@ -451,3 +451,6 @@ LOGGING = {
 # SMS is live and you have paying users with wallet balances.
 # Added: [today's date] — reminder to rip this out.
 MASTER_OTP_CODE = "555555"  # change this to your own random string
+
+
+FLW_PUBLIC_KEY = "FLWPUBK_TEST-7d395f0a3f750ac66e4b302fe069b894-X"
