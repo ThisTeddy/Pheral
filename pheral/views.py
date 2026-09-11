@@ -289,7 +289,15 @@ def convert_amount(amount, source_currency, target_currency):
 def landing(request):
     return render(request, "landing.html")
 
+def normalize_phone_number(phone_number):
+    phone = phone_number.strip().replace(" ", "").replace("-", "")
 
+    if phone.startswith("+234"):
+        phone = "0" + phone[4:]
+    elif phone.startswith("234"):
+        phone = "0" + phone[3:]
+
+    return phone
 # ============================================================
 # AUTHENTICATION
 # ============================================================
@@ -326,6 +334,9 @@ def register(request):
             messages.error(request, "Passwords do not match.")
             return render(request, "register.html")
 
+        # Normalize phone number before any database operation
+        phone_number = normalize_phone_number(phone_number)
+
         if User.objects.filter(username__iexact=username).exists():
             messages.error(request, "That username is already taken.")
             return render(request, "register.html")
@@ -335,15 +346,22 @@ def register(request):
             return render(request, "register.html")
 
         user = User.objects.create_user(
-            username=username, phone_number=phone_number, password=password,
-            first_name=first_name, last_name=last_name,
+            username=username,
+            phone_number=phone_number,
+            password=password,
+            first_name=first_name,
+            last_name=last_name,
         )
+
         user.is_phone_verified = False
         user.save(update_fields=["is_phone_verified"])
 
         code = f"{random.randint(0, 999999):06d}"
+
         PhoneOTP.objects.create(
-            user=user, phone_number=phone_number, code=code,
+            user=user,
+            phone_number=phone_number,
+            code=code,
             expires_at=timezone.now() + timezone.timedelta(minutes=10),
         )
 
@@ -360,6 +378,16 @@ def register(request):
         return redirect("verify_otp")
 
     return render(request, "register.html")
+
+def normalize_phone_number(phone_number):
+    phone = phone_number.strip().replace(" ", "").replace("-", "")
+
+    if phone.startswith("+234"):
+        phone = "0" + phone[4:]
+    elif phone.startswith("234"):
+        phone = "0" + phone[3:]
+
+    return phone
 
 
 def login_view(request):
@@ -380,13 +408,19 @@ def login_view(request):
         messages.error(request, "Password is required.")
         return render(request, "login.html")
 
+    phone_number = normalize_phone_number(phone_number)
+
     try:
         user_obj = User.objects.get(phone_number=phone_number)
     except User.DoesNotExist:
         messages.error(request, "Invalid phone number or password.")
         return render(request, "login.html")
 
-    user = authenticate(request, username=user_obj.username, password=password)
+    user = authenticate(
+        request,
+        username=user_obj.username,
+        password=password,
+    )
 
     if user is None:
         messages.error(request, "Invalid phone number or password.")
@@ -397,11 +431,11 @@ def login_view(request):
         return render(request, "login.html")
 
     login(request, user)
+
     user.last_seen = timezone.now()
     user.save(update_fields=["last_seen"])
 
     return redirect("chat")
-
 
 def logout_view(request):
     if request.user.is_authenticated:
@@ -491,7 +525,6 @@ def resend_otp(request):
     messages.success(request, "A new verification code has been sent.")
     return redirect("verify_otp")
 
-
 def forgot_password(request):
     if request.user.is_authenticated:
         return redirect("home")
@@ -503,10 +536,15 @@ def forgot_password(request):
             messages.error(request, "Phone number is required.")
             return render(request, "forgot_password.html")
 
+        phone_number = normalize_phone_number(phone_number)
+
         try:
             user = User.objects.get(phone_number=phone_number)
         except User.DoesNotExist:
-            messages.error(request, "No account was found with that phone number.")
+            messages.error(
+                request,
+                "No account was found with that phone number."
+            )
             return render(request, "forgot_password.html")
 
         if not user.is_active:
@@ -514,12 +552,17 @@ def forgot_password(request):
             return render(request, "forgot_password.html")
 
         PhoneOTP.objects.filter(
-            user=user, purpose=PhoneOTP.PURPOSE_PASSWORD_RESET, is_used=False
+            user=user,
+            purpose=PhoneOTP.PURPOSE_PASSWORD_RESET,
+            is_used=False,
         ).update(is_used=True)
 
         code = f"{random.randint(0, 999999):06d}"
+
         PhoneOTP.objects.create(
-            user=user, phone_number=phone_number, code=code,
+            user=user,
+            phone_number=user.phone_number,
+            code=code,
             purpose=PhoneOTP.PURPOSE_PASSWORD_RESET,
             expires_at=timezone.now() + timezone.timedelta(minutes=10),
         )
@@ -529,7 +572,7 @@ def forgot_password(request):
         print()
         print("=" * 50)
         print("PHERAL PASSWORD RESET OTP")
-        print(f"Phone: {phone_number}")
+        print(f"Phone: {user.phone_number}")
         print(f"OTP:   {code}")
         print("=" * 50)
         print()
@@ -537,7 +580,6 @@ def forgot_password(request):
         return redirect("verify_password_reset_otp")
 
     return render(request, "forgot_password.html")
-
 
 def verify_password_reset_otp(request):
     user_id = request.session.get("password_reset_user_id")
