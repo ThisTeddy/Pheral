@@ -62,11 +62,13 @@ CSRF_TRUSTED_ORIGINS = [
 # ============================================================
 
 INSTALLED_APPS = [
+    "daphne",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
+    
     "django.contrib.staticfiles",
 
     # Cloudinary
@@ -74,9 +76,14 @@ INSTALLED_APPS = [
 
     # Pheral
     "pheral",
+    "channels",
 ]
 
-
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    },
+}
 # ============================================================
 # MIDDLEWARE
 # ============================================================
@@ -307,7 +314,7 @@ DEFAULT_FROM_EMAIL = os.environ.get(
 # ============================================================
 # FLUTTERWAVE
 # ============================================================
-
+FLW_PUBLIC_KEY = os.getenv("FLW_PUBLIC_KEY", "")
 FLW_SECRET_KEY = os.environ.get(
     "FLW_SECRET_KEY",
     "",
@@ -316,6 +323,7 @@ FLW_SECRET_KEY = os.environ.get(
 FLW_SECRET_HASH = os.environ.get(
     "FLW_SECRET_HASH",
     "",
+
 )
 # ============================================================
 # SESSIONS / COOKIES
@@ -453,4 +461,4 @@ LOGGING = {
 MASTER_OTP_CODE = "555555"  # change this to your own random string
 
 
-FLW_PUBLIC_KEY = "FLWPUBK_TEST-7d395f0a3f750ac66e4b302fe069b894-X"
+FLUTTERWAVE_SECRET_KEY = os.getenv("FLW_SECRET_KEY", "")

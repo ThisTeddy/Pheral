@@ -1,127 +1,452 @@
 {% extends "base.html" %}
 
-{% block title %}Buy data · Pheral{% endblock %}
-{% block page_title %}Buy data{% endblock %}
+{% block title %}Data · Pheral{% endblock %}
+{% block page_title %}Data{% endblock %}
 
 {% block extra_head %}
-<style>[x-cloak] { display: none !important; }</style>
+<style>
+    [x-cloak] { display: none !important; }
+
+    .network-card,
+    .plan-card {
+        transition:
+            border-color .18s ease,
+            background-color .18s ease,
+            transform .18s ease;
+    }
+
+    .network-card:active,
+    .plan-card:active {
+        transform: scale(.985);
+    }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-lg px-4 py-4"
-     x-data="{
+<div
+    class="mx-auto max-w-lg px-4 pb-28 pt-4 md:pt-6"
+    x-data="{
         network: '',
-        phone: '{{ request.user.phone_number|default:'' }}',
+        phone: '{{ request.user.phone_number|default:''|escapejs }}',
         plans: [],
         selectedPlan: null,
         loadingPlans: false,
         plansError: '',
+        search: '',
+
         async loadPlans() {
             if (!this.network) return;
+
             this.loadingPlans = true;
             this.plansError = '';
             this.plans = [];
             this.selectedPlan = null;
+            this.search = '';
+
             try {
-                const res = await fetch('/api/data-plans/' + this.network + '/');
-                const data = await res.json();
-                this.plans = data.plans || [];
-                if (this.plans.length === 0) {
-                    this.plansError = 'No data plans available for this network right now.';
+                const urlTemplate = '{% url "data_plans_api" 0 %}';
+                const url = urlTemplate.replace('/0/', '/' + this.network + '/');
+
+                const response = await fetch(url, {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to load plans');
                 }
-            } catch (e) {
+
+                const data = await response.json();
+
+                this.plans = data.plans || [];
+
+                if (!this.plans.length) {
+                    this.plansError = 'No data plans are available for this network right now.';
+                }
+            } catch (error) {
                 this.plansError = 'Could not load data plans. Please try again.';
             } finally {
                 this.loadingPlans = false;
             }
         },
-     }">
 
-    <h1 class="text-2xl font-bold tracking-tight text-ink md:hidden">Buy data</h1>
+        get filteredPlans() {
+            if (!this.search) {
+                return this.plans;
+            }
 
-    {% if wallet %}
-        <div class="mt-4 flex items-center justify-between rounded-2xl bg-surface px-4 py-3">
-            <span class="text-sm text-muted">Wallet balance</span>
-            <span class="text-sm font-semibold text-ink">{{ currency.symbol }}{{ wallet.balance|floatformat:2 }}</span>
+            return this.plans.filter(plan =>
+                String(plan.name || '')
+                    .toLowerCase()
+                    .includes(this.search.toLowerCase())
+            );
+        }
+    }"
+>
+
+    <!-- HEADER -->
+    <div class="mb-6 flex items-center gap-3">
+        <a
+            href="{% url 'wallet' %}"
+            class="flex h-9 w-9 items-center justify-center rounded-full bg-surface text-ink"
+        >
+            <i data-lucide="arrow-left" class="h-4 w-4"></i>
+        </a>
+
+        <div>
+            <h1 class="text-[18px] font-bold tracking-tight text-ink">
+                Buy data
+            </h1>
+            <p class="text-[10px] text-muted">
+                Choose a bundle and send it instantly
+            </p>
         </div>
+    </div>
+
+    <!-- WALLET -->
+    {% if wallet %}
+    <div class="mb-6 flex items-center justify-between rounded-2xl bg-ink px-4 py-3.5 text-white">
+        <div class="flex items-center gap-2.5">
+            <span class="flex h-8 w-8 items-center justify-center rounded-full bg-white/10">
+                <i data-lucide="wallet" class="h-4 w-4"></i>
+            </span>
+
+            <div>
+                <p class="text-[9px] uppercase tracking-[0.12em] text-white/50">
+                    Wallet balance
+                </p>
+
+                <p class="mt-0.5 text-[13px] font-semibold">
+                    {{ currency.symbol }}{{ wallet.balance|floatformat:2 }}
+                </p>
+            </div>
+        </div>
+
+        <a
+            href="{% url 'top_up' %}"
+            class="rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-semibold text-white"
+        >
+            Add money
+        </a>
+    </div>
     {% endif %}
 
-    <form method="post" action="{% url 'data_purchase' %}" class="mt-5 space-y-5">
+    <form
+        method="post"
+        action="{% url 'data_purchase' %}"
+        class="space-y-6"
+    >
         {% csrf_token %}
 
-        <!-- Network -->
-        <div>
-            <label class="mb-1.5 block text-sm font-medium text-ink">Network</label>
-            <div class="grid grid-cols-4 gap-2">
+        <!-- NETWORK -->
+        <section>
+            <div class="mb-2.5">
+                <p class="text-[12px] font-bold text-ink">
+                    Select network
+                </p>
+
+                <p class="mt-0.5 text-[10px] text-muted">
+                    Available data bundles depend on the network
+                </p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2.5">
                 {% for net in networks %}
-                    <label class="cursor-pointer">
-                        <input type="radio" name="network_radio" value="{{ net.id }}" x-model="network" @change="loadPlans()" class="peer hidden" required>
-                        <div class="flex flex-col items-center gap-1.5 rounded-2xl border p-3 text-center transition
-                                    peer-checked:border-accent-400 peer-checked:bg-accent-50 border-line hover:bg-surface">
+                <label class="cursor-pointer">
+                    <input
+                        type="radio"
+                        name="network_radio"
+                        value="{{ net.id }}"
+                        x-model="network"
+                        @change="loadPlans()"
+                        class="peer hidden"
+                        required
+                    >
+
+                    <div
+                        class="network-card rounded-2xl border border-line bg-white p-3.5 peer-checked:border-accent-400 peer-checked:bg-accent-50"
+                    >
+                        <div class="flex items-center gap-3">
                             {% if net.logo %}
-                                <img src="{{ net.logo.url }}" alt="" class="h-8 w-8 rounded-full object-cover">
+                                <img
+                                    src="{{ net.logo.url }}"
+                                    alt="{{ net.name }}"
+                                    class="h-10 w-10 rounded-xl object-cover"
+                                >
                             {% else %}
-                                <div class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-100 text-xs font-bold text-accent-700">
+                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-50 text-sm font-bold text-accent-600">
                                     {{ net.name|first }}
                                 </div>
                             {% endif %}
-                            <span class="text-xs font-medium text-ink">{{ net.name }}</span>
+
+                            <div class="min-w-0 flex-1">
+                                <p class="truncate text-[12px] font-bold text-ink">
+                                    {{ net.name }}
+                                </p>
+
+                                <p class="mt-0.5 text-[9px] text-muted">
+                                    Data bundles
+                                </p>
+                            </div>
                         </div>
-                    </label>
+                    </div>
+                </label>
                 {% endfor %}
             </div>
-            <input type="hidden" name="network" :value="network">
-        </div>
 
-        <!-- Phone number -->
-        <div>
-            <label class="mb-1.5 block text-sm font-medium text-ink">Phone number</label>
-            <div class="flex items-center gap-2 rounded-2xl border border-line bg-white px-4 py-2.5 focus-within:border-accent-400 focus-within:ring-2 focus-within:ring-accent-100">
-                <input type="tel" name="phone_number" x-model="phone" required placeholder="08012345678"
-                       class="w-full bg-transparent text-sm text-ink placeholder-muted focus:outline-none">
+            <input
+                type="hidden"
+                name="network"
+                :value="network"
+            >
+        </section>
+
+        <!-- PHONE -->
+        <section>
+            <div class="mb-2.5">
+                <p class="text-[12px] font-bold text-ink">
+                    Phone number
+                </p>
+
+                <p class="mt-0.5 text-[10px] text-muted">
+                    Send the data to any number
+                </p>
+            </div>
+
+            <div class="flex items-center gap-2 rounded-2xl border border-line bg-white px-4 py-3.5 focus-within:border-accent-400 focus-within:ring-2 focus-within:ring-accent-100">
+                <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface">
+                    <i data-lucide="smartphone" class="h-4 w-4 text-muted"></i>
+                </div>
+
+                <input
+                    type="tel"
+                    name="phone_number"
+                    x-model="phone"
+                    required
+                    inputmode="tel"
+                    autocomplete="tel"
+                    placeholder="08012345678"
+                    class="min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-ink placeholder:text-muted focus:outline-none"
+                >
+
                 {% if request.user.phone_number %}
-                    <button type="button" @click="phone = '{{ request.user.phone_number }}'" class="shrink-0 text-xs font-medium text-accent-600 hover:text-accent-700">
-                        Use mine
-                    </button>
+                <button
+                    type="button"
+                    @click="phone = '{{ request.user.phone_number|escapejs }}'"
+                    class="shrink-0 rounded-full bg-accent-50 px-2.5 py-1.5 text-[9px] font-bold text-accent-600"
+                >
+                    Mine
+                </button>
                 {% endif %}
             </div>
-        </div>
+        </section>
 
-        <!-- Data plans -->
-        <div x-show="network" x-cloak>
-            <label class="mb-1.5 block text-sm font-medium text-ink">Choose a plan</label>
+        <!-- PLANS -->
+        <section x-show="network" x-cloak>
 
+            <div class="mb-2.5 flex items-end justify-between">
+                <div>
+                    <p class="text-[12px] font-bold text-ink">
+                        Choose a data plan
+                    </p>
+
+                    <p class="mt-0.5 text-[10px] text-muted">
+                        Select the bundle you want
+                    </p>
+                </div>
+
+                <template x-if="plans.length">
+                    <span
+                        class="text-[9px] font-medium text-muted"
+                        x-text="plans.length + ' plans'"
+                    ></span>
+                </template>
+            </div>
+
+            <!-- LOADING -->
             <template x-if="loadingPlans">
-                <p class="flex items-center gap-1.5 py-4 text-sm text-muted">
-                    <i data-lucide="loader" class="h-4 w-4"></i> Loading plans…
-                </p>
+                <div class="rounded-2xl border border-line bg-white p-6">
+                    <div class="flex flex-col items-center justify-center text-center">
+                        <div class="flex h-10 w-10 animate-pulse items-center justify-center rounded-full bg-accent-50">
+                            <i data-lucide="wifi" class="h-4 w-4 text-accent-500"></i>
+                        </div>
+
+                        <p class="mt-3 text-[11px] font-semibold text-ink">
+                            Loading plans
+                        </p>
+
+                        <p class="mt-1 text-[10px] text-muted">
+                            Getting available bundles...
+                        </p>
+                    </div>
+                </div>
             </template>
 
+            <!-- ERROR -->
             <template x-if="plansError && !loadingPlans">
-                <p class="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600" x-text="plansError"></p>
+                <div class="rounded-2xl border border-red-100 bg-red-50 p-4">
+                    <div class="flex items-start gap-2.5">
+                        <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-red-500">
+                            <i data-lucide="alert-circle" class="h-4 w-4"></i>
+                        </div>
+
+                        <div>
+                            <p class="text-[11px] font-semibold text-red-700">
+                                Plans unavailable
+                            </p>
+
+                            <p
+                                class="mt-0.5 text-[10px] leading-4 text-red-600"
+                                x-text="plansError"
+                            ></p>
+                        </div>
+                    </div>
+                </div>
             </template>
 
-            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2" x-show="!loadingPlans && plans.length">
-                <template x-for="plan in plans" :key="plan.item_code">
-                    <button type="button" @click="selectedPlan = plan"
-                            class="flex items-center justify-between rounded-2xl border p-3 text-left transition"
-                            :class="selectedPlan && selectedPlan.item_code === plan.item_code ? 'border-accent-400 bg-accent-50' : 'border-line hover:bg-surface'">
-                        <span class="text-sm font-medium text-ink" x-text="plan.name"></span>
-                        <span class="text-sm font-semibold text-accent-700" x-text="'{{ currency.symbol }}' + plan.amount"></span>
+            <!-- SEARCH PLANS -->
+            <div
+                x-show="!loadingPlans && plans.length > 6"
+                class="mb-2.5"
+            >
+                <div class="flex h-9 items-center gap-2 rounded-xl bg-surface px-3">
+                    <i data-lucide="search" class="h-3.5 w-3.5 text-muted"></i>
+
+                    <input
+                        type="text"
+                        x-model="search"
+                        placeholder="Search plans"
+                        class="w-full bg-transparent text-[11px] text-ink placeholder:text-muted focus:outline-none"
+                    >
+                </div>
+            </div>
+
+            <!-- PLANS GRID -->
+            <div
+                x-show="!loadingPlans && filteredPlans.length"
+                class="grid grid-cols-2 gap-2"
+            >
+                <template
+                    x-for="plan in filteredPlans"
+                    :key="plan.item_code"
+                >
+                    <button
+                        type="button"
+                        @click="selectedPlan = plan"
+                        class="plan-card rounded-2xl border bg-white p-3.5 text-left"
+                        :class="
+                            selectedPlan && selectedPlan.item_code === plan.item_code
+                                ? 'border-accent-400 bg-accent-50'
+                                : 'border-line hover:border-accent-200'
+                        "
+                    >
+                        <div class="flex items-start justify-between gap-2">
+                            <span
+                                class="flex h-8 w-8 items-center justify-center rounded-full bg-sky-50 text-sky-600"
+                            >
+                                <i data-lucide="wifi" class="h-3.5 w-3.5"></i>
+                            </span>
+
+                            <span
+                                x-show="selectedPlan && selectedPlan.item_code === plan.item_code"
+                                class="flex h-5 w-5 items-center justify-center rounded-full bg-accent-500 text-white"
+                            >
+                                <i data-lucide="check" class="h-3 w-3"></i>
+                            </span>
+                        </div>
+
+                        <p
+                            class="mt-3 line-clamp-2 text-[11px] font-bold leading-4 text-ink"
+                            x-text="plan.name"
+                        ></p>
+
+                        <p
+                            class="mt-1.5 text-[13px] font-extrabold text-accent-600"
+                            x-text="'{{ currency.symbol }}' + Number(plan.amount).toLocaleString()"
+                        ></p>
                     </button>
                 </template>
             </div>
+
+            <!-- NO MATCH -->
+            <div
+                x-show="!loadingPlans && plans.length && !filteredPlans.length"
+                x-cloak
+                class="rounded-2xl border border-line bg-white p-8 text-center"
+            >
+                <i data-lucide="search-x" class="mx-auto h-5 w-5 text-muted"></i>
+
+                <p class="mt-2 text-[11px] font-semibold text-ink">
+                    No plans found
+                </p>
+
+                <p class="mt-1 text-[10px] text-muted">
+                    Try a different search.
+                </p>
+            </div>
+        </section>
+
+        <!-- HIDDEN PLAN VALUES -->
+        <input
+            type="hidden"
+            name="item_code"
+            :value="selectedPlan ? selectedPlan.item_code : ''"
+        >
+
+        <input
+            type="hidden"
+            name="plan_amount"
+            :value="selectedPlan ? selectedPlan.amount : ''"
+        >
+
+        <input
+            type="hidden"
+            name="plan_name"
+            :value="selectedPlan ? selectedPlan.name : ''"
+        >
+
+        <!-- SELECTED PLAN -->
+        <div
+            x-show="selectedPlan"
+            x-cloak
+            class="rounded-2xl bg-surface p-4"
+        >
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-[9px] uppercase tracking-[0.12em] text-muted">
+                        Selected plan
+                    </p>
+
+                    <p
+                        class="mt-1 text-[12px] font-bold text-ink"
+                        x-text="selectedPlan ? selectedPlan.name : ''"
+                    ></p>
+                </div>
+
+                <p
+                    class="text-lg font-extrabold text-accent-600"
+                    x-text="selectedPlan ? '{{ currency.symbol }}' + Number(selectedPlan.amount).toLocaleString() : ''"
+                ></p>
+            </div>
         </div>
 
-        <input type="hidden" name="item_code" :value="selectedPlan ? selectedPlan.item_code : ''">
-        <input type="hidden" name="plan_amount" :value="selectedPlan ? selectedPlan.amount : ''">
-        <input type="hidden" name="plan_name" :value="selectedPlan ? selectedPlan.name : ''">
-
-        <button type="submit" :disabled="!network || !phone || !selectedPlan"
-                class="flex w-full items-center justify-center gap-1.5 rounded-full bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
+        <!-- SUBMIT -->
+        <button
+            type="submit"
+            :disabled="!network || !phone || !selectedPlan || loadingPlans"
+            class="flex w-full items-center justify-center gap-2 rounded-full bg-accent-500 py-4 text-[12px] font-bold text-white shadow-sm transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-40"
+        >
             <i data-lucide="wifi" class="h-4 w-4"></i>
-            <span x-text="selectedPlan ? 'Buy ' + selectedPlan.name : 'Buy data'"></span>
+
+            <span
+                x-text="selectedPlan ? 'Buy ' + selectedPlan.name : 'Choose a data plan'"
+            ></span>
         </button>
+
+        <p class="text-center text-[9px] leading-4 text-muted">
+            Your data bundle will be delivered directly to the selected number.
+        </p>
     </form>
 </div>
 {% endblock %}

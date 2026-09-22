@@ -221,6 +221,8 @@ class PheralTransaction(models.Model):
         GROUP_TRANSFER = "group_transfer", "Group Transfer"
         HIRE_PAYMENT = "hire_payment", "Hire Payment"
         REFUND = "refund", "Refund"
+        AIRTIME = "airtime", "Airtime"
+        DATA = "data", "Data"
 
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
@@ -735,21 +737,46 @@ class UserPresence(models.Model):
 #
 # 2. Add this new model anywhere below PheralTransaction:
 # ============================================================
-
 class NetworkProvider(models.Model):
     """
-    A mobile network Flutterwave can bill against (MTN, Glo, Airtel,
-    9mobile). `flutterwave_airtime_biller` / `flutterwave_data_biller`
-    are the exact biller name strings Flutterwave's Bills API expects
-    for that network — confirm these against your Flutterwave
-    dashboard's bill categories, since they occasionally get renamed.
+    Mobile network provider used for airtime and data purchases.
+
+    The Flutterwave biller/item codes should match the values
+    configured for the corresponding network in Flutterwave.
     """
 
     name = models.CharField(max_length=50, unique=True)
-    code = models.CharField(max_length=20, unique=True)  # short slug, e.g. "mtn"
-    flutterwave_airtime_biller = models.CharField(max_length=100)
-    flutterwave_data_biller = models.CharField(max_length=100)
-    logo = models.ImageField(upload_to="networks/", blank=True, null=True)
+    code = models.CharField(max_length=20, unique=True)
+
+    # Flutterwave biller information
+    flutterwave_airtime_biller = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+    )
+    flutterwave_airtime_biller_code = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+    )
+
+    flutterwave_data_biller = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+    )
+    flutterwave_data_biller_code = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+    )
+
+    logo = models.ImageField(
+        upload_to="networks/",
+        blank=True,
+        null=True,
+    )
+
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -757,8 +784,6 @@ class NetworkProvider(models.Model):
 
     def __str__(self):
         return self.name
-
-
 # Seed data (run once via shell or a data migration):
 #
 # from yourapp.models import NetworkProvider

@@ -20,6 +20,8 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+
+import uuid
 from .models import (
     AgentActivity,
     AgentCommand,
@@ -29,6 +31,7 @@ from .models import (
     ConversationParticipant,
     Currency,
     ExchangeRate,
+    generate_reference,
     GroupLedger,
     GroupLedgerEntry,
     HireJob,
@@ -51,6 +54,7 @@ from .models import (
     UserPresence,
     Wallet,
     WalletToken,
+    NetworkProvider,
 )
 
 from django.db.models import Count, Exists, OuterRef, Q
@@ -61,6 +65,319 @@ PAYSTACK_BASE_URL = "https://api.paystack.co"
 # ============================================================
 # HELPERS
 # ============================================================
+# ============================================================
+# Paste into views.py.
+#
+# 1. pip install phonenumbers
+# 2. Delete ALL old copies of: normalize_phone_number, register,
+#    sync_contacts.
+# 3. Add the imports below to the top of views.py (skip any you
+#    already have).
+# 4. Paste everything under the imports into views.py.
+# ============================================================
+
+# ---------- IMPORTS (top of views.py) ----------
+
+import re
+import json
+import secrets
+from datetime import timedelta
+
+import phonenumbers
+from phonenumbers import NumberParseException, PhoneNumberFormat
+
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
+from django.http import JsonResponse
+from django.shortcuts import redirect, render
+from django.utils import timezone
+from django.views.decorators.http import require_POST
+
+# (Contact, PhoneOTP, User are already imported from .models in views.py)
+
+
+# ---------- PHONE HELPERS ----------
+# Countries matching the currencies Pheral supports. Used to build
+# the region selector on registration so normalize_phone_number
+# knows how to read a locally-formatted number (e.g. "0801..." is
+# only unambiguous once you know which country it's from).
+SUPPORTED_REGIONS = [
+    ("NG", "Nigeria"),
+    ("GH", "Ghana"),
+    ("KE", "Kenya"),
+    ("ZA", "South Africa"),
+    ("UG", "Uganda"),
+    ("TZ", "Tanzania"),
+    ("RW", "Rwanda"),
+    ("EG", "Egypt"),
+    ("US", "United States"),
+    ("GB", "United Kingdom"),
+    ("CA", "Canada"),
+    ("AU", "Australia"),
+]
+
+
+def region_dial_code(region):
+    try:
+        return "+" + str(phonenumbers.country_code_for_region(region))
+    except Exception:
+        return ""
+
+DEFAULT_REGION = "NG"
+
+
+def normalize_phone_number(phone, region=DEFAULT_REGION):
+    """
+    Return the number in E.164 (+2348012345678), or "" if it isn't
+    a valid phone number. Numbers without a country code
+    (08012345678) are read as belonging to `region`.
+    """
+    if not phone:
+        return ""
+
+    raw = str(phone).strip()
+
+    # 00234... is a common way of writing +234...
+    if raw.startswith("00"):
+        raw = "+" + raw[2:]
+
+    try:
+        parsed = phonenumbers.parse(raw, region)
+    except NumberParseException:
+        return ""
+
+    if not phonenumbers.is_valid_number(parsed):
+        return ""
+
+    return phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
+
+
+def region_for_user(user):
+    """Country of a user's stored number, used to read their local-format contacts."""
+    try:
+        parsed = phonenumbers.parse(user.phone_number, None)
+        return phonenumbers.region_code_for_number(parsed) or DEFAULT_REGION
+    except NumberParseException:
+        return DEFAULT_REGION
+
+
+# ---------- OTP HELPER ----------
+
+OTP_TTL = timedelta(minutes=10)
+
+
+def issue_phone_otp(user, purpose=PhoneOTP.PURPOSE_VERIFICATION):
+    """Invalidate old codes, create a fresh one, and return it."""
+    PhoneOTP.objects.filter(user=user, purpose=purpose, is_used=False).update(is_used=True)
+
+    code = f"{secrets.randbelow(1_000_000):06d}"  # secrets, not random: OTPs need a CSPRNG
+
+    PhoneOTP.objects.create(
+        user=user,
+        phone_number=user.phone_number,
+        code=code,
+        purpose=purpose,
+        expires_at=timezone.now() + OTP_TTL,
+    )
+
+    # TODO: replace with a real SMS provider
+    print(f"\n{'=' * 50}\nPHERAL OTP ({purpose})\nPhone: {user.phone_number}\nOTP:   {code}\n{'=' * 50}\n")
+
+    return code
+
+
+# ---------- REGISTER ----------
+
+USERNAME_RE = re.compile(r"^[A-Za-z0-9_.]{3,30}$")
+
+def register(request):
+    if request.user.is_authenticated:
+        return redirect("chat")
+
+    if request.method == "POST":
+        username = request.POST.get("username", "").strip()
+        region = request.POST.get("region", "NG").strip().upper()
+        phone_raw = request.POST.get("phone_number", "").strip()
+        password = request.POST.get("password", "")
+        password_confirm = request.POST.get("password_confirm", "")
+        first_name = request.POST.get("first_name", "").strip()
+        last_name = request.POST.get("last_name", "").strip()
+
+        context = {"regions": SUPPORTED_REGIONS, "selected_region": region, "phone_raw": phone_raw}
+
+        if not username:
+            messages.error(request, "Username is required.")
+            return render(request, "register.html", context)
+
+        if region not in dict(SUPPORTED_REGIONS):
+            region = "NG"
+
+        phone_number = normalize_phone_number(phone_raw, region)
+
+        if not phone_raw:
+            messages.error(request, "Phone number is required.")
+            return render(request, "register.html", context)
+
+        if not phone_number:
+            messages.error(request, "Enter a valid phone number for the selected country.")
+            return render(request, "register.html", context)
+
+        if not first_name or not last_name:
+            messages.error(request, "First name and last name are required.")
+            return render(request, "register.html", context)
+
+        if not password:
+            messages.error(request, "Password is required.")
+            return render(request, "register.html", context)
+
+        if password != password_confirm:
+            messages.error(request, "Passwords do not match.")
+            return render(request, "register.html", context)
+
+        if User.objects.filter(username__iexact=username).exists():
+            messages.error(request, "That username is already taken.")
+            return render(request, "register.html", context)
+
+        if User.objects.filter(phone_number=phone_number).exists():
+            messages.error(request, "That phone number is already registered.")
+            return render(request, "register.html", context)
+
+        user = User.objects.create_user(
+            username=username, phone_number=phone_number, password=password,
+            first_name=first_name, last_name=last_name,
+        )
+        user.is_phone_verified = False
+        user.save(update_fields=["is_phone_verified"])
+
+        code = f"{random.randint(0, 999999):06d}"
+        PhoneOTP.objects.create(
+            user=user, phone_number=phone_number, code=code,
+            expires_at=timezone.now() + timezone.timedelta(minutes=10),
+        )
+
+        request.session["otp_user_id"] = user.pk
+
+        print()
+        print("=" * 50)
+        print("PHERAL DEVELOPMENT OTP")
+        print(f"Phone: {phone_number}")
+        print(f"OTP:   {code}")
+        print("=" * 50)
+        print()
+
+        return redirect("verify_otp")
+
+    return render(request, "register.html", {"regions": SUPPORTED_REGIONS, "selected_region": "NG"})
+# ---------- SYNC CONTACTS ----------
+
+MAX_SYNC_CONTACTS = 2000
+
+
+@login_required
+@require_POST
+def sync_contacts(request):
+    """
+    Match device contacts against registered Pheral users.
+    Expected body: {"contacts": [{"name": "Zoe", "phone": "08012345678"}]}
+    """
+    try:
+        payload = json.loads(request.body or "{}")
+    except ValueError:
+        return JsonResponse({"success": False, "error": "Invalid contact data."}, status=400)
+
+    if not isinstance(payload, dict):
+        return JsonResponse({"success": False, "error": "Invalid contact data."}, status=400)
+
+    incoming = payload.get("contacts", [])
+
+    if not isinstance(incoming, list):
+        return JsonResponse({"success": False, "error": "Contacts must be a list."}, status=400)
+
+    if len(incoming) > MAX_SYNC_CONTACTS:
+        return JsonResponse(
+            {"success": False, "error": f"Too many contacts (max {MAX_SYNC_CONTACTS})."},
+            status=400,
+        )
+
+    # Local-format numbers in the address book are read as the user's own country.
+    region = region_for_user(request.user)
+
+    device = {}  # normalized phone -> name (first name wins for duplicates)
+    invalid_count = 0
+
+    for item in incoming:
+        if not isinstance(item, dict):
+            continue
+
+        name = str(item.get("name", "")).strip()[:100]
+        phone = normalize_phone_number(str(item.get("phone", "")), region)
+
+        if not phone:
+            invalid_count += 1
+            continue
+
+        device.setdefault(phone, name)
+
+    users_by_phone = {
+        u.phone_number: u
+        for u in User.objects
+        .filter(phone_number__in=device.keys(), is_active=True)
+        .exclude(pk=request.user.pk)
+    }
+
+    existing = {
+        c.contact_user_id: c
+        for c in Contact.objects.filter(
+            owner=request.user,
+            contact_user_id__in=[u.pk for u in users_by_phone.values()],
+        )
+    }
+
+    to_create, to_update, matched = [], [], []
+
+    for phone, user in users_by_phone.items():
+        name = device[phone]
+        contact = existing.get(user.pk)
+
+        if contact is None:
+            contact = Contact(
+                owner=request.user, contact_user=user,
+                phone_number=phone, nickname=name,
+            )
+            to_create.append(contact)
+        elif name and not contact.nickname:
+            contact.nickname = name
+            to_update.append(contact)
+
+        matched.append({
+            "id": user.id,
+            "username": user.username,
+            "name": user.get_full_name() or user.username,
+            "nickname": contact.nickname or name,
+        })
+
+    with transaction.atomic():
+        Contact.objects.bulk_create(to_create, ignore_conflicts=True)
+        if to_update:
+            Contact.objects.bulk_update(to_update, ["nickname"])
+
+    not_on_pheral = [
+        {"name": name, "phone": phone}
+        for phone, name in device.items()
+        if phone not in users_by_phone
+    ]
+
+    return JsonResponse({
+        "success": True,
+        "matched": matched,
+        "not_on_pheral": not_on_pheral,
+        "matched_count": len(matched),
+        "not_on_pheral_count": len(not_on_pheral),
+        "invalid_count": invalid_count,
+    })
 
 def get_or_create_wallet(user, currency):
     wallet, _ = Wallet.objects.get_or_create(
@@ -138,31 +455,6 @@ def create_system_message(conversation, content):
         message_type=Message.MessageType.SYSTEM,
         content=content,
     )
-
-
-def normalize_phone_number(phone):
-    """
-    Normalize phone numbers before comparing them.
-    08012345678 / 2348012345678 / +2348012345678 all become
-    +2348012345678.
-    """
-
-    if not phone:
-        return ""
-
-    phone = str(phone).strip()
-    digits = re.sub(r"\D", "", phone)
-
-    if not digits:
-        return ""
-
-    if digits.startswith("0") and len(digits) == 11:
-        digits = "234" + digits[1:]
-
-    if digits.startswith("234"):
-        return "+" + digits
-
-    return "+" + digits
 
 
 # ============================================================
@@ -247,6 +539,38 @@ def _fail_top_up(pheral_transaction):
             locked_txn.save(update_fields=["status", "completed_at"])
         return locked_txn
 
+def _verify_flutterwave_transaction(pheral_transaction, transaction_id):
+    try:
+        response = requests.get(
+            f"https://api.flutterwave.com/v3/transactions/{transaction_id}/verify",
+            headers={
+                "Authorization": f"Bearer {settings.FLW_SECRET_KEY}",
+                "Content-Type": "application/json",
+            },
+            timeout=15,
+        )
+        data = response.json()
+    except (requests.RequestException, ValueError):
+        return False
+
+    if data.get("status") != "success":
+        return False
+
+    verified = data.get("data", {})
+    expected_amount = float(pheral_transaction.amount)
+    expected_currency = pheral_transaction.currency.code
+
+    if (
+        verified.get("status") == "successful"
+        and verified.get("tx_ref") == pheral_transaction.reference
+        and verified.get("currency") == expected_currency
+        and float(verified.get("amount", 0)) == expected_amount
+    ):
+        _complete_top_up(pheral_transaction)
+        return True
+
+    return False
+    
 def convert_amount(amount, source_currency, target_currency):
     """
     Convert `amount` from source_currency to target_currency,
@@ -289,106 +613,9 @@ def convert_amount(amount, source_currency, target_currency):
 def landing(request):
     return render(request, "landing.html")
 
-def normalize_phone_number(phone_number):
-    phone = phone_number.strip().replace(" ", "").replace("-", "")
-
-    if phone.startswith("+234"):
-        phone = "0" + phone[4:]
-    elif phone.startswith("234"):
-        phone = "0" + phone[3:]
-
-    return phone
 # ============================================================
 # AUTHENTICATION
 # ============================================================
-
-def register(request):
-    if request.user.is_authenticated:
-        return redirect("chat")
-
-    if request.method == "POST":
-        username = request.POST.get("username", "").strip()
-        phone_number = request.POST.get("phone_number", "").strip()
-        password = request.POST.get("password", "")
-        password_confirm = request.POST.get("password_confirm", "")
-        first_name = request.POST.get("first_name", "").strip()
-        last_name = request.POST.get("last_name", "").strip()
-
-        if not username:
-            messages.error(request, "Username is required.")
-            return render(request, "register.html")
-
-        if not phone_number:
-            messages.error(request, "Phone number is required.")
-            return render(request, "register.html")
-
-        if not first_name or not last_name:
-            messages.error(request, "First name and last name are required.")
-            return render(request, "register.html")
-
-        if not password:
-            messages.error(request, "Password is required.")
-            return render(request, "register.html")
-
-        if password != password_confirm:
-            messages.error(request, "Passwords do not match.")
-            return render(request, "register.html")
-
-        # Normalize phone number before any database operation
-        phone_number = normalize_phone_number(phone_number)
-
-        if User.objects.filter(username__iexact=username).exists():
-            messages.error(request, "That username is already taken.")
-            return render(request, "register.html")
-
-        if User.objects.filter(phone_number=phone_number).exists():
-            messages.error(request, "That phone number is already registered.")
-            return render(request, "register.html")
-
-        user = User.objects.create_user(
-            username=username,
-            phone_number=phone_number,
-            password=password,
-            first_name=first_name,
-            last_name=last_name,
-        )
-
-        user.is_phone_verified = False
-        user.save(update_fields=["is_phone_verified"])
-
-        code = f"{random.randint(0, 999999):06d}"
-
-        PhoneOTP.objects.create(
-            user=user,
-            phone_number=phone_number,
-            code=code,
-            expires_at=timezone.now() + timezone.timedelta(minutes=10),
-        )
-
-        request.session["otp_user_id"] = user.pk
-
-        print()
-        print("=" * 50)
-        print("PHERAL DEVELOPMENT OTP")
-        print(f"Phone: {phone_number}")
-        print(f"OTP:   {code}")
-        print("=" * 50)
-        print()
-
-        return redirect("verify_otp")
-
-    return render(request, "register.html")
-
-def normalize_phone_number(phone_number):
-    phone = phone_number.strip().replace(" ", "").replace("-", "")
-
-    if phone.startswith("+234"):
-        phone = "0" + phone[4:]
-    elif phone.startswith("234"):
-        phone = "0" + phone[3:]
-
-    return phone
-
 
 def login_view(request):
     if request.user.is_authenticated:
@@ -1745,6 +1972,8 @@ def top_up(request):
         },
     )
 
+from decimal import Decimal
+
 @login_required
 def top_up_callback(request):
     """
@@ -2605,69 +2834,6 @@ def contacts(request):
 
 @login_required
 @require_POST
-def sync_contacts(request):
-    """
-    Match device contacts against registered Pheral users.
-    Expected body: {"contacts": [{"name": "Zoe", "phone": "08012345678"}]}
-    """
-
-    try:
-        payload = json.loads(request.body or "{}")
-    except json.JSONDecodeError:
-        return JsonResponse({"success": False, "error": "Invalid contact data."}, status=400)
-
-    incoming_contacts = payload.get("contacts", [])
-
-    if not isinstance(incoming_contacts, list):
-        return JsonResponse({"success": False, "error": "Contacts must be a list."}, status=400)
-
-    matched = []
-    not_on_pheral = []
-    seen_numbers = set()
-
-    for item in incoming_contacts:
-        if not isinstance(item, dict):
-            continue
-
-        name = str(item.get("name", "")).strip()
-        phone = normalize_phone_number(str(item.get("phone", "")).strip())
-
-        if not phone or phone in seen_numbers:
-            continue
-
-        seen_numbers.add(phone)
-
-        user = User.objects.filter(phone_number=phone, is_active=True).exclude(pk=request.user.pk).first()
-
-        if user:
-            contact, created = Contact.objects.get_or_create(
-                owner=request.user, contact_user=user,
-                defaults={"phone_number": phone, "nickname": name[:100]},
-            )
-
-            if not contact.nickname and name:
-                contact.nickname = name[:100]
-                contact.save(update_fields=["nickname"])
-
-            matched.append({
-                "id": user.id, "username": user.username,
-                "name": user.get_full_name() or user.username,
-                "nickname": contact.nickname or name,
-            })
-        else:
-            not_on_pheral.append({"name": name, "phone": phone})
-
-    return JsonResponse({
-        "success": True,
-        "matched": matched,
-        "not_on_pheral": not_on_pheral,
-        "matched_count": len(matched),
-        "not_on_pheral_count": len(not_on_pheral),
-    })
-
-
-@login_required
-@require_POST
 def add_contact(request, username):
     contact_user = get_object_or_404(User, username=username, is_active=True)
 
@@ -3308,48 +3474,51 @@ def _complete_bill(pheral_transaction, external_reference):
     pheral_transaction.save(update_fields=["status", "external_reference", "completed_at"])
     return pheral_transaction
 
+def _call_flutterwave_bill(
+    *,
+    biller_code,
+    customer_phone,
+    amount,
+    item_code,
+):
+    """
+    Send an airtime/data bill payment to Flutterwave.
+    """
 
-def _call_flutterwave_bill(*, biller_name, customer_phone, amount, item_code=None):
-    """
-    ⚠️ VERIFY THIS AGAINST FLUTTERWAVE'S CURRENT DOCS BEFORE GOING LIVE.
-    Flutterwave's Bills API (POST /v3/bills) payload shape has shifted
-    across their v3 doc revisions — specifically whether a data bundle
-    is selected via `type` set to the plan's item_code, or via a
-    separate `biller_code` field. This implementation uses `type` as
-    the item_code when one is provided (data bundles), and falls back
-    to a plain "AIRTIME" type otherwise. Confirm against
-    https://developer.flutterwave.com/docs/bill-payments before
-    relying on this in production, and adjust just this function if
-    the field name has changed — nothing else in this file needs to
-    know about that detail.
-    """
     reference = f"PHR-BILL-{uuid.uuid4().hex[:10].upper()}"
 
     payload = {
         "country": "NG",
-        "customer": customer_phone,
+        "customer_id": customer_phone,
         "amount": float(amount),
-        "recurrence": "ONCE",
-        "type": item_code if item_code else "AIRTIME",
-        "biller_name": biller_name,
         "reference": reference,
     }
 
     try:
         response = requests.post(
-            f"{FLUTTERWAVE_BASE_URL}/bills",
+            f"{FLUTTERWAVE_BASE_URL}/billers/"
+            f"{biller_code}/items/{item_code}/payment",
             json=payload,
             headers=_flutterwave_headers(),
-            timeout=20,
+            timeout=30,
         )
+
         data = response.json()
+
     except (requests.RequestException, ValueError):
         return False, reference, None
 
     success = data.get("status") == "success"
-    flw_reference = (data.get("data") or {}).get("reference", reference)
-    return success, reference, flw_reference
 
+    response_data = data.get("data") or {}
+
+    flw_reference = (
+        response_data.get("reference")
+        or response_data.get("tx_ref")
+        or reference
+    )
+
+    return success, reference, flw_reference
 
 def fetch_data_plans(network):
     """
@@ -3427,12 +3596,12 @@ def airtime_purchase(request):
         if error:
             messages.error(request, error)
             return render(request, "airtime.html", {"networks": networks, "wallet": wallet_obj, "currency": currency})
-
         success, our_reference, flw_reference = _call_flutterwave_bill(
-            biller_name=network.flutterwave_airtime_biller,
-            customer_phone=_local_phone_format(phone_number),
-            amount=amount,
-        )
+        biller_code=network.flutterwave_airtime_biller_code,
+        customer_phone=_local_phone_format(phone_number),
+        amount=amount,
+        item_code="AT102",
+    )
 
         if success:
             _complete_bill(pheral_transaction, flw_reference or our_reference)
@@ -3498,3 +3667,973 @@ def data_plans_api(request, network_id):
     network = get_object_or_404(NetworkProvider, pk=network_id, is_active=True)
     plans = fetch_data_plans(network)
     return JsonResponse({"plans": plans})
+
+
+@login_required
+def group_chat(request, conversation_id):
+    conversation = get_object_or_404(
+        Conversation, pk=conversation_id,
+        conversation_type=Conversation.ConversationType.GROUP,
+        participants__user=request.user,
+    )
+
+    participant = get_object_or_404(ConversationParticipant, conversation=conversation, user=request.user)
+
+    ledger, _ = GroupLedger.objects.get_or_create(
+        conversation=conversation,
+        defaults={"currency": get_default_currency()},
+    )
+
+    chat_messages = (
+        Message.objects.filter(conversation=conversation)
+        .select_related("sender", "transaction", "receipt").order_by("created_at")
+    )
+
+    ledger_entries = (
+        GroupLedgerEntry.objects.filter(ledger=ledger)
+        .select_related("user").order_by("-created_at")[:15]
+    )
+
+    if request.method == "POST":
+        content = request.POST.get("content", "").strip()
+
+        if content:
+            Message.objects.create(
+                conversation=conversation, sender=request.user,
+                message_type=Message.MessageType.TEXT, content=content,
+            )
+            conversation.updated_at = timezone.now()
+            conversation.save(update_fields=["updated_at"])
+
+        return redirect("group_chat", conversation_id=conversation.pk)
+
+    return render(request, "group_chat.html", {
+        "conversation": conversation,
+        "chat_messages": chat_messages,
+        "ledger": ledger,
+        "ledger_entries": ledger_entries,
+        "participant": participant,
+        "participant_count": conversation.participants.count(),
+    })
+
+
+@login_required
+@require_POST
+def group_contribute(request, conversation_id):
+    """
+    Moves money from the member's personal wallet (in the group's
+    ledger currency) into the group's shared balance. Race-safe via
+    select_for_update on both the wallet and the ledger — same
+    discipline as pay_user.
+    """
+
+    conversation = get_object_or_404(
+        Conversation, pk=conversation_id,
+        conversation_type=Conversation.ConversationType.GROUP,
+        participants__user=request.user,
+    )
+    ledger = get_object_or_404(GroupLedger, conversation=conversation)
+
+    amount = parse_amount(request.POST.get("amount"))
+    if amount is None:
+        messages.error(request, "Enter a valid contribution amount.")
+        return redirect("group_chat", conversation_id=conversation.pk)
+
+    wallet = get_or_create_wallet(request.user, ledger.currency)
+
+    with transaction.atomic():
+        locked_wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
+        locked_ledger = GroupLedger.objects.select_for_update().get(pk=ledger.pk)
+
+        if locked_wallet.balance < amount:
+            messages.error(request, "Insufficient wallet balance.")
+            return redirect("group_chat", conversation_id=conversation.pk)
+
+        balance_before = locked_wallet.balance
+        locked_wallet.balance -= amount
+        locked_wallet.save(update_fields=["balance", "updated_at"])
+
+        locked_ledger.balance += amount
+        locked_ledger.save(update_fields=["balance", "updated_at"])
+
+        pheral_transaction = PheralTransaction.objects.create(
+            sender=request.user, sender_wallet=locked_wallet,
+            transaction_type=PheralTransaction.TransactionType.GROUP_TRANSFER,
+            amount=amount, currency=locked_ledger.currency,
+            status=PheralTransaction.Status.COMPLETED, completed_at=timezone.now(),
+            description=f"Contribution to {conversation.name or 'group'}",
+        )
+
+        LedgerEntry.objects.create(
+            transaction=pheral_transaction, wallet=locked_wallet,
+            entry_type=LedgerEntry.EntryType.DEBIT, amount=amount,
+            balance_before=balance_before, balance_after=locked_wallet.balance,
+            description="Group contribution",
+        )
+
+        GroupLedgerEntry.objects.create(
+            ledger=locked_ledger, user=request.user,
+            entry_type=GroupLedgerEntry.EntryType.CONTRIBUTION, amount=amount,
+            description=f"@{request.user.username} contributed",
+        )
+
+        Message.objects.create(
+            conversation=conversation, sender=request.user,
+            message_type=Message.MessageType.PAYMENT,
+            content=f"{locked_ledger.currency.symbol}{amount:,.2f} contributed to the group",
+            transaction=pheral_transaction,
+        )
+
+        conversation.updated_at = timezone.now()
+        conversation.save(update_fields=["updated_at"])
+
+    return redirect("group_chat", conversation_id=conversation.pk)
+
+
+@login_required
+@require_POST
+def group_withdraw(request, conversation_id):
+    """
+    Admin-only: moves money out of the group's shared balance into
+    the admin's own wallet, minus the group's configured
+    withdrawal_fee (the fee stays in the ledger's history as its own
+    entry rather than vanishing silently).
+    """
+
+    conversation = get_object_or_404(
+        Conversation, pk=conversation_id,
+        conversation_type=Conversation.ConversationType.GROUP,
+        participants__user=request.user,
+    )
+    get_object_or_404(ConversationParticipant, conversation=conversation, user=request.user, is_admin=True)
+    ledger = get_object_or_404(GroupLedger, conversation=conversation)
+
+    amount = parse_amount(request.POST.get("amount"))
+    if amount is None:
+        messages.error(request, "Enter a valid withdrawal amount.")
+        return redirect("group_chat", conversation_id=conversation.pk)
+
+    wallet = get_or_create_wallet(request.user, ledger.currency)
+
+    with transaction.atomic():
+        locked_ledger = GroupLedger.objects.select_for_update().get(pk=ledger.pk)
+        locked_wallet = Wallet.objects.select_for_update().get(pk=wallet.pk)
+
+        if locked_ledger.balance < amount:
+            messages.error(request, "Insufficient group balance.")
+            return redirect("group_chat", conversation_id=conversation.pk)
+
+        fee = min(locked_ledger.withdrawal_fee, amount)
+        net_amount = amount - fee
+
+        locked_ledger.balance -= amount
+        locked_ledger.save(update_fields=["balance", "updated_at"])
+
+        wallet_before = locked_wallet.balance
+        locked_wallet.balance += net_amount
+        locked_wallet.save(update_fields=["balance", "updated_at"])
+
+        pheral_transaction = PheralTransaction.objects.create(
+            recipient=request.user, recipient_wallet=locked_wallet,
+            transaction_type=PheralTransaction.TransactionType.GROUP_TRANSFER,
+            amount=net_amount, fee=fee, currency=locked_ledger.currency,
+            status=PheralTransaction.Status.COMPLETED, completed_at=timezone.now(),
+            description=f"Withdrawal from {conversation.name or 'group'}",
+        )
+
+        LedgerEntry.objects.create(
+            transaction=pheral_transaction, wallet=locked_wallet,
+            entry_type=LedgerEntry.EntryType.CREDIT, amount=net_amount,
+            balance_before=wallet_before, balance_after=locked_wallet.balance,
+            description="Group withdrawal",
+        )
+
+        GroupLedgerEntry.objects.create(
+            ledger=locked_ledger, user=request.user,
+            entry_type=GroupLedgerEntry.EntryType.WITHDRAWAL, amount=amount,
+            description=f"@{request.user.username} withdrew",
+        )
+
+        if fee > 0:
+            GroupLedgerEntry.objects.create(
+                ledger=locked_ledger, user=request.user,
+                entry_type=GroupLedgerEntry.EntryType.FEE, amount=fee,
+                description="Withdrawal fee",
+            )
+
+        Message.objects.create(
+            conversation=conversation, sender=request.user,
+            message_type=Message.MessageType.PAYMENT,
+            content=f"{locked_ledger.currency.symbol}{net_amount:,.2f} withdrawn from the group",
+            transaction=pheral_transaction,
+        )
+
+        conversation.updated_at = timezone.now()
+        conversation.save(update_fields=["updated_at"])
+
+    return redirect("group_chat", conversation_id=conversation.pk)
+
+@login_required
+def group_profile(request, conversation_id):
+    conversation = get_object_or_404(
+        Conversation, pk=conversation_id,
+        conversation_type=Conversation.ConversationType.GROUP,
+        participants__user=request.user,
+    )
+    participant = get_object_or_404(ConversationParticipant, conversation=conversation, user=request.user)
+
+    participants = (
+        ConversationParticipant.objects.filter(conversation=conversation)
+        .select_related("user").order_by("-is_admin", "joined_at")
+    )
+
+    ledger = GroupLedger.objects.filter(conversation=conversation).first()
+
+    return render(request, "group_profile.html", {
+        "conversation": conversation,
+        "participant": participant,
+        "participants": participants,
+        "is_admin": participant.is_admin,
+        "ledger": ledger,
+    })
+
+
+@login_required
+@require_POST
+def group_toggle_admin(request, conversation_id, username):
+    """
+    Admin-only: promote or demote another member. An admin can't
+    demote themselves this way if they're the only admin left —
+    that would leave the group with no one able to manage it.
+    """
+
+    conversation = get_object_or_404(
+        Conversation, pk=conversation_id, conversation_type=Conversation.ConversationType.GROUP,
+    )
+    get_object_or_404(ConversationParticipant, conversation=conversation, user=request.user, is_admin=True)
+
+    target = get_object_or_404(
+        ConversationParticipant, conversation=conversation, user__username__iexact=username,
+    )
+
+    if target.is_admin:
+        remaining_admins = ConversationParticipant.objects.filter(
+            conversation=conversation, is_admin=True,
+        ).exclude(pk=target.pk).count()
+
+        if remaining_admins == 0:
+            messages.error(request, "A group needs at least one admin.")
+            return redirect("group_profile", conversation_id=conversation.pk)
+
+    target.is_admin = not target.is_admin
+    target.save(update_fields=["is_admin"])
+
+    messages.success(
+        request,
+        f"@{target.user.username} is {'now an admin' if target.is_admin else 'no longer an admin'}.",
+    )
+    return redirect("group_profile", conversation_id=conversation.pk)
+
+
+@login_required
+@require_POST
+def group_remove_member(request, conversation_id, username):
+    conversation = get_object_or_404(
+        Conversation, pk=conversation_id, conversation_type=Conversation.ConversationType.GROUP,
+    )
+    get_object_or_404(ConversationParticipant, conversation=conversation, user=request.user, is_admin=True)
+
+    target = get_object_or_404(
+        ConversationParticipant, conversation=conversation, user__username__iexact=username,
+    )
+
+    if target.user_id == request.user.id:
+        messages.error(request, "Use \"Leave group\" to remove yourself.")
+        return redirect("group_profile", conversation_id=conversation.pk)
+
+    target_username = target.user.username
+    target.delete()
+
+    messages.success(request, f"@{target_username} was removed from the group.")
+    return redirect("group_profile", conversation_id=conversation.pk)
+
+
+@login_required
+@require_POST
+def group_leave(request, conversation_id):
+    conversation = get_object_or_404(
+        Conversation, pk=conversation_id, conversation_type=Conversation.ConversationType.GROUP,
+    )
+    participant = get_object_or_404(ConversationParticipant, conversation=conversation, user=request.user)
+
+    if participant.is_admin:
+        remaining_admins = ConversationParticipant.objects.filter(
+            conversation=conversation, is_admin=True,
+        ).exclude(pk=participant.pk).count()
+
+        if remaining_admins == 0:
+            other_member = (
+                ConversationParticipant.objects.filter(conversation=conversation)
+                .exclude(pk=participant.pk).order_by("joined_at").first()
+            )
+            if other_member:
+                other_member.is_admin = True
+                other_member.save(update_fields=["is_admin"])
+
+    participant.delete()
+    messages.success(request, "You left the group.")
+    return redirect("chat_list")
+
+
+
+
+
+
+# ============================================================
+# AIRTIME / DATA
+# ============================================================
+
+# Networks shown to the user. "prefix_hint" is just UI copy, not
+# used for validation — Flutterwave detects the network from the
+# phone number itself on their end.
+NETWORKS = [
+    {"code": "mtn", "label": "MTN"},
+    {"code": "airtel", "label": "Airtel"},
+    {"code": "glo", "label": "Glo"},
+    {"code": "9mobile", "label": "9mobile"},
+]
+
+# NOTE: these biller_code / item_code values are placeholders and
+# MUST be replaced with real values from your Flutterwave dashboard
+# (Bills > Data) before this goes live — call GET /v3/bill-categories
+# with `?country=NG` to get the current, correct codes and prices
+# for each network's data bundles. Shipping with wrong codes here
+# will cause every data purchase to fail at the Flutterwave step,
+# after the user's wallet has already been debited — see buy note
+# in purchase_bill() about why the debit only happens after the
+# provider call succeeds, specifically to avoid that failure mode.
+DATA_PLANS = {
+    "mtn": [
+        {"code": "mtn-100mb-1day", "label": "100MB — 1 day", "amount": Decimal("100.00")},
+        {"code": "mtn-1gb-1day", "label": "1GB — 1 day", "amount": Decimal("350.00")},
+        {"code": "mtn-1.5gb-30day", "label": "1.5GB — 30 days", "amount": Decimal("1000.00")},
+        {"code": "mtn-3.5gb-30day", "label": "3.5GB — 30 days", "amount": Decimal("1500.00")},
+        {"code": "mtn-10gb-30day", "label": "10GB — 30 days", "amount": Decimal("3000.00")},
+    ],
+    "airtel": [
+        {"code": "airtel-500mb-1day", "label": "500MB — 1 day", "amount": Decimal("300.00")},
+        {"code": "airtel-1.5gb-7day", "label": "1.5GB — 7 days", "amount": Decimal("500.00")},
+        {"code": "airtel-4gb-30day", "label": "4GB — 30 days", "amount": Decimal("1500.00")},
+        {"code": "airtel-10gb-30day", "label": "10GB — 30 days", "amount": Decimal("3000.00")},
+    ],
+    "glo": [
+        {"code": "glo-1.35gb-1day", "label": "1.35GB — 1 day", "amount": Decimal("300.00")},
+        {"code": "glo-2.9gb-30day", "label": "2.9GB — 30 days", "amount": Decimal("1000.00")},
+        {"code": "glo-7.7gb-30day", "label": "7.7GB — 30 days", "amount": Decimal("2500.00")},
+    ],
+    "9mobile": [
+        {"code": "9mobile-500mb-30day", "label": "500MB — 30 days", "amount": Decimal("500.00")},
+        {"code": "9mobile-1.5gb-30day", "label": "1.5GB — 30 days", "amount": Decimal("1000.00")},
+        {"code": "9mobile-4.5gb-30day", "label": "4.5GB — 30 days", "amount": Decimal("2500.00")},
+    ],
+}
+
+
+@login_required
+def airtime_data(request):
+    currency = get_default_currency()
+    wallet_obj = get_or_create_wallet(request.user, currency) if currency else None
+
+    return render(request, "airtime_data.html", {
+        "wallet": wallet_obj,
+        "currency": currency,
+        "networks": NETWORKS,
+        "data_plans_json": json.dumps(DATA_PLANS, default=str),
+        "default_phone": request.user.phone_number,
+    })
+
+
+@login_required
+@require_POST
+def purchase_bill(request):
+    """
+    Handles both airtime and data purchases. AJAX-called from
+    airtime_data.html so the whole flow stays inline on the page —
+    same pattern as init_top_up/verify_top_up.
+
+    Order of operations matters here: the wallet is only debited
+    AFTER Flutterwave confirms the bill purchase succeeded, not
+    before. Airtime/data purchases (unlike top-ups) settle
+    synchronously in one API call — there's no separate webhook step
+    to fall back on if we debited first and the provider then
+    failed, so debit-after is the only safe order for this flow.
+    """
+
+    bill_type = request.POST.get("bill_type", "").strip()
+    network_code = request.POST.get("network", "").strip()
+    phone_number = request.POST.get("phone_number", "").strip()
+
+    if bill_type not in ("airtime", "data"):
+        return JsonResponse({"success": False, "error": "Invalid request."}, status=400)
+
+    network = next((n for n in NETWORKS if n["code"] == network_code), None)
+    if not network:
+        return JsonResponse({"success": False, "error": "Select a valid network."}, status=400)
+
+    if not phone_number or len(re.sub(r"\D", "", phone_number)) < 10:
+        return JsonResponse({"success": False, "error": "Enter a valid phone number."}, status=400)
+
+    currency = get_default_currency()
+    if not currency:
+        return JsonResponse({"success": False, "error": "No wallet currency is configured."}, status=400)
+
+    if bill_type == "airtime":
+        amount = parse_amount(request.POST.get("amount"))
+        if amount is None:
+            return JsonResponse({"success": False, "error": "Enter a valid amount."}, status=400)
+        biller_type = f"{network_code.upper()}_AIRTIME"
+        description = f"{network['label']} airtime — {phone_number}"
+
+    else:
+        plan_code = request.POST.get("plan_code", "").strip()
+        plans = DATA_PLANS.get(network_code, [])
+        plan = next((p for p in plans if p["code"] == plan_code), None)
+        if not plan:
+            return JsonResponse({"success": False, "error": "Select a valid data plan."}, status=400)
+        amount = plan["amount"]
+        biller_type = plan_code
+        description = f"{network['label']} data — {plan['label']} — {phone_number}"
+
+    if not settings.FLW_SECRET_KEY:
+        return JsonResponse({"success": False, "error": "Bill payments are not configured yet."}, status=400)
+
+    wallet_obj = get_or_create_wallet(request.user, currency)
+
+    with transaction.atomic():
+        locked_wallet = Wallet.objects.select_for_update().get(pk=wallet_obj.pk)
+
+        if locked_wallet.balance < amount:
+            return JsonResponse({"success": False, "error": "Insufficient wallet balance."})
+
+        # Hold the row locked through the external API call so no
+        # concurrent request can double-spend this balance while
+        # we're waiting on Flutterwave's response.
+        try:
+            response = requests.post(
+                "https://api.flutterwave.com/v3/bills",
+                json={
+                    "country": "NG",
+                    "customer": phone_number,
+                    "amount": float(amount),
+                    "recurrence": "ONCE",
+                    "type": biller_type,
+                    "reference": generate_reference(prefix="BILL"),
+                },
+                headers={
+                    "Authorization": f"Bearer {settings.FLW_SECRET_KEY}",
+                    "Content-Type": "application/json",
+                },
+                timeout=20,
+            )
+            data = response.json()
+        except (requests.RequestException, ValueError):
+            return JsonResponse({"success": False, "error": "Could not reach the payment network. Please try again."}, status=502)
+
+        if data.get("status") != "success":
+            return JsonResponse({"success": False, "error": data.get("message", "Purchase failed. Please try again.")})
+
+        balance_before = locked_wallet.balance
+        locked_wallet.balance -= amount
+        locked_wallet.save(update_fields=["balance", "updated_at"])
+
+        pheral_transaction = PheralTransaction.objects.create(
+            sender=request.user, sender_wallet=locked_wallet,
+            transaction_type=(
+                PheralTransaction.TransactionType.AIRTIME if bill_type == "airtime"
+                else PheralTransaction.TransactionType.DATA
+            ),
+            amount=amount, currency=currency, status=PheralTransaction.Status.COMPLETED,
+            completed_at=timezone.now(), description=description,
+            external_reference=data.get("data", {}).get("reference", ""),
+        )
+
+        LedgerEntry.objects.create(
+            transaction=pheral_transaction, wallet=locked_wallet,
+            entry_type=LedgerEntry.EntryType.DEBIT, amount=amount,
+            balance_before=balance_before, balance_after=locked_wallet.balance,
+            description=description,
+        )
+
+    return JsonResponse({
+        "success": True,
+        "balance": float(locked_wallet.balance),
+        "description": description,
+        "reference": pheral_transaction.reference,
+    })
+    return HttpResponse(status=200)
+
+@login_required
+def top_up(request):
+    """
+    Renders the top-up page only. No Flutterwave call happens here —
+    payment is started via AJAX (init_top_up) once the user picks a
+    currency and amount, so the checkout opens as an inline modal on
+    this same page instead of redirecting the browser away.
+    """
+    currencies = list(Currency.objects.filter(is_active=True).order_by("code"))
+
+    if not currencies:
+        messages.error(request, "No wallet currencies are configured.")
+        return redirect("wallet")
+
+    currency = get_default_currency()
+    if not currency or not currency.is_active:
+        currency = currencies[0]
+
+    wallet_data = []
+    for active_currency in currencies:
+        wallet_obj = get_or_create_wallet(request.user, active_currency)
+        wallet_data.append({
+            "code": active_currency.code,
+            "name": active_currency.name,
+            "symbol": active_currency.symbol,
+            "balance": float(wallet_obj.balance),
+        })
+
+    return render(request, "top_up.html", {
+        "currency": currency,
+        "currencies": currencies,
+        "wallet_data": wallet_data,
+        "default_phone": request.user.phone_number,
+    })
+
+
+@login_required
+@require_POST
+def init_top_up(request):
+    """
+    AJAX endpoint called right before the Flutterwave Inline modal
+    opens. Creates the PENDING transaction and returns only what the
+    browser needs to launch the modal — FLW_PUBLIC_KEY, never
+    FLW_SECRET_KEY. top_up_callback and the webhook remain the
+    source of truth for completing the top-up.
+    """
+    currencies = list(Currency.objects.filter(is_active=True).order_by("code"))
+
+    amount = parse_amount(request.POST.get("amount"))
+    currency_code = (request.POST.get("currency") or "").strip().upper()
+    selected_currency = next((c for c in currencies if c.code.upper() == currency_code), None)
+
+    if amount is None:
+        return JsonResponse({"success": False, "error": "Enter a valid top-up amount."}, status=400)
+
+    if not selected_currency:
+        return JsonResponse({"success": False, "error": "Please select a valid currency."}, status=400)
+
+    if not settings.FLW_PUBLIC_KEY:
+        return JsonResponse({"success": False, "error": "Payments are not configured yet."}, status=400)
+
+    wallet_obj = get_or_create_wallet(request.user, selected_currency)
+
+    pheral_transaction = PheralTransaction.objects.create(
+        sender=request.user, sender_wallet=wallet_obj,
+        transaction_type=PheralTransaction.TransactionType.TOP_UP,
+        amount=amount, currency=selected_currency, status=PheralTransaction.Status.PENDING,
+    )
+
+    return JsonResponse({
+        "success": True,
+        "public_key": settings.FLW_PUBLIC_KEY,
+        "tx_ref": pheral_transaction.reference,
+        "amount": float(amount),
+        "currency": selected_currency.code,
+        "customer_email": request.user.email or f"{request.user.username}@pheral.app",
+        "customer_name": request.user.get_full_name() or request.user.username,
+        "redirect_url": request.build_absolute_uri(reverse("top_up_callback")),
+    })
+
+@login_required
+@require_POST
+def verify_top_up(request):
+    """
+    Called the instant Flutterwave's inline modal closes with a
+    result — verifies immediately and returns JSON so the page can
+    update the balance in place, no redirect. The webhook still
+    fires independently as the true source of authority if this call
+    is ever missed.
+    """
+    tx_ref = request.POST.get("tx_ref", "").strip()
+    transaction_id = request.POST.get("transaction_id", "").strip()
+    status = request.POST.get("status", "").strip()
+
+    if not tx_ref:
+        return JsonResponse({"success": False, "error": "Missing payment reference."}, status=400)
+
+    pheral_transaction = PheralTransaction.objects.filter(
+        reference=tx_ref, sender=request.user,
+        transaction_type=PheralTransaction.TransactionType.TOP_UP,
+    ).first()
+
+    if not pheral_transaction:
+        return JsonResponse({"success": False, "error": "Transaction not found."}, status=404)
+
+    if pheral_transaction.status == PheralTransaction.Status.COMPLETED:
+        wallet_obj = pheral_transaction.sender_wallet
+        return JsonResponse({
+            "success": True, "already_completed": True,
+            "balance": float(wallet_obj.balance), "currency": wallet_obj.currency.code,
+        })
+
+    if status != "successful" or not transaction_id:
+        _fail_top_up(pheral_transaction)
+        return JsonResponse({"success": False, "error": "Payment was not successful."})
+
+    verified = _verify_flutterwave_transaction(pheral_transaction, transaction_id)
+
+    if not verified:
+        return JsonResponse({
+            "success": False,
+            "error": "We couldn't verify this payment yet. It may still be processing.",
+            "pending": True,
+        })
+
+    pheral_transaction.refresh_from_db()
+    wallet_obj = pheral_transaction.sender_wallet
+
+    return JsonResponse({
+        "success": True,
+        "balance": float(wallet_obj.balance),
+        "currency": wallet_obj.currency.code,
+        "reference": pheral_transaction.reference,
+    })
+
+
+
+
+
+
+
+
+
+
+
+# ============================================================
+# Airtime / data purchases: one flow instead of two.
+#
+# WHAT TO DO IN views.py
+# 1. DELETE these (they are the second, older flow):
+#      NETWORKS, DATA_PLANS, airtime_data(), purchase_bill()
+#    and, in urls.py, the routes that point at airtime_data and
+#    purchase_bill. You can also delete airtime_data.html.
+# 2. DELETE the old versions of these and paste in the ones below:
+#      FLUTTERWAVE_BASE_URL, _flutterwave_headers, _call_flutterwave_bill,
+#      fetch_data_plans, airtime_purchase, data_purchase
+#    (KEEP _local_phone_format, _debit_wallet_for_bill,
+#     _refund_failed_bill, _complete_bill and data_plans_api as they are.)
+# 3. Add the imports directly below.
+#
+# WHAT TO DO IN models.py  (NetworkProvider)
+#    Add this field next to the other flutterwave_* fields, then run
+#    `python manage.py makemigrations && python manage.py migrate`:
+#
+#        flutterwave_airtime_item_code = models.CharField(
+#            max_length=50, blank=True, default="",
+#        )
+#
+#    Then fill in flutterwave_airtime_biller_code and
+#    flutterwave_airtime_item_code for each network in the admin
+#    (get the real values from GET /v3/bill-categories?country=NG).
+#
+# WHAT TO DO IN settings.py
+#    The bill code used FLUTTERWAVE_SECRET_KEY while the rest of your
+#    Flutterwave code uses FLW_SECRET_KEY. Everything below uses
+#    FLW_SECRET_KEY, so you can remove FLUTTERWAVE_SECRET_KEY.
+#    Optional, only if you route bill calls through a static-IP proxy:
+#        FLW_PROXY_URL = os.environ.get("FLW_PROXY_URL", "")
+# ============================================================
+
+# ---------- IMPORTS ----------
+import logging
+
+from django.core.cache import cache
+
+logger = logging.getLogger(__name__)
+
+
+# ---------- FLUTTERWAVE HELPERS ----------
+
+FLUTTERWAVE_BASE_URL = "https://api.flutterwave.com/v3"
+
+BILL_OK = "ok"                # Flutterwave accepted the payment
+BILL_FAILED = "failed"        # Flutterwave answered and said no: safe to refund
+BILL_UNKNOWN = "unknown"      # no usable answer: the payment may have gone through
+
+
+def _flutterwave_headers():
+    return {
+        "Authorization": f"Bearer {settings.FLW_SECRET_KEY}",
+        "Content-Type": "application/json",
+    }
+
+
+def flw_proxies():
+    """Static-IP proxy for calls that must come from a whitelisted IP. None = go direct."""
+    url = getattr(settings, "FLW_PROXY_URL", "")
+    return {"http": url, "https": url} if url else None
+
+
+def _call_flutterwave_bill(*, biller_code, item_code, customer_phone, amount, reference):
+    """
+    Send an airtime/data payment to Flutterwave.
+
+    Returns (outcome, flw_reference).
+
+    BILL_UNKNOWN matters: after a timeout or a 5xx we cannot tell whether
+    Flutterwave paid the bill. Refunding then could hand the customer free
+    airtime, so the caller leaves the transaction PENDING instead.
+
+    `reference` is our own PheralTransaction.reference, so the payment can
+    be looked up on Flutterwave's side later.
+    """
+    try:
+        response = requests.post(
+            f"{FLUTTERWAVE_BASE_URL}/billers/{biller_code}/items/{item_code}/payment",
+            json={
+                "country": "NG",
+                "customer_id": customer_phone,
+                "amount": float(amount),
+                "reference": reference,
+            },
+            headers=_flutterwave_headers(),
+            proxies=flw_proxies(),
+            timeout=30,
+        )
+    except requests.RequestException:
+        logger.exception("Flutterwave bill call failed to complete (ref %s)", reference)
+        return BILL_UNKNOWN, None
+
+    if response.status_code >= 500:
+        logger.error("Flutterwave bill call returned %s (ref %s)", response.status_code, reference)
+        return BILL_UNKNOWN, None
+
+    try:
+        data = response.json()
+    except ValueError:
+        logger.error("Flutterwave bill call returned non-JSON (ref %s)", reference)
+        return BILL_UNKNOWN, None
+
+    if data.get("status") == "success":
+        response_data = data.get("data") or {}
+        return BILL_OK, response_data.get("flw_ref") or response_data.get("reference") or reference
+
+    # An IP that isn't whitelisted shows up here, so keep the real message.
+    logger.warning("Flutterwave rejected bill (ref %s): %s", reference, data.get("message"))
+    return BILL_FAILED, None
+
+
+def fetch_data_plans(network):
+    """
+    Live-fetches data bundle plans and current prices from Flutterwave
+    (VTU prices change often), cached for 5 minutes. Returns a list of
+    {name, amount, item_code}, or [] if the lookup fails.
+
+    Verify the response shape of this endpoint against the current
+    Flutterwave docs before going live.
+    """
+    if not settings.FLW_SECRET_KEY or not network.flutterwave_data_biller:
+        return []
+
+    cache_key = f"flw_data_plans:{network.pk}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        response = requests.get(
+            f"{FLUTTERWAVE_BASE_URL}/bill-categories",
+            params={"country": "NG", "biller_name": network.flutterwave_data_biller},
+            headers=_flutterwave_headers(),
+            timeout=20,
+        )
+        data = response.json()
+    except (requests.RequestException, ValueError):
+        return []
+
+    if data.get("status") != "success":
+        return []
+
+    plans = []
+    for item in data.get("data", []):
+        plans.append({
+            "name": item.get("name") or item.get("biller_name", "Data plan"),
+            "amount": item.get("amount"),
+            "item_code": item.get("item_code") or item.get("biller_code"),
+        })
+    plans = [p for p in plans if p["amount"] and p["item_code"]]
+
+    if plans:  # never cache a failed lookup
+        cache.set(cache_key, plans, 300)
+
+    return plans
+
+
+# ---------- SHARED BILL HELPERS ----------
+
+def _bill_currency():
+    """Bills are Naira-only: no silent fallback to some other currency."""
+    return Currency.objects.filter(code__iexact="NGN", is_active=True).first()
+
+
+def _ng_bill_phone(raw):
+    """Local 11-digit form (08012345678) of a Nigerian number, or None."""
+    normalized = normalize_phone_number(raw, "NG")
+    if not normalized.startswith("+234"):
+        return None
+    return _local_phone_format(normalized)
+
+
+def _finish_bill(request, pheral_transaction, outcome, flw_reference, success_message):
+    if outcome == BILL_OK:
+        _complete_bill(pheral_transaction, flw_reference)
+        messages.success(request, success_message)
+
+    elif outcome == BILL_FAILED:
+        _refund_failed_bill(pheral_transaction)
+        messages.error(request, "Purchase failed. Your wallet has been refunded.")
+
+    else:
+        # Left PENDING on purpose; see _call_flutterwave_bill.
+        messages.warning(
+            request,
+            "We're still confirming this purchase. Your balance is on hold until it "
+            "settles, so check your transactions before trying again.",
+        )
+
+    return redirect("wallet")
+
+
+# ---------- VIEWS ----------
+
+@login_required
+def airtime_purchase(request):
+    currency = _bill_currency()
+    wallet_obj = get_or_create_wallet(request.user, currency) if currency else None
+    networks = NetworkProvider.objects.filter(is_active=True)
+    context = {"networks": networks, "wallet": wallet_obj, "currency": currency}
+
+    if request.method != "POST":
+        return render(request, "airtime.html", context)
+
+    def fail(message):
+        messages.error(request, message)
+        return render(request, "airtime.html", context)
+
+    if not currency:
+        return fail("Airtime isn't available right now.")
+
+    if not settings.FLW_SECRET_KEY:
+        return fail("Bill payments are not configured yet.")
+
+    network = networks.filter(pk=request.POST.get("network")).first()
+    if not network:
+        return fail("Select a network.")
+
+    if not (network.flutterwave_airtime_biller_code and network.flutterwave_airtime_item_code):
+        return fail("Airtime isn't set up for this network yet.")
+
+    phone = _ng_bill_phone(request.POST.get("phone_number", ""))
+    if not phone:
+        return fail("Airtime is only available for Nigerian phone numbers.")
+
+    amount = parse_amount(request.POST.get("amount"))
+    if amount is None:
+        return fail("Enter a valid amount.")
+
+    # Debit first, then call Flutterwave (same pattern as withdraw()).
+    pheral_transaction, error = _debit_wallet_for_bill(
+        request.user, amount, currency,
+        PheralTransaction.TransactionType.AIRTIME,
+        description=f"{network.name} airtime — {phone}",
+        metadata={"network": network.code, "phone_number": phone},
+    )
+    if error:
+        return fail(error)
+
+    outcome, flw_reference = _call_flutterwave_bill(
+        biller_code=network.flutterwave_airtime_biller_code,
+        item_code=network.flutterwave_airtime_item_code,
+        customer_phone=phone,
+        amount=amount,
+        reference=pheral_transaction.reference,
+    )
+
+    return _finish_bill(
+        request, pheral_transaction, outcome, flw_reference,
+        f"{currency.symbol}{amount:,.2f} airtime sent to {phone}.",
+    )
+
+
+@login_required
+def data_purchase(request):
+    currency = _bill_currency()
+    wallet_obj = get_or_create_wallet(request.user, currency) if currency else None
+    networks = NetworkProvider.objects.filter(is_active=True)
+    context = {"networks": networks, "wallet": wallet_obj, "currency": currency}
+
+    if request.method != "POST":
+        return render(request, "data.html", context)
+
+    def fail(message):
+        messages.error(request, message)
+        return render(request, "data.html", context)
+
+    if not currency:
+        return fail("Data bundles aren't available right now.")
+
+    if not settings.FLW_SECRET_KEY:
+        return fail("Bill payments are not configured yet.")
+
+    network = networks.filter(pk=request.POST.get("network")).first()
+    if not network:
+        return fail("Select a network.")
+
+    if not network.flutterwave_data_biller_code:
+        return fail("Data bundles aren't set up for this network yet.")
+
+    phone = _ng_bill_phone(request.POST.get("phone_number", ""))
+    if not phone:
+        return fail("Data bundles are only available for Nigerian phone numbers.")
+
+    # SECURITY: the price and name come from Flutterwave, never from the form.
+    # The browser only tells us WHICH plan (item_code); if it also chose the
+    # amount, anyone could buy a 10GB plan for 1 naira.
+    item_code = request.POST.get("item_code", "").strip()
+    plan = next((p for p in fetch_data_plans(network) if p["item_code"] == item_code), None)
+    if not plan:
+        return fail("That data plan is no longer available. Please pick another.")
+
+    amount = parse_amount(plan["amount"])
+    if amount is None:
+        return fail("That data plan is unavailable right now.")
+
+    pheral_transaction, error = _debit_wallet_for_bill(
+        request.user, amount, currency,
+        PheralTransaction.TransactionType.DATA,
+        description=f"{network.name} {plan['name']} — {phone}",
+        metadata={"network": network.code, "phone_number": phone, "plan": plan["name"]},
+    )
+    if error:
+        return fail(error)
+
+    outcome, flw_reference = _call_flutterwave_bill(
+        biller_code=network.flutterwave_data_biller_code,
+        item_code=item_code,
+        customer_phone=phone,
+        amount=amount,
+        reference=pheral_transaction.reference,
+    )
+
+    return _finish_bill(
+        request, pheral_transaction, outcome, flw_reference,
+        f"{plan['name']} sent to {phone}.",
+    )

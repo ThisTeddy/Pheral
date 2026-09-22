@@ -3,70 +3,163 @@
 {% block title %}{{ conversation.name|default:"Group" }} · Pheral{% endblock %}
 {% block page_title %}Group info{% endblock %}
 
-{% block content %}
-<div class="mx-auto max-w-lg px-4 py-4">
+{% block extra_head %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
 
-    <div class="flex items-center gap-2">
-        <a href="{% url 'group_chat' conversation_id=conversation.id %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink md:hidden" aria-label="Back">
-            <i data-lucide="chevron-left" class="h-5 w-5"></i>
+{% block content %}
+<div class="mx-auto max-w-2xl px-4 pb-10 pt-3 lg:max-w-3xl lg:px-7 lg:pt-6" x-data="{ leaveConfirmOpen: false, removeTarget: '' }">
+
+    <div class="mb-4 flex items-center gap-2 lg:hidden">
+        <a href="{% url 'group_chat' conversation_id=conversation.pk %}" class="focus-ring rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink">
+            <i data-lucide="chevron-left" class="h-[18px] w-[18px]"></i>
         </a>
-        <h1 class="text-2xl font-bold tracking-tight text-ink md:hidden">Group info</h1>
+        <h1 class="text-lg font-bold tracking-tight text-ink">Group info</h1>
     </div>
 
-    <!-- Group header -->
-    <div class="mt-4 flex flex-col items-center gap-2 text-center">
+    <!-- GROUP HEADER -->
+    <div class="mb-5 flex flex-col items-center text-center">
         {% if conversation.avatar %}
-            <img src="{{ conversation.avatar.url }}" alt="" class="h-24 w-24 rounded-full object-cover">
+            <img src="{{ conversation.avatar.url }}" alt="" class="mb-2.5 h-20 w-20 rounded-full object-cover">
         {% else %}
-            <div class="flex h-24 w-24 items-center justify-center rounded-full bg-accent-100 text-accent-700">
-                <i data-lucide="users" class="h-9 w-9"></i>
+            <div class="mb-2.5 flex h-20 w-20 items-center justify-center rounded-full bg-accent-100 text-accent-700">
+                <i data-lucide="users" class="h-8 w-8"></i>
             </div>
         {% endif %}
-        <p class="mt-2 text-xl font-bold text-ink">{{ conversation.name|default:"Group" }}</p>
-        <p class="text-sm text-muted">{{ participants.count }} member{{ participants.count|pluralize }} · created {{ conversation.created_at|timesince }} ago</p>
+        <p class="text-[16px] font-bold text-ink">{{ conversation.name|default:"Group" }}</p>
+        <p class="text-[11px] text-muted">{{ participants|length }} member{{ participants|length|pluralize }} · created {{ conversation.created_at|date:"d M Y" }}</p>
         {% if conversation.description %}
-            <p class="mx-auto mt-1 max-w-sm text-sm text-ink">{{ conversation.description }}</p>
+            <p class="mx-auto mt-2 max-w-sm text-[12px] leading-5 text-ink">{{ conversation.description }}</p>
         {% endif %}
     </div>
 
-    <!-- Actions -->
-    <div class="mt-5 flex items-center gap-2">
-        <a href="{% url 'group_chat' conversation_id=conversation.id %}" class="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-accent-500 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-600">
-            <i data-lucide="message-circle" class="h-4 w-4"></i> Open chat
+    <!-- GROUP WALLET SNAPSHOT -->
+    {% if ledger %}
+        <a href="{% url 'group_chat' conversation_id=conversation.pk %}"
+           class="focus-ring mb-5 flex items-center justify-between rounded-2xl border border-line bg-white p-3.5 shadow-card transition hover:bg-surface">
+            <span class="flex items-center gap-2.5">
+                <span class="flex h-9 w-9 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="wallet" class="h-4 w-4"></i></span>
+                <span>
+                    <span class="block text-[12px] font-semibold text-ink">Group wallet</span>
+                    <span class="block text-[10px] text-muted">{{ ledger.currency.symbol }}{{ ledger.balance|floatformat:2 }} balance</span>
+                </span>
+            </span>
+            <i data-lucide="chevron-right" class="h-3.5 w-3.5 text-muted"></i>
         </a>
-        {% if is_admin %}
-            <a href="{% url 'group_add_member' conversation_id=conversation.id %}" class="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-line py-2.5 text-sm font-semibold text-ink transition hover:bg-surface">
-                <i data-lucide="user-plus" class="h-4 w-4"></i> Add member
-            </a>
-        {% endif %}
+    {% endif %}
+
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1.4fr_1fr]">
+
+        <!-- ============================================================
+             MEMBERS
+        ============================================================= -->
+        <div>
+            <div class="mb-2.5 flex items-center justify-between">
+                <p class="text-[12px] font-semibold text-ink">{{ participants|length }} member{{ participants|length|pluralize }}</p>
+                {% if is_admin %}
+                    <a href="{% url 'group_add_member' conversation_id=conversation.pk %}" class="focus-ring flex items-center gap-1 text-[11px] font-medium text-accent-600 hover:underline">
+                        <i data-lucide="user-plus" class="h-3.5 w-3.5"></i> Add member
+                    </a>
+                {% endif %}
+            </div>
+
+            <div class="divide-y divide-line rounded-2xl border border-line bg-white shadow-card">
+                {% for p in participants %}
+                    <div class="flex items-center gap-2.5 px-3.5 py-2.5" x-data="{ menuOpen: false }" @click.outside="menuOpen = false">
+                        <a href="{% url 'profile_user' username=p.user.username %}" class="flex min-w-0 flex-1 items-center gap-2.5">
+                            {% if p.user.avatar %}
+                                <img src="{{ p.user.avatar.url }}" alt="" class="h-9 w-9 shrink-0 rounded-full object-cover">
+                            {% else %}
+                                <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[11px] font-semibold text-accent-700">{{ p.user.username|first|upper }}</div>
+                            {% endif %}
+                            <div class="min-w-0">
+                                <p class="truncate text-[12.5px] font-medium text-ink">
+                                    {{ p.user.display_name|default:p.user.username }}
+                                    {% if p.user_id == request.user.id %}<span class="text-muted">(you)</span>{% endif %}
+                                </p>
+                                <p class="truncate text-[10px] text-muted">@{{ p.user.username }}</p>
+                            </div>
+                        </a>
+
+                        {% if p.is_admin %}
+                            <span class="shrink-0 rounded-full bg-accent-50 px-2 py-0.5 text-[9px] font-semibold text-accent-600">Admin</span>
+                        {% endif %}
+
+                        {% if is_admin and p.user_id != request.user.id %}
+                            <div class="relative shrink-0">
+                                <button type="button" @click="menuOpen = !menuOpen" class="focus-ring rounded-full p-1.5 text-muted hover:bg-surface" aria-label="Member options">
+                                    <i data-lucide="more-vertical" class="h-4 w-4"></i>
+                                </button>
+                                <div x-show="menuOpen" x-cloak x-transition class="absolute right-0 top-full z-20 mt-1 w-44 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-popover">
+                                    <form method="post" action="{% url 'group_toggle_admin' conversation_id=conversation.pk username=p.user.username %}">
+                                        {% csrf_token %}
+                                        <button type="submit" class="focus-ring flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-ink hover:bg-surface">
+                                            <i data-lucide="shield" class="h-3.5 w-3.5"></i>
+                                            {% if p.is_admin %}Remove as admin{% else %}Make admin{% endif %}
+                                        </button>
+                                    </form>
+                                    <button type="button" @click="removeTarget = '{{ p.user.username|escapejs }}'; menuOpen = false"
+                                            class="focus-ring flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-red-600 hover:bg-red-50">
+                                        <i data-lucide="user-minus" class="h-3.5 w-3.5"></i> Remove from group
+                                    </button>
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- ============================================================
+             ACTIONS
+        ============================================================= -->
+        <div class="space-y-4">
+            <div class="rounded-2xl border border-line bg-white p-1 shadow-card">
+                <button type="button" @click="leaveConfirmOpen = true"
+                        class="focus-ring flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-[12.5px] font-medium text-red-600 transition hover:bg-red-50">
+                    <i data-lucide="log-out" class="h-4 w-4"></i> Leave group
+                </button>
+            </div>
+
+            <div class="rounded-2xl border border-line bg-surface p-4">
+                <p class="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-ink">
+                    <i data-lucide="info" class="h-3.5 w-3.5 text-accent-500"></i> About group admins
+                </p>
+                <p class="text-[11px] leading-5 text-muted">
+                    Admins can add or remove members, promote others to admin, and withdraw from the group wallet. Every group needs at least one admin.
+                </p>
+            </div>
+        </div>
     </div>
 
-    <!-- Members -->
-    <p class="px-1 pb-2 pt-6 text-xs font-semibold uppercase tracking-wide text-muted">
-        {{ participants.count }} member{{ participants.count|pluralize }}
-    </p>
-    <div class="divide-y divide-line">
-        {% for member in participants %}
-            <a href="{% url 'profile_user' username=member.user.username %}" class="-mx-2 flex items-center gap-3 rounded-2xl px-2 py-3 transition hover:bg-surface">
-                {% if member.user.avatar %}
-                    <img src="{{ member.user.avatar.url }}" alt="" class="h-11 w-11 shrink-0 rounded-full object-cover">
-                {% else %}
-                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-100 text-sm font-semibold text-accent-700">
-                        {{ member.user.username|first|upper }}
-                    </div>
-                {% endif %}
-                <div class="min-w-0 flex-1">
-                    <p class="truncate text-[15px] font-semibold text-ink">
-                        {{ member.user.display_name|default:member.user.username }}
-                        {% if member.user_id == request.user.id %} <span class="text-muted">(you)</span>{% endif %}
-                    </p>
-                    <p class="truncate text-sm text-muted">@{{ member.user.username }}</p>
-                </div>
-                {% if member.is_admin %}
-                    <span class="shrink-0 rounded-full bg-accent-50 px-2.5 py-1 text-xs font-semibold text-accent-700">Admin</span>
-                {% endif %}
-            </a>
-        {% endfor %}
+    <!-- Leave confirmation -->
+    <div x-show="leaveConfirmOpen" x-cloak x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="leaveConfirmOpen = false">
+        <div class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-popover">
+            <p class="mb-1.5 text-[14px] font-semibold text-ink">Leave this group?</p>
+            <p class="mb-4 text-[12px] leading-5 text-muted">You'll stop receiving messages from {{ conversation.name|default:"this group" }} and won't be able to rejoin unless someone adds you back.</p>
+            <div class="flex gap-2.5">
+                <button type="button" @click="leaveConfirmOpen = false" class="focus-ring flex-1 rounded-full border border-line py-2.5 text-[12px] font-semibold text-ink transition hover:bg-surface">Cancel</button>
+                <form method="post" action="{% url 'group_leave' conversation_id=conversation.pk %}" class="flex-1">
+                    {% csrf_token %}
+                    <button type="submit" class="focus-ring w-full rounded-full bg-red-600 py-2.5 text-[12px] font-semibold text-white transition hover:bg-red-700">Leave</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Remove-member confirmation -->
+    <div x-show="removeTarget" x-cloak x-transition.opacity class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" @click.self="removeTarget = ''">
+        <div class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-popover">
+            <p class="mb-1.5 text-[14px] font-semibold text-ink">Remove <span x-text="'@' + removeTarget"></span>?</p>
+            <p class="mb-4 text-[12px] leading-5 text-muted">They'll be removed from this group immediately.</p>
+            <div class="flex gap-2.5">
+                <button type="button" @click="removeTarget = ''" class="focus-ring flex-1 rounded-full border border-line py-2.5 text-[12px] font-semibold text-ink transition hover:bg-surface">Cancel</button>
+                <form method="post" :action="'/groups/{{ conversation.pk }}/remove/' + removeTarget + '/'" class="flex-1">
+                    {% csrf_token %}
+                    <button type="submit" class="focus-ring w-full rounded-full bg-red-600 py-2.5 text-[12px] font-semibold text-white transition hover:bg-red-700">Remove</button>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
 {% endblock %}

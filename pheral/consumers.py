@@ -1,649 +1,202 @@
-# consumers.py
-
 import json
 
 from channels.db import database_sync_to_async
-from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from channels.generic.websocket import AsyncWebsocketConsumer
 from django.utils import timezone
 
-from .models import (
-    Conversation,
-    ConversationParticipant,
-    Message,
-    MessageRead,
-    MessageType,
-    User,
-)
+from .models import Conversation, ConversationParticipant, Message, MessageRead
 
 
-# =============================================================================
-# HELPERS
-# =============================================================================
-
-def serialize_message(message):
-    return {
-        "id": message.id,
-        "conversation_id": message.conversation_id,
-        "sender": {
-            "id": message.sender_id,
-            "username": message.sender.username,
-            "display_name": message.sender.display_name,
-            "avatar_url": message.sender.avatar_url,
-        },
-        "message_type": message.message_type,
-        "content": message.content,
-        "media_url": message.media_url,
-        "media_type": message.media_type,
-        "media_duration": message.media_duration,
-        "media_size": message.media_size,
-        "transaction_id": message.transaction_id,
-        "hire_request_id": message.hire_request_id,
-        "agent_action_id": message.agent_action_id,
-        "reply_to_id": message.reply_to_id,
-        "is_edited": message.is_edited,
-        "is_deleted": message.is_deleted,
-        "created_at": message.created_at.isoformat(),
-        "updated_at": message.updated_at.isoformat(),
-    }
-
-
-# =============================================================================
-# CHAT CONSUMER
-# =============================================================================
-
-class ChatConsumer(AsyncJsonWebsocketConsumer):
+class ChatConsumer(AsyncWebsocketConsumer):
     """
-    Main realtime consumer for Pheral conversations.
-
-    Handles:
-
-    - Direct messages
-    - Group messages
-    - Typing indicators
-    - Online presence
-    - Read receipts
-    - Message deletion
-    - Message editing
-    - Realtime system events
+    Shared by both direct and group chat — a conversation is a
+    conversation either way. Handles three inbound event types from
+    the client (chat_message, typing, read_receipt) and broadcasts
+    matching outbound events to every other tab in the same group.
+    Attachments/voice notes are NOT sent here — see chat.html's
+    onFormSubmit, which falls back to a real HTTP POST for anything
+    with a file attached.
     """
 
     async def connect(self):
-        self.user = self.scope.get("user")
+        self.conversation_id = self.scope["url_route"]["kwargs"]["conversation_id"]
+        self.group_name = f"chat_{self.conversation_id}"
+        user = self.scope["user"]
 
-        if not self.user or self.user.is_anonymous:
+        if not user.is_authenticated:
             await self.close(code=4001)
             return
 
-        self.conversation_id = self.scope["url_route"]["kwargs"].get(
-            "conversation_id"
-        )
-
-        if not self.conversation_id:
-            await self.close(code=4002)
-            return
-
-        is_member = await self.is_conversation_member()
-
-        if not is_member:
+        is_participant = await self.user_is_participant(user.id, self.conversation_id)
+        if not is_participant:
             await self.close(code=4003)
             return
 
-        self.room_group_name = (
-            f"conversation_{self.conversation_id}"
-        )
+        self.user_id = user.id
+        self.username = user.username
 
-        await self.channel_layer.group_add(
-            self.room_group_name,
-            self.channel_name,
-        )
-
-        await self.mark_user_online()
-
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
 
-        await self.send_json(
-            {
-                "event": "connected",
-                "conversation_id": self.conversation_id,
-            }
-        )
-
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                "type": "presence_event",
-                "event": "user_online",
-                "user_id": self.user.id,
-            },
-        )
-
     async def disconnect(self, close_code):
-        if not hasattr(self, "room_group_name"):
-            return
-
-        await self.channel_layer.group_discard(
-            self.room_group_name,
-            self.channel_name,
-        )
-
-        if hasattr(self, "user") and self.user:
-            await self.mark_user_offline()
-
+        if hasattr(self, "group_name"):
+            # Let everyone else know this user stopped typing if the
+            # tab closes mid-type, so the indicator doesn't get stuck.
             await self.channel_layer.group_send(
-                self.room_group_name,
-                {
-                    "type": "presence_event",
-                    "event": "user_offline",
-                    "user_id": self.user.id,
-                    "last_seen": timezone.now().isoformat(),
-                },
+                self.group_name,
+                {"type": "typing_event", "user_id": self.user_id, "username": self.username, "typing": False},
             )
+            await self.channel_layer.group_discard(self.group_name, self.channel_name)
 
-    # =========================================================================
-    # RECEIVE
-    # =========================================================================
-
-    async def receive_json(self, content, **kwargs):
-        event = content.get("event")
-
-        if not event:
-            await self.send_error(
-                "Missing event."
-            )
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+        except (ValueError, TypeError):
             return
 
-        handlers = {
-            "send_message": self.handle_send_message,
-            "typing_start": self.handle_typing_start,
-            "typing_stop": self.handle_typing_stop,
-            "mark_read": self.handle_mark_read,
-            "delete_message": self.handle_delete_message,
-            "edit_message": self.handle_edit_message,
-            "ping": self.handle_ping,
-        }
+        event_type = data.get("type")
 
-        handler = handlers.get(event)
+        if event_type == "chat_message":
+            await self.handle_chat_message(data)
+        elif event_type == "typing":
+            await self.handle_typing(data)
+        elif event_type == "read_receipt":
+            await self.handle_read_receipt(data)
 
-        if not handler:
-            await self.send_error(
-                "Unknown realtime event."
-            )
+    # ------------------------------------------------------------
+    # Inbound handlers
+    # ------------------------------------------------------------
+
+    async def handle_chat_message(self, data):
+        content = (data.get("content") or "").strip()
+        reply_to_id = data.get("reply_to")
+
+        if not content:
             return
 
-        await handler(content)
-
-    # =========================================================================
-    # SEND MESSAGE
-    # =========================================================================
-
-    async def handle_send_message(self, content):
-        message_content = content.get("content", "").strip()
-
-        message_type = content.get(
-            "message_type",
-            MessageType.TEXT,
-        )
-
-        media_url = content.get("media_url")
-        media_type = content.get("media_type", "")
-        media_duration = content.get("media_duration")
-        media_size = content.get("media_size")
-
-        reply_to_id = content.get("reply_to_id")
-
-        allowed_types = {
-            choice[0]
-            for choice in MessageType.choices
-        }
-
-        if message_type not in allowed_types:
-            await self.send_error(
-                "Invalid message type."
-            )
+        message = await self.create_message(self.user_id, self.conversation_id, content, reply_to_id)
+        if message is None:
             return
-
-        if (
-            message_type == MessageType.TEXT
-            and not message_content
-        ):
-            await self.send_error(
-                "Message cannot be empty."
-            )
-            return
-
-        if (
-            message_type in {
-                MessageType.IMAGE,
-                MessageType.VIDEO,
-                MessageType.VOICE,
-                MessageType.FILE,
-            }
-            and not media_url
-        ):
-            await self.send_error(
-                "Media URL is required."
-            )
-            return
-
-        message = await self.create_message(
-            content=message_content,
-            message_type=message_type,
-            media_url=media_url,
-            media_type=media_type,
-            media_duration=media_duration,
-            media_size=media_size,
-            reply_to_id=reply_to_id,
-        )
-
-        if not message:
-            await self.send_error(
-                "Unable to create message."
-            )
-            return
-
-        message_data = await self.get_message_data(
-            message.id
-        )
 
         await self.channel_layer.group_send(
-            self.room_group_name,
+            self.group_name,
             {
-                "type": "message_event",
-                "event": "new_message",
-                "message": message_data,
+                "type": "chat_message_event",
+                "id": message["id"],
+                "sender_id": message["sender_id"],
+                "sender_username": message["sender_username"],
+                "sender_first_name": message["sender_first_name"],
+                "content": message["content"],
+                "created_at": message["created_at"],
+                "reply_to_id": message["reply_to_id"],
+                "reply_to_preview": message["reply_to_preview"],
+                "reply_to_sender": message["reply_to_sender"],
             },
         )
 
-    # =========================================================================
-    # TYPING
-    # =========================================================================
-
-    async def handle_typing_start(self, content):
+    async def handle_typing(self, data):
         await self.channel_layer.group_send(
-            self.room_group_name,
+            self.group_name,
             {
                 "type": "typing_event",
-                "event": "typing_start",
-                "user_id": self.user.id,
-                "username": self.user.username,
+                "user_id": self.user_id,
+                "username": self.username,
+                "typing": bool(data.get("typing")),
             },
         )
 
-    async def handle_typing_stop(self, content):
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                "type": "typing_event",
-                "event": "typing_stop",
-                "user_id": self.user.id,
-                "username": self.user.username,
-            },
-        )
-
-    # =========================================================================
-    # READ RECEIPTS
-    # =========================================================================
-
-    async def handle_mark_read(self, content):
-        message_id = content.get("message_id")
-
+    async def handle_read_receipt(self, data):
+        message_id = data.get("message_id")
         if not message_id:
-            await self.send_error(
-                "message_id is required."
-            )
             return
 
-        message = await self.get_message(
-            message_id
-        )
-
-        if not message:
-            await self.send_error(
-                "Message not found."
-            )
-            return
-
-        if message.conversation_id != int(
-            self.conversation_id
-        ):
-            await self.send_error(
-                "Message does not belong to this conversation."
-            )
-            return
-
-        read = await self.mark_message_read(
-            message_id
-        )
-
-        if not read:
+        created = await self.mark_read(message_id, self.user_id)
+        if not created:
             return
 
         await self.channel_layer.group_send(
-            self.room_group_name,
+            self.group_name,
             {
-                "type": "read_event",
-                "event": "message_read",
+                "type": "read_receipt_event",
                 "message_id": message_id,
-                "user_id": self.user.id,
-                "read_at": timezone.now().isoformat(),
+                "reader_id": self.user_id,
             },
         )
 
-    # =========================================================================
-    # EDIT MESSAGE
-    # =========================================================================
+    # ------------------------------------------------------------
+    # Outbound — one method per event "type", called by Channels
+    # when a group_send with that type lands on this consumer.
+    # ------------------------------------------------------------
 
-    async def handle_edit_message(self, content):
-        message_id = content.get("message_id")
-        new_content = content.get("content", "").strip()
-
-        if not message_id:
-            await self.send_error(
-                "message_id is required."
-            )
-            return
-
-        if not new_content:
-            await self.send_error(
-                "Message cannot be empty."
-            )
-            return
-
-        message = await self.edit_message(
-            message_id,
-            new_content,
-        )
-
-        if not message:
-            await self.send_error(
-                "Message cannot be edited."
-            )
-            return
-
-        message_data = await self.get_message_data(
-            message.id
-        )
-
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                "type": "message_event",
-                "event": "message_edited",
-                "message": message_data,
-            },
-        )
-
-    # =========================================================================
-    # DELETE MESSAGE
-    # =========================================================================
-
-    async def handle_delete_message(self, content):
-        message_id = content.get("message_id")
-
-        if not message_id:
-            await self.send_error(
-                "message_id is required."
-            )
-            return
-
-        deleted = await self.delete_message(
-            message_id
-        )
-
-        if not deleted:
-            await self.send_error(
-                "Message cannot be deleted."
-            )
-            return
-
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                "type": "message_event",
-                "event": "message_deleted",
-                "message_id": message_id,
-                "deleted_by": self.user.id,
-            },
-        )
-
-    # =========================================================================
-    # PING
-    # =========================================================================
-
-    async def handle_ping(self, content):
-        await self.send_json(
-            {
-                "event": "pong",
-                "timestamp": timezone.now().isoformat(),
-            }
-        )
-
-    # =========================================================================
-    # CHANNEL LAYER EVENT HANDLERS
-    # =========================================================================
-
-    async def message_event(self, event):
-        await self.send_json(
-            {
-                "event": event["event"],
-                "message": event.get("message"),
-                "message_id": event.get("message_id"),
-                "deleted_by": event.get("deleted_by"),
-            }
-        )
+    async def chat_message_event(self, event):
+        await self.send(text_data=json.dumps(event))
 
     async def typing_event(self, event):
-        # Don't send a user's own typing indicator back to them.
-        if event["user_id"] == self.user.id:
+        # Don't echo a user's own typing state back to themselves.
+        if event["user_id"] == self.user_id:
             return
+        await self.send(text_data=json.dumps(event))
 
-        await self.send_json(
-            {
-                "event": event["event"],
-                "user_id": event["user_id"],
-                "username": event["username"],
-            }
-        )
-
-    async def read_event(self, event):
-        await self.send_json(
-            {
-                "event": event["event"],
-                "message_id": event["message_id"],
-                "user_id": event["user_id"],
-                "read_at": event["read_at"],
-            }
-        )
-
-    async def presence_event(self, event):
-        # Don't send the user's own presence event back to them.
-        if event["user_id"] == self.user.id:
+    async def read_receipt_event(self, event):
+        # Don't tell a reader that they read their own message.
+        if event["reader_id"] == self.user_id:
             return
+        await self.send(text_data=json.dumps(event))
 
-        await self.send_json(
-            {
-                "event": event["event"],
-                "user_id": event["user_id"],
-                "last_seen": event.get("last_seen"),
-            }
-        )
-
-    # =========================================================================
-    # DATABASE
-    # =========================================================================
+    # ------------------------------------------------------------
+    # DB access
+    # ------------------------------------------------------------
 
     @database_sync_to_async
-    def is_conversation_member(self):
+    def user_is_participant(self, user_id, conversation_id):
         return ConversationParticipant.objects.filter(
-            conversation_id=self.conversation_id,
-            user=self.user,
+            conversation_id=conversation_id, user_id=user_id,
         ).exists()
 
     @database_sync_to_async
-    def create_message(
-        self,
-        content,
-        message_type,
-        media_url=None,
-        media_type="",
-        media_duration=None,
-        media_size=None,
-        reply_to_id=None,
-    ):
-        conversation = Conversation.objects.filter(
-            id=self.conversation_id,
-        ).first()
-
-        if not conversation:
+    def create_message(self, user_id, conversation_id, content, reply_to_id):
+        try:
+            conversation = Conversation.objects.get(pk=conversation_id, is_active=True)
+        except Conversation.DoesNotExist:
             return None
 
         reply_to = None
-
         if reply_to_id:
             reply_to = Message.objects.filter(
-                id=reply_to_id,
-                conversation=conversation,
-            ).first()
+                pk=reply_to_id, conversation=conversation, is_deleted=False,
+            ).select_related("sender").first()
 
-        return Message.objects.create(
-            conversation=conversation,
-            sender=self.user,
-            message_type=message_type,
-            content=content,
-            media_url=media_url,
-            media_type=media_type,
-            media_duration=media_duration,
-            media_size=media_size,
-            reply_to=reply_to,
+        message = Message.objects.create(
+            conversation=conversation, sender_id=user_id,
+            message_type=Message.MessageType.TEXT, content=content, reply_to=reply_to,
         )
 
-    @database_sync_to_async
-    def get_message(self, message_id):
-        return Message.objects.filter(
-            id=message_id,
-        ).first()
+        conversation.updated_at = timezone.now()
+        conversation.save(update_fields=["updated_at"])
+
+        sender = message.sender
+
+        return {
+            "id": message.id,
+            "sender_id": user_id,
+            "sender_username": sender.username if sender else "",
+            "sender_first_name": sender.first_name if sender else "",
+            "content": message.content,
+            "created_at": message.created_at.strftime("%I:%M %p").lstrip("0"),
+            "reply_to_id": reply_to.id if reply_to else None,
+            "reply_to_preview": (reply_to.content[:60] if reply_to and reply_to.content else "Attachment") if reply_to else None,
+            "reply_to_sender": reply_to.sender.username if reply_to and reply_to.sender else None,
+        }
 
     @database_sync_to_async
-    def get_message_data(self, message_id):
-        message = (
-            Message.objects
-            .select_related(
-                "sender",
-            )
-            .filter(id=message_id)
-            .first()
-        )
-
-        if not message:
-            return None
-
-        return serialize_message(message)
-
-    @database_sync_to_async
-    def mark_message_read(self, message_id):
-        message = Message.objects.filter(
-            id=message_id,
-            conversation_id=self.conversation_id,
-        ).first()
-
-        if not message:
+    def mark_read(self, message_id, user_id):
+        try:
+            message = Message.objects.get(pk=message_id, conversation_id=self.conversation_id)
+        except Message.DoesNotExist:
             return False
 
-        MessageRead.objects.get_or_create(
-            message=message,
-            user=self.user,
-        )
+        if message.sender_id == user_id:
+            return False  # no point marking your own message read
 
-        ConversationParticipant.objects.filter(
-            conversation_id=self.conversation_id,
-            user=self.user,
-        ).update(
-            last_read_at=timezone.now()
-        )
-
-        return True
-
-    @database_sync_to_async
-    def edit_message(self, message_id, new_content):
-        message = Message.objects.filter(
-            id=message_id,
-            conversation_id=self.conversation_id,
-            sender=self.user,
-            is_deleted=False,
-        ).first()
-
-        if not message:
-            return None
-
-        # Only text messages can be edited.
-        if message.message_type != MessageType.TEXT:
-            return None
-
-        message.content = new_content
-        message.is_edited = True
-        message.save(
-            update_fields=[
-                "content",
-                "is_edited",
-                "updated_at",
-            ]
-        )
-
-        return message
-
-    @database_sync_to_async
-    def delete_message(self, message_id):
-        message = Message.objects.filter(
-            id=message_id,
-            conversation_id=self.conversation_id,
-            sender=self.user,
-            is_deleted=False,
-        ).first()
-
-        if not message:
-            return False
-
-        message.is_deleted = True
-        message.content = ""
-        message.media_url = None
-
-        message.save(
-            update_fields=[
-                "is_deleted",
-                "content",
-                "media_url",
-                "updated_at",
-            ]
-        )
-
-        return True
-
-    @database_sync_to_async
-    def mark_user_online(self):
-        User.objects.filter(
-            id=self.user.id
-        ).update(
-            is_online=True,
-            last_seen=timezone.now(),
-        )
-
-    @database_sync_to_async
-    def mark_user_offline(self):
-        User.objects.filter(
-            id=self.user.id
-        ).update(
-            is_online=False,
-            last_seen=timezone.now(),
-        )
-
-    # =========================================================================
-    # ERROR
-    # =========================================================================
-
-    async def send_error(self, message):
-        await self.send_json(
-            {
-                "event": "error",
-                "message": message,
-            }
-        )
+        _, created = MessageRead.objects.get_or_create(message=message, user_id=user_id)
+        return created

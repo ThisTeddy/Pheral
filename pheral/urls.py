@@ -490,7 +490,40 @@ path("api/data-plans/<int:network_id>/", views.data_plans_api, name="data_plans_
     views.flutterwave_webhook,
     name="flutterwave_webhook",
     ),
+path(
+    "groups/<int:conversation_id>/contribute/",
+    views.group_contribute,
+    name="group_contribute",
+),
 
+path(
+    "groups/<int:conversation_id>/withdraw/",
+    views.group_withdraw,
+    name="group_withdraw",
+),
+
+path(
+    "groups/<int:conversation_id>/admin/<str:username>/",
+    views.group_toggle_admin,
+    name="group_toggle_admin",
+),
+
+path(
+    "groups/<int:conversation_id>/remove/<str:username>/",
+    views.group_remove_member,
+    name="group_remove_member",
+),
+
+path(
+    "groups/<int:conversation_id>/leave/",
+    views.group_leave,
+    name="group_leave",
+),
+
+path("airtime-data/", views.airtime_data, name="airtime_data"),
+path("airtime-data/purchase/", views.purchase_bill, name="purchase_bill"),
+path("wallet/top-up/init/", views.init_top_up, name="init_top_up"),
+path("wallet/top-up/verify/", views.verify_top_up, name="verify_top_up"),
     # ============================================================
     # DJANGO ADMIN
     # ============================================================

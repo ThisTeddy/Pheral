@@ -8,59 +8,41 @@
 {% endblock %}
 
 {% block content %}
-<div class="mx-auto w-full max-w-2xl" x-data="{ q: '', sort: 'newest' }">
+<div class="mx-auto w-full max-w-5xl" x-data="{ q: '', sort: 'newest' }">
 
-    <!-- Mobile heading -->
-    <div class="flex items-center justify-between px-4 pt-3 md:hidden">
-        <h1 class="text-lg font-bold tracking-tight text-ink">Hire</h1>
-        <a href="{% url 'create_hire_job' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink" aria-label="Post a job">
-            <i data-lucide="square-pen" class="h-[18px] w-[18px]"></i>
+    <div class="flex items-center justify-between px-4 pt-3 lg:px-7 lg:pt-6">
+        <h1 class="text-lg font-bold tracking-tight text-ink lg:hidden">Hire</h1>
+        <a href="{% url 'create_hire_job' %}" class="focus-ring hidden items-center gap-1.5 rounded-full bg-accent-500 px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-600 lg:ml-auto lg:inline-flex">
+            <i data-lucide="plus" class="h-3.5 w-3.5"></i> Post a job
         </a>
     </div>
 
-    <div class="px-4 pt-3 md:px-6 md:pt-5">
+    <div class="px-4 pt-3 lg:px-7">
 
-        <!-- Stat strip -->
-        <div class="mb-3 grid grid-cols-3 gap-2">
-            <div class="rounded-xl border border-line bg-white px-3 py-2.5 text-center">
+        <div class="mb-3 grid grid-cols-3 gap-2 lg:max-w-md">
+            <div class="rounded-xl border border-line bg-white px-3 py-2.5 text-center shadow-card">
                 <p class="text-[15px] font-bold text-ink">{{ jobs|length }}</p>
                 <p class="text-[10px] text-muted">Open jobs</p>
             </div>
-            <div class="rounded-xl border border-line bg-white px-3 py-2.5 text-center">
+            <div class="rounded-xl border border-line bg-white px-3 py-2.5 text-center shadow-card">
                 <p class="text-[15px] font-bold text-ink">{{ jobs|length }}</p>
                 <p class="text-[10px] text-muted">Hiring now</p>
             </div>
-            <a href="{% url 'create_hire_job' %}" class="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-accent-500 px-3 py-2.5 text-center transition hover:bg-accent-600">
+            <a href="{% url 'create_hire_job' %}" class="focus-ring flex flex-col items-center justify-center gap-0.5 rounded-xl bg-accent-500 px-3 py-2.5 text-center transition hover:bg-accent-600 lg:hidden">
                 <i data-lucide="plus" class="h-3.5 w-3.5 text-white"></i>
                 <p class="text-[10px] font-semibold text-white">Post a job</p>
             </a>
         </div>
 
-        <!-- Search -->
-        <div class="mb-2.5 flex h-9 items-center gap-2 rounded-xl bg-surface px-3">
+        <div class="mb-2.5 flex h-9 items-center gap-2 rounded-xl bg-surface px-3 lg:h-10 lg:max-w-md">
             <i data-lucide="search" class="h-3.5 w-3.5 shrink-0 text-muted"></i>
-            <input
-                type="text" x-model="q" placeholder="Search open jobs" autocomplete="off"
-                class="w-full bg-transparent text-[12px] text-ink placeholder-muted focus:outline-none">
+            <input type="text" x-model="q" placeholder="Search open jobs" autocomplete="off" class="w-full bg-transparent text-[12px] text-ink placeholder-muted focus:outline-none">
         </div>
 
-        <!-- Sort -->
-        <div class="mb-3 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-            <button @click="sort = 'newest'"
-                    :class="sort === 'newest' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'"
-                    class="shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">
-                Newest
-            </button>
-            <button @click="sort = 'budget_high'"
-                    :class="sort === 'budget_high' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'"
-                    class="shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">
-                Highest budget
-            </button>
-            <button @click="sort = 'budget_low'"
-                    :class="sort === 'budget_low' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'"
-                    class="shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">
-                Lowest budget
-            </button>
+        <div class="mb-4 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            <button @click="sort = 'newest'" :class="sort === 'newest' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">Newest</button>
+            <button @click="sort = 'budget_high'" :class="sort === 'budget_high' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">Highest budget</button>
+            <button @click="sort = 'budget_low'" :class="sort === 'budget_low' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">Lowest budget</button>
         </div>
 
         {% if jobs %}
@@ -68,90 +50,63 @@
                 x-data="{
                     jobs: [
                         {% for job in jobs %}
-                        {
-                            id: {{ job.id }},
-                            title: '{{ job.title|escapejs }}',
-                            description: '{{ job.description|truncatechars:140|escapejs }}',
-                            budget: {{ job.budget }},
-                            currency: '{{ job.currency.symbol|escapejs }}',
-                            currencyCode: '{{ job.currency.code|escapejs }}',
-                            employer: '{{ job.employer.username|escapejs }}',
-                            employerName: '{{ job.employer.display_name|default:job.employer.username|escapejs }}',
-                            createdAgo: '{{ job.created_at|timesince|escapejs }}',
-                            timestamp: {{ job.created_at|date:'U' }},
-                        },
+                        { id: {{ job.id }}, title: '{{ job.title|escapejs }}', description: '{{ job.description|truncatechars:140|escapejs }}',
+                          budget: {{ job.budget }}, currency: '{{ job.currency.symbol|escapejs }}', currencyCode: '{{ job.currency.code|escapejs }}',
+                          employer: '{{ job.employer.username|escapejs }}', employerName: '{{ job.employer.display_name|default:job.employer.username|escapejs }}',
+                          createdAgo: '{{ job.created_at|timesince|escapejs }}', timestamp: {{ job.created_at|date:'U' }} },
                         {% endfor %}
                     ],
                     get filtered() {
-                        let list = this.jobs.filter(j =>
-                            this.q === '' ||
-                            j.title.toLowerCase().includes(this.q.toLowerCase()) ||
-                            j.employerName.toLowerCase().includes(this.q.toLowerCase())
-                        );
+                        let list = this.jobs.filter(j => this.q === '' || j.title.toLowerCase().includes(this.q.toLowerCase()) || j.employerName.toLowerCase().includes(this.q.toLowerCase()));
                         if (this.sort === 'budget_high') list = [...list].sort((a, b) => b.budget - a.budget);
                         else if (this.sort === 'budget_low') list = [...list].sort((a, b) => a.budget - b.budget);
                         else list = [...list].sort((a, b) => b.timestamp - a.timestamp);
                         return list;
                     },
                 }"
+                class="grid grid-cols-1 gap-2.5 lg:grid-cols-2 xl:grid-cols-3"
             >
                 <template x-for="job in filtered" :key="job.id">
                     <a :href="'{% url 'hire' %}job/' + job.id + '/'"
-                       class="mb-2.5 flex items-start gap-3 rounded-2xl border border-line bg-white p-3.5 transition hover:border-accent-200 hover:bg-surface">
-
-                        <span class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-600">
-                            <i data-lucide="briefcase" class="h-4.5 w-4.5"></i>
-                        </span>
-
+                       class="focus-ring flex items-start gap-3 rounded-2xl border border-line bg-white p-3.5 shadow-card transition hover:border-accent-200 hover:bg-surface">
+                        <span class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-600"><i data-lucide="briefcase" class="h-4.5 w-4.5"></i></span>
                         <div class="min-w-0 flex-1">
                             <div class="flex items-start justify-between gap-2">
                                 <p class="truncate text-[13px] font-semibold leading-5 text-ink" x-text="job.title"></p>
                                 <span class="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-semibold text-emerald-600">Open</span>
                             </div>
-
                             <p class="mt-0.5 truncate text-[11px] leading-4 text-muted" x-text="job.description"></p>
-
                             <div class="mt-2 flex items-center justify-between gap-2">
                                 <span class="flex items-center gap-1 text-[11px] font-semibold text-ink">
                                     <span x-text="job.currency"></span><span x-text="job.budget.toLocaleString(undefined, {minimumFractionDigits: 2})"></span>
                                     <span class="font-normal text-muted" x-text="job.currencyCode"></span>
                                 </span>
                                 <span class="flex items-center gap-1 text-[10px] text-muted">
-                                    <span x-text="'@' + job.employer"></span>
-                                    <span class="h-0.5 w-0.5 rounded-full bg-line"></span>
-                                    <span x-text="job.createdAgo + ' ago'"></span>
+                                    <span x-text="'@' + job.employer"></span><span class="h-0.5 w-0.5 rounded-full bg-line"></span><span x-text="job.createdAgo + ' ago'"></span>
                                 </span>
                             </div>
                         </div>
                     </a>
                 </template>
 
-                <div x-show="filtered.length === 0" x-cloak class="flex flex-col items-center gap-2 py-14 text-center">
-                    <div class="flex h-12 w-12 items-center justify-center rounded-full bg-accent-50">
-                        <i data-lucide="search-x" class="h-5 w-5 text-accent-500"></i>
-                    </div>
+                <div x-show="filtered.length === 0" x-cloak class="col-span-full flex flex-col items-center gap-2 py-14 text-center">
+                    <div class="flex h-12 w-12 items-center justify-center rounded-full bg-accent-50"><i data-lucide="search-x" class="h-5 w-5 text-accent-500"></i></div>
                     <p class="text-[12px] font-semibold text-ink">No jobs match your search</p>
                     <p class="text-[11px] text-muted">Try a different keyword or clear the search.</p>
                 </div>
             </div>
         {% else %}
             <div class="flex flex-col items-center gap-2 py-20 text-center">
-                <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50">
-                    <i data-lucide="briefcase" class="h-6 w-6 text-accent-500"></i>
-                </div>
+                <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50"><i data-lucide="briefcase" class="h-6 w-6 text-accent-500"></i></div>
                 <p class="text-[13px] font-semibold text-ink">No open jobs right now</p>
                 <p class="max-w-xs text-[11px] leading-5 text-muted">Be the first to post a job and find someone to hire.</p>
-                <a href="{% url 'create_hire_job' %}" class="mt-1 rounded-full bg-accent-500 px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-accent-600">
-                    Post a job
-                </a>
+                <a href="{% url 'create_hire_job' %}" class="focus-ring mt-1 rounded-full bg-accent-500 px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-accent-600">Post a job</a>
             </div>
         {% endif %}
     </div>
 </div>
 
-<a href="{% url 'create_hire_job' %}"
-   class="fixed bottom-20 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-white shadow-lg transition hover:bg-accent-600 md:hidden"
-   aria-label="Post a job">
+<a href="{% url 'create_hire_job' %}" class="focus-ring fixed bottom-20 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-white shadow-lg transition hover:bg-accent-600 lg:hidden" aria-label="Post a job">
     <i data-lucide="plus" class="h-5 w-5"></i>
 </a>
 {% endblock %}

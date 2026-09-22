@@ -1,89 +1,182 @@
 {% extends "base.html" %}
 
-{% block title %}Agent mode · Pheral{% endblock %}
-{% block page_title %}Agent mode{% endblock %}
+{% block title %}Agent · Pheral{% endblock %}
+{% block page_title %}Agent{% endblock %}
+
+{% block extra_head %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-2xl px-4 py-4">
+<div class="mx-auto max-w-2xl px-4 pb-28 pt-3 lg:max-w-5xl lg:px-7 lg:pt-6 lg:pb-10">
 
-    <div class="flex items-center gap-2">
-        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-100 text-accent-700">
-            <i data-lucide="bot" class="h-5 w-5"></i>
-        </div>
+    <div class="mb-4 flex items-center gap-2.5">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-500 text-white shadow-card">
+            <i data-lucide="bot" class="h-[18px] w-[18px]"></i>
+        </span>
         <div>
-            <h1 class="text-xl font-bold tracking-tight text-ink">Agent mode</h1>
-            <p class="text-sm text-muted">Type a command and Pheral will act on it for you.</p>
+            <h1 class="text-lg font-bold tracking-tight text-ink lg:text-[17px]">Agent</h1>
+            <p class="text-[11px] text-muted">Tell it what to do — send a message or a payment, in plain commands.</p>
         </div>
     </div>
 
-    <!-- Command form -->
-    <form method="post" action="{% url 'agent' %}" class="mt-4 flex items-center gap-2">
-        {% csrf_token %}
-        <input type="text" name="command" required autocomplete="off" placeholder="e.g. @agent pay @zoe 500"
-               class="w-full rounded-full border border-line bg-white px-4 py-3 text-sm text-ink placeholder-muted focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100">
-        <button type="submit" class="shrink-0 rounded-full bg-accent-500 p-3 text-white transition hover:bg-accent-600" aria-label="Run command">
-            <i data-lucide="send" class="h-5 w-5"></i>
-        </button>
-    </form>
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1.6fr_1fr]">
 
-    <!-- Supported commands -->
-    <div class="mt-3 flex flex-wrap gap-2">
-        <span class="rounded-full bg-surface px-3 py-1 text-xs font-mono text-muted">@agent msg @username hello there</span>
-        <span class="rounded-full bg-surface px-3 py-1 text-xs font-mono text-muted">@agent pay @username 500</span>
-    </div>
+        <!-- ============================================================
+             LEFT — command log, console-style
+        ============================================================= -->
+        <div>
+            {% if commands %}
+                <div class="space-y-3">
+                    {% for command in commands %}
+                        <div class="rounded-2xl border border-line bg-white p-3.5 shadow-card">
 
-    <!-- Command history -->
-    <p class="px-1 pb-2 pt-6 text-xs font-semibold uppercase tracking-wide text-muted">Command history</p>
+                            <!-- The command as typed -->
+                            <div class="mb-2.5 flex items-start gap-2">
+                                <span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-surface text-muted">
+                                    <i data-lucide="terminal" class="h-3 w-3"></i>
+                                </span>
+                                <p class="min-w-0 flex-1 break-words font-mono text-[12px] leading-5 text-ink">{{ command.command }}</p>
+                                <span class="mt-0.5 shrink-0 text-[9px] text-muted">{{ command.created_at|date:"H:i" }}</span>
+                            </div>
 
-    {% if commands %}
-        <div class="space-y-2">
-            {% for cmd in commands %}
-                <div class="rounded-2xl border border-line p-4">
-                    <div class="flex items-start justify-between gap-3">
-                        <p class="min-w-0 flex-1 truncate font-mono text-sm text-ink">{{ cmd.command }}</p>
-                        <span class="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold
-                                    {% if cmd.status == 'completed' %}bg-emerald-50 text-emerald-700
-                                    {% elif cmd.status == 'failed' %}bg-red-50 text-red-700
-                                    {% else %}bg-accent-50 text-accent-700{% endif %}">
-                            {{ cmd.get_status_display }}
-                        </span>
+                            <!-- Status + result -->
+                            <div class="ml-8">
+                                {% if command.status == "pending" or command.status == "processing" %}
+                                    <div class="flex items-center gap-1.5 rounded-xl bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+                                        <svg class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                        </svg>
+                                        {{ command.get_status_display }}…
+                                    </div>
+
+                                {% elif command.status == "completed" %}
+                                    {% if command.result.action == "payment" %}
+                                        <div class="flex items-center gap-2.5 rounded-xl bg-emerald-50 px-3 py-2.5">
+                                            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                                                <i data-lucide="banknote" class="h-3.5 w-3.5"></i>
+                                            </span>
+                                            <div class="min-w-0 flex-1">
+                                                <p class="text-[11.5px] font-semibold text-emerald-700">
+                                                    Sent {{ command.result.currency }}{{ command.result.amount }} to @{{ command.result.recipient }}
+                                                </p>
+                                                {% if command.result.reference %}
+                                                    <p class="truncate text-[10px] text-emerald-600/80">Ref: {{ command.result.reference }}</p>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+
+                                    {% elif command.result.action == "send_message" %}
+                                        <div class="flex items-center gap-2.5 rounded-xl bg-accent-50 px-3 py-2.5">
+                                            <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-100 text-accent-600">
+                                                <i data-lucide="message-circle" class="h-3.5 w-3.5"></i>
+                                            </span>
+                                            <div class="min-w-0 flex-1">
+                                                <p class="text-[11.5px] font-semibold text-accent-700">Message sent to @{{ command.result.recipient }}</p>
+                                                <p class="truncate text-[10px] text-accent-600/80">"{{ command.result.message }}"</p>
+                                            </div>
+                                        </div>
+
+                                    {% else %}
+                                        <div class="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700">
+                                            <i data-lucide="check" class="h-3.5 w-3.5"></i> Done
+                                        </div>
+                                    {% endif %}
+
+                                {% elif command.status == "failed" %}
+                                    <div class="flex items-start gap-2 rounded-xl bg-red-50 px-3 py-2.5">
+                                        <i data-lucide="x-circle" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500"></i>
+                                        <p class="text-[11px] leading-4 text-red-700">
+                                            {{ command.result.error|default:"Command could not be understood or completed." }}
+                                        </p>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-line bg-surface py-16 text-center">
+                    <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50">
+                        <i data-lucide="bot" class="h-6 w-6 text-accent-500"></i>
+                    </div>
+                    <p class="text-[13px] font-semibold text-ink">No commands yet</p>
+                    <p class="max-w-xs text-[11px] leading-5 text-muted">Try one of the examples on the right, or type your own below.</p>
+                </div>
+            {% endif %}
+        </div>
+
+        <!-- ============================================================
+             RIGHT — command reference, hidden on mobile scroll flow
+             but always reachable; becomes a real sidebar at lg+
+        ============================================================= -->
+        <div class="space-y-4">
+            <div class="rounded-2xl border border-line bg-white p-4 shadow-card">
+                <p class="mb-3 text-[12px] font-semibold text-ink">What Agent can do</p>
+
+                <div class="space-y-3">
+                    <div>
+                        <p class="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-ink">
+                            <i data-lucide="banknote" class="h-3.5 w-3.5 text-accent-500"></i> Send a payment
+                        </p>
+                        <button type="button" onclick="useExample('@agent pay @username 1000')"
+                                class="focus-ring block w-full rounded-lg bg-surface px-2.5 py-2 text-left font-mono text-[10.5px] text-muted transition hover:bg-line/60">
+                            @agent pay @username 1000
+                        </button>
                     </div>
 
-                    {% if cmd.result.error %}
-                        <p class="mt-2 flex items-center gap-1.5 text-sm text-red-600">
-                            <i data-lucide="alert-circle" class="h-4 w-4 shrink-0"></i> {{ cmd.result.error }}
+                    <div>
+                        <p class="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-ink">
+                            <i data-lucide="message-circle" class="h-3.5 w-3.5 text-accent-500"></i> Send a message
                         </p>
-                    {% elif cmd.result.action == "send_message" %}
-                        <p class="mt-2 flex items-center gap-1.5 text-sm text-ink">
-                            <i data-lucide="message-circle" class="h-4 w-4 shrink-0 text-accent-600"></i>
-                            Sent to @{{ cmd.result.recipient }}: "{{ cmd.result.message }}"
-                        </p>
-                    {% elif cmd.result.action == "payment" %}
-                        <p class="mt-2 flex items-center gap-1.5 text-sm text-ink">
-                            <i data-lucide="banknote" class="h-4 w-4 shrink-0 text-accent-600"></i>
-                            Paid {{ cmd.result.currency }} {{ cmd.result.amount }} to @{{ cmd.result.recipient }}
-                            {% if cmd.result.reference %}
-                                · <a href="{% url 'receipt_detail' reference=cmd.result.reference %}" class="font-medium text-accent-600 hover:text-accent-700">View receipt</a>
-                            {% endif %}
-                        </p>
-                    {% elif cmd.status == "pending" or cmd.status == "processing" %}
-                        <p class="mt-2 flex items-center gap-1.5 text-sm text-muted">
-                            <i data-lucide="loader" class="h-4 w-4 shrink-0"></i> Working on it…
-                        </p>
-                    {% endif %}
-
-                    <p class="mt-2 text-xs text-muted">{{ cmd.created_at|timesince }} ago</p>
+                        <button type="button" onclick="useExample('@agent msg @username hey, are you free later?')"
+                                class="focus-ring block w-full rounded-lg bg-surface px-2.5 py-2 text-left font-mono text-[10.5px] text-muted transition hover:bg-line/60">
+                            @agent msg @username hey, are you free later?
+                        </button>
+                    </div>
                 </div>
-            {% endfor %}
-        </div>
-    {% else %}
-        <div class="flex flex-col items-center gap-3 py-16 text-center">
-            <div class="flex h-16 w-16 items-center justify-center rounded-full bg-accent-50">
-                <i data-lucide="bot" class="h-7 w-7 text-accent-500"></i>
             </div>
-            <p class="text-base font-semibold text-ink">No commands yet</p>
-            <p class="max-w-xs text-sm text-muted">Try sending a message or a payment using the command box above.</p>
+
+            <div class="rounded-2xl border border-line bg-surface p-4">
+                <p class="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-ink">
+                    <i data-lucide="info" class="h-3.5 w-3.5 text-accent-500"></i> Good to know
+                </p>
+                <p class="text-[11px] leading-5 text-muted">
+                    Commands run immediately and can't be undone once completed — payments leave your wallet right away, just like sending one yourself.
+                </p>
+            </div>
         </div>
-    {% endif %}
+    </div>
 </div>
+
+<!-- ============================================================
+     COMPOSER — sticky on mobile above the bottom nav, inline on
+     desktop where there's no bottom nav to clear.
+============================================================= -->
+<div class="fixed inset-x-0 bottom-[58px] z-30 border-t border-line bg-white/95 px-4 py-2.5 backdrop-blur lg:sticky lg:bottom-0 lg:mx-auto lg:max-w-5xl lg:border-t-0 lg:bg-transparent lg:px-7 lg:pb-0 lg:backdrop-blur-none">
+    <form method="post" id="agent-form" class="mx-auto flex max-w-2xl items-center gap-2 lg:max-w-none">
+        {% csrf_token %}
+        <div class="flex flex-1 items-center gap-2 rounded-2xl border border-line bg-white px-3.5 py-2.5 shadow-card focus-within:border-accent-400">
+            <i data-lucide="terminal" class="h-4 w-4 shrink-0 text-muted"></i>
+            <input type="text" name="command" id="command-input" autocomplete="off"
+                   placeholder="@agent pay @username 500"
+                   class="w-full bg-transparent font-mono text-[12.5px] text-ink placeholder-muted focus:outline-none">
+        </div>
+        <button type="submit" class="focus-ring flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-500 text-white transition hover:bg-accent-600" aria-label="Run command">
+            <i data-lucide="arrow-up" class="h-4 w-4"></i>
+        </button>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function useExample(text) {
+        const input = document.getElementById('command-input');
+        input.value = text;
+        input.focus();
+        input.setSelectionRange(text.length, text.length);
+    }
+</script>
 {% endblock %}

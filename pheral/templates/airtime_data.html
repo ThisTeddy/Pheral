@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}Airtime & Data · Pheral{% endblock %}
+{% block page_title %}Airtime & Data{% endblock %}
+
+{% block extra_head %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Data handed to Alpine goes through json_script (for the plan
+     catalog) or plain data-* attributes (for scalars like phone and
+     currency symbol) — never interpolated directly inside an
+     x-data="..." string. That's the only way to guarantee a stray
+     quote or special character in the data can never break the
+     attribute open and spill JS as visible page text. -->
+{{ data_plans|json_script:"data-plans-json" }}
+
+<div
+    id="airtime-data-root"
+    data-default-phone="{{ default_phone }}"
+    data-currency-symbol="{{ currency.symbol }}"
+    data-wallet-balance="{{ wallet.balance|default:0 }}"
+    class="mx-auto max-w-lg px-4 pb-10 pt-3 lg:max-w-2xl lg:px-7 lg:pt-6"
+    x-data="airtimeData()"
+    x-init="init()"
+>
+
+    <h1 class="mb-3 text-lg font-bold tracking-tight text-ink lg:hidden">Airtime & Data</h1>
+
+    <!-- Balance -->
+    <div class="relative mb-4 overflow-hidden rounded-3xl bg-gradient-to-br from-accent-600 via-accent-500 to-accent-400 p-5 text-white shadow-card">
+        <div class="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10"></div>
+        <p class="relative text-[10px] font-medium uppercase tracking-wide text-white/80">Wallet balance</p>
+        <p class="relative mt-1 text-[26px] font-extrabold tracking-tight">
+            <span x-text="currencySymbol"></span><span x-text="balance.toLocaleString(undefined, {minimumFractionDigits: 2})"></span>
+        </p>
+    </div>
+
+    <!-- Airtime / Data tabs -->
+    <div class="mb-4 flex gap-1.5 rounded-2xl bg-surface p-1">
+        <button type="button" @click="billType = 'airtime'; planCode = ''"
+                :class="billType === 'airtime' ? 'bg-white text-accent-600 shadow-card' : 'text-muted'"
+                class="focus-ring flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[12px] font-semibold transition">
+            <i data-lucide="phone" class="h-3.5 w-3.5"></i> Airtime
+        </button>
+        <button type="button" @click="billType = 'data'; amount = ''"
+                :class="billType === 'data' ? 'bg-white text-accent-600 shadow-card' : 'text-muted'"
+                class="focus-ring flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-[12px] font-semibold transition">
+            <i data-lucide="wifi" class="h-3.5 w-3.5"></i> Data
+        </button>
+    </div>
+
+    <!-- Network -->
+    <div class="mb-4">
+        <label class="mb-1.5 block text-[11px] font-medium text-ink">Network</label>
+        <div class="grid grid-cols-4 gap-2">
+            {% for n in networks %}
+                <button type="button" @click="network = '{{ n.code }}'"
+                        :class="network === '{{ n.code }}' ? 'border-accent-500 bg-accent-50 text-accent-600' : 'border-line text-muted hover:bg-surface'"
+                        class="focus-ring rounded-2xl border py-3 text-center text-[11px] font-semibold transition">
+                    {{ n.label }}
+                </button>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Phone number -->
+    <div class="mb-4">
+        <label class="mb-1.5 block text-[11px] font-medium text-ink">Phone number</label>
+        <div class="flex items-center gap-2 rounded-2xl border border-line bg-white px-3.5 py-2.5 focus-within:border-accent-400">
+            <i data-lucide="smartphone" class="h-4 w-4 shrink-0 text-muted"></i>
+            <input type="tel" x-model="phone" placeholder="080…" class="w-full bg-transparent text-[13px] text-ink placeholder-muted focus:outline-none">
+        </div>
+    </div>
+
+    <!-- Airtime amount -->
+    <div x-show="billType === 'airtime'" x-cloak class="mb-4">
+        <label class="mb-1.5 block text-[11px] font-medium text-ink">Amount</label>
+        <div class="mb-2.5 flex items-center gap-2 rounded-2xl border border-line bg-white px-3.5 py-3 focus-within:border-accent-400">
+            <span class="text-[15px] font-semibold text-muted" x-text="currencySymbol"></span>
+            <input type="number" x-model="amount" step="1" min="1" placeholder="0.00" class="w-full bg-transparent text-[16px] font-semibold text-ink placeholder-muted focus:outline-none">
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <button type="button" @click="amount = '100'" class="focus-ring rounded-full border border-line px-3.5 py-1.5 text-[11px] font-medium text-ink transition hover:bg-surface"><span x-text="currencySymbol"></span>100</button>
+            <button type="button" @click="amount = '200'" class="focus-ring rounded-full border border-line px-3.5 py-1.5 text-[11px] font-medium text-ink transition hover:bg-surface"><span x-text="currencySymbol"></span>200</button>
+            <button type="button" @click="amount = '500'" class="focus-ring rounded-full border border-line px-3.5 py-1.5 text-[11px] font-medium text-ink transition hover:bg-surface"><span x-text="currencySymbol"></span>500</button>
+            <button type="button" @click="amount = '1000'" class="focus-ring rounded-full border border-line px-3.5 py-1.5 text-[11px] font-medium text-ink transition hover:bg-surface"><span x-text="currencySymbol"></span>1,000</button>
+        </div>
+    </div>
+
+    <!-- Data plans -->
+    <div x-show="billType === 'data'" x-cloak class="mb-4">
+        <label class="mb-1.5 block text-[11px] font-medium text-ink">Choose a bundle</label>
+
+        <template x-if="!network">
+            <p class="rounded-2xl border border-dashed border-line bg-surface px-3.5 py-4 text-center text-[11px] text-muted">Select a network to see available bundles.</p>
+        </template>
+
+        <div class="space-y-1.5" x-show="network">
+            <template x-for="plan in plansForNetwork" :key="plan.code">
+                <button type="button" @click="planCode = plan.code"
+                        :class="planCode === plan.code ? 'border-accent-500 bg-accent-50' : 'border-line hover:bg-surface'"
+                        class="focus-ring flex w-full items-center justify-between rounded-2xl border px-3.5 py-3 text-left transition">
+                    <span class="text-[12.5px] font-medium text-ink" x-text="plan.label"></span>
+                    <span class="flex items-center gap-2">
+                        <span class="text-[12.5px] font-semibold text-ink" x-text="currencySymbol + Number(plan.amount).toLocaleString(undefined, {minimumFractionDigits: 2})"></span>
+                        <span class="flex h-4.5 w-4.5 items-center justify-center rounded-full border-2"
+                              :class="planCode === plan.code ? 'border-accent-500 bg-accent-500' : 'border-line'">
+                            <i x-show="planCode === plan.code" data-lucide="check" class="h-2.5 w-2.5 text-white"></i>
+                        </span>
+                    </span>
+                </button>
+            </template>
+        </div>
+    </div>
+
+    <p x-show="error" x-cloak class="mb-4 rounded-xl bg-red-50 px-3.5 py-2.5 text-[11px] text-red-700" x-text="error"></p>
+    <p x-show="successMessage" x-cloak class="mb-4 rounded-xl bg-emerald-50 px-3.5 py-2.5 text-[11px] text-emerald-700" x-text="successMessage"></p>
+
+    <button type="button" @click="submit()" :disabled="!canSubmit || loading"
+            class="focus-ring flex w-full items-center justify-center gap-1.5 rounded-full bg-accent-500 py-3.5 text-[13px] font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
+        <i data-lucide="zap" class="h-4 w-4" x-show="!loading"></i>
+        <span x-text="loading ? 'Processing…' : (billType === 'airtime' ? 'Buy airtime' : 'Buy data')"></span>
+    </button>
+
+    <p class="mt-3 flex items-center justify-center gap-1.5 text-center text-[10px] text-muted">
+        <i data-lucide="shield-check" class="h-3.5 w-3.5"></i>
+        Delivered instantly via Flutterwave
+    </p>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function airtimeData() {
+        return {
+            billType: 'airtime',
+            network: '',
+            phone: '',
+            amount: '',
+            planCode: '',
+            loading: false,
+            error: '',
+            successMessage: '',
+            balance: 0,
+            currencySymbol: '',
+            dataPlans: {},
+            purchaseUrl: '',
+
+            init() {
+                const root = document.getElementById('airtime-data-root');
+                this.phone = root.dataset.defaultPhone || '';
+                this.currencySymbol = root.dataset.currencySymbol || '';
+                this.balance = parseFloat(root.dataset.walletBalance || '0');
+                this.dataPlans = JSON.parse(document.getElementById('data-plans-json').textContent);
+                this.purchaseUrl = "{% url 'purchase_bill' %}";
+            },
+
+            get plansForNetwork() {
+                return this.network ? (this.dataPlans[this.network] || []) : [];
+            },
+            get selectedPlan() {
+                return this.plansForNetwork.find(p => p.code === this.planCode);
+            },
+            get canSubmit() {
+                if (!this.network || !this.phone) return false;
+                if (this.billType === 'airtime') return this.amount && parseFloat(this.amount) > 0;
+                return !!this.planCode;
+            },
+
+            async submit() {
+                this.loading = true;
+                this.error = '';
+                this.successMessage = '';
+                try {
+                    const body = new URLSearchParams({
+                        bill_type: this.billType,
+                        network: this.network,
+                        phone_number: this.phone,
+                    });
+                    if (this.billType === 'airtime') body.set('amount', this.amount);
+                    else body.set('plan_code', this.planCode);
+
+                    const res = await fetch(this.purchaseUrl, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '',
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: body.toString(),
+                    });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        this.balance = data.balance;
+                        this.successMessage = data.description + ' — purchase successful.';
+                        this.amount = '';
+                        this.planCode = '';
+                    } else {
+                        this.error = data.error || 'Purchase failed. Please try again.';
+                    }
+                } catch (e) {
+                    this.error = 'Something went wrong. Please try again.';
+                } finally {
+                    this.loading = false;
+                }
+            },
+        };
+    }
+</script>
+{% endblock %}

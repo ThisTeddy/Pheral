@@ -9,7 +9,7 @@
     <link rel="manifest" href="{% url 'pwa_manifest' %}">
     <meta name="theme-color" content="#7C3AED">
     <link rel="apple-touch-icon" href="{% static 'images/pheral-logo.png' %}">
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Pheral">
     <link rel="icon" type="image/png" href="{% static 'images/pheral-logo.png' %}">
@@ -33,14 +33,18 @@
         };
     </script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <style>[x-cloak]{display:none!important} html,body{-webkit-tap-highlight-color:transparent}</style>
+    <style>
+        [x-cloak] { display: none !important; }
+        html, body { -webkit-tap-highlight-color: transparent; }
+        .focus-ring:focus-visible { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #9A6BF0; border-radius: 9999px; }
+    </style>
 </head>
 
 <body class="flex h-full min-h-screen flex-col bg-white font-sans text-ink antialiased" x-data="{ showPassword: false, showConfirm: false }">
 
     <header class="flex items-center gap-2 px-5 py-5 md:px-10">
-        <a href="{% url 'landing' %}" class="flex items-center gap-2">
-            <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-accent-500 text-sm font-extrabold text-white">P</span>
+        <a href="{% url 'landing' %}" class="focus-ring flex items-center gap-2">
+            <img src="{% static 'images/pheral-logo.png' %}" alt="Pheral" class="h-9 w-9 rounded-2xl object-cover">
             <span class="text-lg font-bold tracking-tight">Pheral</span>
         </a>
     </header>
@@ -63,19 +67,19 @@
                 </div>
             {% endif %}
 
-            <form method="post" class="space-y-4">
+            <form method="post" x-data="{ region: '{{ selected_region|default:'NG' }}' }" class="space-y-4">
                 {% csrf_token %}
 
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="mb-1.5 block text-xs font-medium text-muted">First name</label>
                         <input type="text" name="first_name" required maxlength="100" autocomplete="given-name"
-                               class="w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                               class="focus-ring w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
                     </div>
                     <div>
                         <label class="mb-1.5 block text-xs font-medium text-muted">Last name</label>
                         <input type="text" name="last_name" required maxlength="100" autocomplete="family-name"
-                               class="w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                               class="focus-ring w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
                     </div>
                 </div>
 
@@ -89,18 +93,32 @@
                 </div>
 
                 <div>
+                    <label class="mb-1.5 block text-xs font-medium text-muted">Country</label>
+                    <div class="relative">
+                        <select name="region" x-model="region"
+                                class="focus-ring w-full appearance-none rounded-2xl border border-line bg-surface px-4 py-2.5 pr-9 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                            {% for code, name in regions %}
+                                <option value="{{ code }}" {% if code == selected_region %}selected{% endif %}>{{ name }}</option>
+                            {% endfor %}
+                        </select>
+                        <i data-lucide="chevron-down" class="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"></i>
+                    </div>
+                </div>
+
+                <div>
                     <label class="mb-1.5 block text-xs font-medium text-muted">Phone number</label>
-                    <input type="tel" name="phone_number" required maxlength="30" autocomplete="tel" placeholder="+234…"
-                           class="w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                    <input type="tel" name="phone_number" required maxlength="30" autocomplete="tel"
+                           value="{{ phone_raw|default:'' }}" placeholder="e.g. 0801 234 5678"
+                           class="focus-ring w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                    <p class="mt-1 text-[10px] text-muted">Enter it as you'd normally dial it locally — we'll match it to the country you selected.</p>
                 </div>
 
                 <div>
                     <label class="mb-1.5 block text-xs font-medium text-muted">Password</label>
                     <div class="relative">
                         <input :type="showPassword ? 'text' : 'password'" name="password" required minlength="8" autocomplete="new-password"
-                               class="w-full rounded-2xl border border-line bg-surface px-4 py-2.5 pr-11 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
-                        <button type="button" @click="showPassword = !showPassword"
-                                class="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted" aria-label="Toggle password visibility">
+                               class="focus-ring w-full rounded-2xl border border-line bg-surface px-4 py-2.5 pr-11 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                        <button type="button" @click="showPassword = !showPassword" class="focus-ring absolute right-3.5 top-1/2 -translate-y-1/2 text-muted" aria-label="Toggle password visibility">
                             <i data-lucide="eye" class="h-4 w-4" x-show="!showPassword"></i>
                             <i data-lucide="eye-off" class="h-4 w-4" x-show="showPassword" x-cloak></i>
                         </button>
@@ -111,9 +129,8 @@
                     <label class="mb-1.5 block text-xs font-medium text-muted">Confirm password</label>
                     <div class="relative">
                         <input :type="showConfirm ? 'text' : 'password'" name="password_confirm" required minlength="8" autocomplete="new-password"
-                               class="w-full rounded-2xl border border-line bg-surface px-4 py-2.5 pr-11 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
-                        <button type="button" @click="showConfirm = !showConfirm"
-                                class="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted" aria-label="Toggle password visibility">
+                               class="focus-ring w-full rounded-2xl border border-line bg-surface px-4 py-2.5 pr-11 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                        <button type="button" @click="showConfirm = !showConfirm" class="focus-ring absolute right-3.5 top-1/2 -translate-y-1/2 text-muted" aria-label="Toggle password visibility">
                             <i data-lucide="eye" class="h-4 w-4" x-show="!showConfirm"></i>
                             <i data-lucide="eye-off" class="h-4 w-4" x-show="showConfirm" x-cloak></i>
                         </button>
@@ -121,14 +138,14 @@
                 </div>
 
                 <button type="submit"
-                        class="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600">
+                        class="focus-ring mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600">
                     Create account
                 </button>
             </form>
 
             <p class="mt-6 text-center text-sm text-muted">
                 Already have an account?
-                <a href="{% url 'login_view' %}" class="font-semibold text-accent-600 hover:underline">Log in</a>
+                <a href="{% url 'login_view' %}" class="focus-ring font-semibold text-accent-600 hover:underline">Log in</a>
             </p>
         </div>
     </main>
