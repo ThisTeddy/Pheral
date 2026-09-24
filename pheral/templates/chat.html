@@ -23,6 +23,17 @@
         .chat-shell { height: calc(100dvh - 60px); }
     }
     [x-cloak] { display: none !important; }
+
+    /* Sticky profile header — stays pinned above the message list
+       regardless of scroll position, on both the mobile header and
+       the desktop sub-header. */
+    .chat-header-sticky {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: #fff;
+        padding-top: max(0.625rem, env(safe-area-inset-top, 0px));
+    }
 </style>
 {% endblock %}
 
@@ -32,7 +43,7 @@
 
     <!-- HEADER (mobile only — desktop relies on base.html's header
          showing the conversation name via page_title) -->
-    <div class="flex items-center gap-2.5 border-b border-line px-3.5 py-2.5 lg:hidden">
+    <div class="chat-header-sticky flex items-center gap-2.5 border-b border-line px-3.5 py-2.5 lg:hidden">
         <a href="{% url 'chat_list' %}" class="focus-ring rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink" aria-label="Back to chats">
             <i data-lucide="chevron-left" class="h-[18px] w-[18px]"></i>
         </a>
@@ -67,7 +78,7 @@
     <!-- DESKTOP SUB-HEADER — presence + Pay button, since the name
          itself now lives in base.html's page_title bar -->
     {% if other_user %}
-        <div class="hidden items-center justify-between border-b border-line px-5 py-2.5 lg:flex">
+        <div class="chat-header-sticky hidden items-center justify-between border-b border-line px-5 py-2.5 lg:flex">
             <p class="text-[11px]" :class="typing ? 'font-medium text-accent-600' : 'text-muted'"
                x-text="typing ? 'typing…' : '{% if other_user_presence.is_online %}Online{% elif other_user_presence.last_seen_at %}Last seen {{ other_user_presence.last_seen_at|timesince }} ago{% else %}Offline{% endif %}'"></p>
             <a href="{% url 'pay_user' other_user.username %}"
@@ -107,7 +118,8 @@
                     </div>
 
                 {% else %}
-                    <div id="msg-{{ message.id }}" class="group flex items-end gap-1.5 {% if message.sender_id == current_user.id %}justify-end{% endif %}">
+                    <div id="msg-{{ message.id }}" data-message-id="{{ message.id }}" data-sender-id="{{ message.sender_id }}"
+                         class="group flex items-end gap-1.5 {% if message.sender_id == current_user.id %}justify-end{% endif %}">
 
                         <div class="relative max-w-[78%] rounded-2xl px-3 py-2 text-[12.5px] leading-snug lg:max-w-[65%]
                                     {% if message.sender_id == current_user.id %}rounded-br-md bg-accent-500 text-white
@@ -181,9 +193,9 @@
                                 </span>
                                 {% if message.sender_id == current_user.id %}
                                     {% if message.id in read_by_others %}
-                                        <i data-lucide="check-check" class="h-3 w-3 text-accent-200"></i>
+                                        <i data-lucide="check-check" class="read-check h-3 w-3 text-accent-200"></i>
                                     {% else %}
-                                        <i data-lucide="check" class="h-3 w-3 text-white/60"></i>
+                                        <i data-lucide="check" class="read-check h-3 w-3 text-white/60"></i>
                                     {% endif %}
                                 {% endif %}
                             </div>
@@ -248,7 +260,11 @@
             </button>
         </div>
 
-        <form @submit.prevent="onFormSubmit()" enctype="multipart/form-data" x-ref="form" x-show="!recording" class="flex items-end gap-1">
+        <!-- method="post" was missing here: without it, a browser-driven
+             form.submit() (used for attachment/voice) defaults to GET,
+             which silently drops the file body and the Django view
+             never sees a POST. -->
+        <form method="post" @submit.prevent="onFormSubmit()" enctype="multipart/form-data" x-ref="form" x-show="!recording" class="flex items-end gap-1">
             {% csrf_token %}
             <input type="hidden" name="reply_to" x-model="replyId">
             <input type="file" name="attachment" x-ref="attachmentInput" class="hidden" accept="image/*,video/*,.pdf,.doc,.docx,.zip" @change="onAttachmentChange">
@@ -297,33 +313,72 @@
             currentUserId: {{ current_user.id }},
             currentUsername: "{{ current_user.username|escapejs }}",
 
+            // Guards against the same message rendering twice.
+            seenMessageIds: new Set(),
+
             _mediaRecorder: null, _recordedChunks: [], _recordingStartedAt: 0,
             _recordingTimer: null, _discardRecording: false,
             _typingTimeout: null, _observer: null,
+            _reconnectTimer: null,
 
             init() {
                 this.scrollToBottom(false);
                 this.connectSocket();
                 this.observeUnreadMessages();
+
+                window.addEventListener("beforeunload", () => this.closeSocket());
+            },
+
+            closeSocket() {
+                clearTimeout(this._reconnectTimer);
+
+                if (!this.socket) return;
+
+                // IMPORTANT: these were originally wired up with
+                // addEventListener(), and assigning `.onclose = null`
+                // does NOT detach a listener added that way — the old
+                // handler would still fire and schedule its own
+                // reconnect after we thought we'd shut it down. Using
+                // the .onX property form (below, in connectSocket) is
+                // what makes clearing it here actually work.
+                this.socket.onopen = null;
+                this.socket.onclose = null;
+                this.socket.onmessage = null;
+
+                if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
+                    this.socket.close();
+                }
+                this.socket = null;
+                this.socketReady = false;
             },
 
             connectSocket() {
+                // Never open a second socket while one is still live.
+                this.closeSocket();
+
                 const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
                 const url = protocol + "//" + window.location.host + "/ws/chat/{{ conversation.id }}/";
-                this.socket = new WebSocket(url);
+                const socket = new WebSocket(url);
+                this.socket = socket;
 
-                this.socket.addEventListener("open", () => { this.socketReady = true; });
-                this.socket.addEventListener("close", () => {
+                socket.onopen = () => {
+                    if (this.socket !== socket) return; // superseded before it finished connecting
+                    this.socketReady = true;
+                };
+
+                socket.onclose = () => {
+                    if (this.socket !== socket) return; // an intentional close already replaced this one
                     this.socketReady = false;
-                    setTimeout(() => this.connectSocket(), 2000);
-                });
+                    this._reconnectTimer = setTimeout(() => this.connectSocket(), 2000);
+                };
 
-                this.socket.addEventListener("message", (event) => {
+                socket.onmessage = (event) => {
+                    if (this.socket !== socket) return;
                     const data = JSON.parse(event.data);
                     if (data.type === "chat_message_event") this.appendMessage(data);
                     else if (data.type === "typing_event") this.handleTypingEvent(data);
                     else if (data.type === "read_receipt_event") this.handleReadReceiptEvent(data);
-                });
+                };
             },
 
             sendSocket(payload) {
@@ -424,7 +479,6 @@
                 const hasFile = (attachmentInput.files && attachmentInput.files.length) || (voiceInput.files && voiceInput.files.length);
 
                 if (hasFile) {
-                    this.$refs.form.removeAttribute("@submit.prevent");
                     this.$refs.form.setAttribute("action", "{% url 'chat' conversation.id %}");
                     HTMLFormElement.prototype.submit.call(this.$refs.form);
                     return;
@@ -440,6 +494,9 @@
             },
 
             appendMessage(data) {
+                if (this.seenMessageIds.has(data.id)) return;
+                this.seenMessageIds.add(data.id);
+
                 const isMine = data.sender_id === this.currentUserId;
                 const wrapper = document.createElement("div");
                 wrapper.id = "msg-" + data.id;
@@ -449,7 +506,6 @@
 
                 let replyHtml = "";
                 if (data.reply_to_id) {
-                    const replyLabel = data.reply_to_sender === this.currentUsername ? "You" : (data.reply_to_sender || "");
                     replyHtml = `
                         <div class="mb-1 block w-full rounded-md border-l-2 px-1.5 py-1 text-left text-[10px] ${isMine ? "border-white/50 bg-white/10 text-white/80" : "border-accent-400 bg-accent-50 text-accent-700"}">
                             <p class="font-semibold"></p>

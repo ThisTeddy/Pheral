@@ -10,7 +10,7 @@
     <link rel="manifest" href="{% url 'pwa_manifest' %}">
     <meta name="theme-color" content="#7C3AED">
     <link rel="apple-touch-icon" href="{% static 'images/pheral-logo.png' %}">
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Pheral">
     <link rel="icon" type="image/png" href="{% static 'images/pheral-logo.png' %}">
@@ -58,28 +58,53 @@
         ::-webkit-scrollbar-thumb { background: #EAE6F4; border-radius: 999px; }
         .focus-ring { outline: none; }
         .focus-ring:focus-visible { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #9A6BF0; border-radius: 9999px; }
+        @keyframes install-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(124,58,237,0.35); }
+            50% { box-shadow: 0 0 0 8px rgba(124,58,237,0); }
+        }
+        .install-pulse { animation: install-pulse 2s ease-out infinite; }
     </style>
 
     {% block extra_head %}{% endblock %}
 </head>
 
 <body class="min-h-full bg-white font-sans text-ink antialiased"
-      x-data="{ commandOpen: false }"
+      x-data="pheralShell()" x-init="init()"
       @keydown.window="if ((event.metaKey || event.ctrlKey) && event.key === 'k') { event.preventDefault(); commandOpen = true; }"
-      @keydown.window.escape="commandOpen = false">
+      @keydown.window.escape="commandOpen = false"
+      @beforeinstallprompt.window.prevent="captureInstallPrompt($event)">
 
 <!-- ================================================================
-     RESPONSIVE MODEL — progressive enhancement across four tiers,
-     not a mobile/desktop toggle:
-
-       < lg   (phone, small tablet)  → bottom tab bar, no rail
-       lg+    (tablet landscape /
-               small desktop)        → icon-only rail, labels hidden
-       xl+    (desktop)              → rail expands into a labeled
-                                        sidebar, same nav items
-     Every layer only ADDS chrome as the viewport grows; nothing
-     assumes a wide screen by default.
+     INSTALL BANNER — real beforeinstallprompt on Chrome/Android/Edge;
+     manual instructions on iOS Safari, which never fires that event.
+     Dismissal remembered 7 days, never shown once already installed.
 ================================================================= -->
+<div x-show="showInstallBanner" x-cloak
+     x-transition:enter="transition ease-out duration-300" x-transition:enter-start="-translate-y-full opacity-0" x-transition:enter-end="translate-y-0 opacity-100"
+     x-transition:leave="transition ease-in duration-200" x-transition:leave-start="translate-y-0 opacity-100" x-transition:leave-end="-translate-y-full opacity-0"
+     class="fixed inset-x-0 top-0 z-[60] lg:hidden">
+    <div class="mx-3 mt-3 flex items-center gap-3 rounded-2xl border border-accent-200 bg-white p-3 shadow-2xl install-pulse">
+        <img src="{% static 'images/pheral-logo.png' %}" alt="" class="h-11 w-11 shrink-0 rounded-2xl object-cover">
+        <div class="min-w-0 flex-1">
+            <p class="text-[12.5px] font-bold text-ink">Install Pheral</p>
+            <p class="truncate text-[10.5px] text-muted" x-text="isIOS ? 'Add to your Home Screen for the full app experience' : 'One tap — no app store needed'"></p>
+        </div>
+        <button type="button" @click="triggerInstall()" class="focus-ring shrink-0 rounded-full bg-accent-500 px-3.5 py-2 text-[11.5px] font-semibold text-white transition hover:bg-accent-600">
+            <span x-text="isIOS ? 'How' : 'Install'"></span>
+        </button>
+        <button type="button" @click="dismissInstallBanner()" class="focus-ring shrink-0 rounded-full p-1 text-muted hover:bg-surface" aria-label="Dismiss">
+            <i data-lucide="x" class="h-4 w-4"></i>
+        </button>
+    </div>
+    <div x-show="showIOSInstructions" x-cloak x-transition class="mx-3 mt-1.5 rounded-2xl border border-line bg-surface p-3.5">
+        <p class="mb-2 text-[11px] font-semibold text-ink">To install on iPhone or iPad:</p>
+        <ol class="space-y-1.5 text-[11px] leading-4 text-muted">
+            <li class="flex items-center gap-2"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-[9px] font-bold text-ink">1</span> Tap the Share icon in Safari's toolbar</li>
+            <li class="flex items-center gap-2"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-[9px] font-bold text-ink">2</span> Scroll down and tap "Add to Home Screen"</li>
+            <li class="flex items-center gap-2"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-[9px] font-bold text-ink">3</span> Tap "Add" to confirm</li>
+        </ol>
+    </div>
+</div>
 
 <div class="min-h-screen">
 
@@ -95,8 +120,7 @@
             <span class="hidden text-[15px] font-bold tracking-tight text-ink xl:inline">Pheral</span>
         </a>
 
-        <button type="button" @click="commandOpen = true"
-                class="focus-ring mb-5 flex items-center gap-2 rounded-xl bg-surface px-3 py-2 text-muted transition hover:bg-line/60 xl:mx-1">
+        <button type="button" @click="commandOpen = true" class="focus-ring mb-5 flex items-center gap-2 rounded-xl bg-surface px-3 py-2 text-muted transition hover:bg-line/60 xl:mx-1">
             <i data-lucide="search" class="h-4 w-4 shrink-0"></i>
             <span class="hidden flex-1 text-left text-[12px] xl:inline">Search Pheral</span>
             <kbd class="hidden shrink-0 rounded-md border border-line bg-white px-1.5 py-0.5 text-[10px] font-medium text-muted xl:inline">⌘K</kbd>
@@ -104,7 +128,6 @@
 
         <nav class="flex flex-1 flex-col gap-0.5">
             {% with nav_name=request.resolver_match.url_name %}
-
             <a href="{% url 'chat_list' %}"
                class="focus-ring group relative flex items-center gap-3 rounded-xl px-3 py-2.5 transition
                       {% if nav_name in 'chat_list,chat,chat_user,start_chat,group_list,group_create,group_chat,group_add_member,group_profile,status_list,create_status,status_detail' %}bg-accent-50 text-accent-600{% else %}text-muted hover:bg-surface hover:text-ink{% endif %}">
@@ -114,7 +137,6 @@
                 <i data-lucide="message-circle" class="h-[19px] w-[19px] shrink-0"></i>
                 <span class="hidden text-[13px] font-medium xl:inline">Chats</span>
             </a>
-
             {% endwith %}
 
             <a href="{% url 'hire' %}"
@@ -133,7 +155,7 @@
 
             <a href="{% url 'wallet' %}"
                class="focus-ring flex items-center gap-3 rounded-xl px-3 py-2.5 transition
-                      {% if request.resolver_match.url_name in 'wallet,top_up,top_up_callback,pay_user,global_pay,currency_converter,receipt_detail,bank_accounts,add_bank_account,resolve_bank_account,withdraw' %}bg-accent-50 text-accent-600{% else %}text-muted hover:bg-surface hover:text-ink{% endif %}">
+                      {% if request.resolver_match.url_name in 'wallet,top_up,top_up_callback,pay_user,global_pay,currency_converter,receipt_detail,bank_accounts,add_bank_account,resolve_bank_account,withdraw,airtime_data,virtual_account' %}bg-accent-50 text-accent-600{% else %}text-muted hover:bg-surface hover:text-ink{% endif %}">
                 <i data-lucide="wallet" class="h-[19px] w-[19px] shrink-0"></i>
                 <span class="hidden text-[13px] font-medium xl:inline">Wallet</span>
             </a>
@@ -146,17 +168,12 @@
             </a>
         </nav>
 
-        <!-- Profile -->
         <div class="relative" x-data="{ open: false }" @click.outside="open = false">
-            <button type="button" @click="open = !open"
-                    class="focus-ring flex w-full items-center gap-2.5 rounded-xl px-3 py-2 transition hover:bg-surface"
-                    aria-label="Profile menu">
+            <button type="button" @click="open = !open" class="focus-ring flex w-full items-center gap-2.5 rounded-xl px-3 py-2 transition hover:bg-surface" aria-label="Profile menu">
                 {% if request.user.avatar %}
                     <img src="{{ request.user.avatar.url }}" alt="" class="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-line">
                 {% else %}
-                    <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[12px] font-semibold text-accent-700">
-                        {{ request.user.username|first|upper }}
-                    </div>
+                    <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[12px] font-semibold text-accent-700">{{ request.user.username|first|upper }}</div>
                 {% endif %}
                 <span class="hidden min-w-0 flex-1 text-left xl:block">
                     <span class="block truncate text-[12.5px] font-semibold text-ink">{{ request.user.display_name|default:request.user.username }}</span>
@@ -165,42 +182,30 @@
                 <i data-lucide="chevron-up" class="hidden h-3.5 w-3.5 shrink-0 text-muted transition xl:block" :class="open ? 'rotate-180' : ''"></i>
             </button>
 
-            <div x-show="open" x-cloak x-transition
-                 class="absolute bottom-[calc(100%+6px)] left-0 z-50 w-52 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-popover xl:left-0 xl:right-0 xl:w-auto">
-                <a href="{% url 'profile' %}" class="focus-ring flex items-center gap-2.5 px-3 py-2 text-[12.5px] text-ink hover:bg-surface">
-                    <i data-lucide="user" class="h-4 w-4"></i> View profile
-                </a>
-                <a href="{% url 'profile_edit' %}" class="focus-ring flex items-center gap-2.5 px-3 py-2 text-[12.5px] text-ink hover:bg-surface">
-                    <i data-lucide="settings" class="h-4 w-4"></i> Edit profile
-                </a>
+            <div x-show="open" x-cloak x-transition class="absolute bottom-[calc(100%+6px)] left-0 z-50 w-52 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-popover xl:right-0 xl:w-auto">
+                <a href="{% url 'profile' %}" class="focus-ring flex items-center gap-2.5 px-3 py-2 text-[12.5px] text-ink hover:bg-surface"><i data-lucide="user" class="h-4 w-4"></i> View profile</a>
+                <a href="{% url 'profile_edit' %}" class="focus-ring flex items-center gap-2.5 px-3 py-2 text-[12.5px] text-ink hover:bg-surface"><i data-lucide="settings" class="h-4 w-4"></i> Edit profile</a>
                 <a href="{% url 'notifications' %}" class="focus-ring flex items-center gap-2.5 px-3 py-2 text-[12.5px] text-ink hover:bg-surface">
                     <i data-lucide="bell" class="h-4 w-4"></i> Notifications
                     {% if unread_notifications %}<span class="ml-auto h-1.5 w-1.5 rounded-full bg-accent-500"></span>{% endif %}
                 </a>
                 <div class="my-1 border-t border-line"></div>
-                <a href="{% url 'logout' %}" class="focus-ring flex items-center gap-2.5 px-3 py-2 text-[12.5px] text-red-600 hover:bg-red-50">
-                    <i data-lucide="log-out" class="h-4 w-4"></i> Log out
-                </a>
+                <a href="{% url 'logout' %}" class="focus-ring flex items-center gap-2.5 px-3 py-2 text-[12.5px] text-red-600 hover:bg-red-50"><i data-lucide="log-out" class="h-4 w-4"></i> Log out</a>
             </div>
         </div>
     </aside>
 
     <!-- ============================================================
-         TOP BAR — present at every tier. On phone it carries the
-         brand mark; from lg up, the rail already carries branding,
-         so this becomes a slim page-context + actions bar only.
+         TOP BAR
     ============================================================= -->
     <header class="sticky top-0 z-30 border-b border-line bg-white/95 backdrop-blur lg:pl-[76px] xl:pl-60">
         <div class="mx-auto flex h-[54px] max-w-6xl items-center justify-between px-4 lg:h-[60px] lg:px-7">
-
             <a href="" class="focus-ring flex items-center gap-2 lg:hidden">
                 <img src="{% static 'images/pheral-logo.png' %}" alt="Pheral" class="h-7 w-7 rounded-lg object-cover">
                 <span class="text-sm font-bold tracking-tight">Pheral</span>
             </a>
 
-            <h1 class="hidden text-[15px] font-semibold tracking-tight text-ink lg:block">
-                {% block page_title %}{% endblock %}
-            </h1>
+            <h1 class="hidden text-[15px] font-semibold tracking-tight text-ink lg:block">{% block page_title %}{% endblock %}</h1>
 
             <div class="ml-auto flex items-center gap-1">
                 <a href="{% url 'agent' %}"
@@ -210,17 +215,13 @@
                     <i data-lucide="bot" class="h-[18px] w-[18px]"></i>
                 </a>
 
-                <button type="button" @click="commandOpen = true"
-                        class="focus-ring rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink" aria-label="Search">
+                <button type="button" @click="commandOpen = true" class="focus-ring rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink" aria-label="Search">
                     <i data-lucide="search" class="h-[18px] w-[18px]"></i>
                 </button>
 
-                <a href="{% url 'notifications' %}"
-                   class="focus-ring relative rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink" aria-label="Notifications">
+                <a href="{% url 'notifications' %}" class="focus-ring relative rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink" aria-label="Notifications">
                     <i data-lucide="bell" class="h-[18px] w-[18px]"></i>
-                    {% if unread_notifications %}
-                        <span class="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent-500 ring-2 ring-white"></span>
-                    {% endif %}
+                    {% if unread_notifications %}<span class="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent-500 ring-2 ring-white"></span>{% endif %}
                 </a>
             </div>
         </div>
@@ -256,14 +257,11 @@
 {% if request.user.is_authenticated %}
 
 <!-- ================================================================
-     MOBILE / TABLET BOTTOM NAV — the primary nav below lg. Once
-     the rail appears at lg, this disappears entirely rather than
-     the two systems ever competing.
+     MOBILE / TABLET BOTTOM NAV (below lg)
 ================================================================= -->
 <nav class="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 shadow-nav backdrop-blur lg:hidden"
      style="padding-bottom: env(safe-area-inset-bottom);">
     <div class="grid h-[58px] grid-cols-5">
-
         {% with nav_name=request.resolver_match.url_name %}
         <a href="{% url 'chat_list' %}"
            class="focus-ring flex flex-col items-center justify-center gap-0.5
@@ -289,7 +287,7 @@
 
         <a href="{% url 'wallet' %}"
            class="focus-ring flex flex-col items-center justify-center gap-0.5
-                  {% if request.resolver_match.url_name in 'wallet,top_up,top_up_callback,pay_user,global_pay,currency_converter,receipt_detail,bank_accounts,add_bank_account,resolve_bank_account,withdraw' %}text-accent-600{% else %}text-muted{% endif %}">
+                  {% if request.resolver_match.url_name in 'wallet,top_up,top_up_callback,pay_user,global_pay,currency_converter,receipt_detail,bank_accounts,add_bank_account,resolve_bank_account,withdraw,airtime_data,virtual_account' %}text-accent-600{% else %}text-muted{% endif %}">
             <i data-lucide="wallet" class="h-[19px] w-[19px]"></i>
             <span class="text-[9px] font-medium">Wallet</span>
         </a>
@@ -304,39 +302,82 @@
             {% endif %}
             <span class="text-[9px] font-medium">Me</span>
         </a>
-
     </div>
 </nav>
 
 <!-- ================================================================
-     COMMAND / SEARCH OVERLAY — replaces the old inline dropdown
-     with a real centered palette, consistent across every screen
-     size, opened by the search icon or Cmd/Ctrl+K.
+     COMMAND / SEARCH OVERLAY
 ================================================================= -->
 <div x-show="commandOpen" x-cloak x-transition.opacity.duration.150ms
      class="fixed inset-0 z-50 flex items-start justify-center bg-ink/40 px-4 pt-24 backdrop-blur-sm"
      @click.self="commandOpen = false">
-    <div x-show="commandOpen" x-transition.scale.origin.top.duration.150ms
-         class="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-popover">
+    <div x-show="commandOpen" x-transition.scale.origin.top.duration.150ms class="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-popover">
         <form method="get" action="{% url 'search' %}" class="flex items-center gap-3 border-b border-line px-4 py-3.5">
             <i data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></i>
             <input type="text" name="q" placeholder="Search Pheral…" autocomplete="off"
-                   x-ref="commandInput"
-                   x-init="$watch('commandOpen', v => v && setTimeout(() => $refs.commandInput.focus(), 60))"
+                   x-ref="commandInput" x-init="$watch('commandOpen', v => v && setTimeout(() => $refs.commandInput.focus(), 60))"
                    class="w-full bg-transparent text-[14px] text-ink placeholder-muted focus:outline-none">
             <kbd class="hidden shrink-0 rounded-md border border-line px-1.5 py-0.5 text-[10px] font-medium text-muted sm:inline">Esc</kbd>
         </form>
-        <div class="px-4 py-3 text-[11px] text-muted">
-            Press <kbd class="rounded border border-line px-1">Enter</kbd> to search people on Pheral
-        </div>
+        <div class="px-4 py-3 text-[11px] text-muted">Press <kbd class="rounded border border-line px-1">Enter</kbd> to search people on Pheral</div>
     </div>
 </div>
 
 {% endif %}
 
 <script>
-    document.addEventListener("DOMContentLoaded", function () { if (window.lucide) lucide.createIcons(); });
-    document.addEventListener("alpine:navigated", function () { if (window.lucide) lucide.createIcons(); });
+    function pheralShell() {
+        return {
+            commandOpen: false,
+            showInstallBanner: false,
+            showIOSInstructions: false,
+            isIOS: false,
+            _deferredPrompt: null,
+
+            init() {
+                document.addEventListener("DOMContentLoaded", () => { if (window.lucide) lucide.createIcons(); });
+                if (window.lucide) lucide.createIcons();
+
+                this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+                if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+                    return; // already installed — never show the banner
+                }
+
+                const dismissedAt = localStorage.getItem('pheral_install_dismissed_at');
+                const recentlyDismissed = dismissedAt && (Date.now() - parseInt(dismissedAt, 10)) / 86400000 < 7;
+
+                if (this.isIOS && !recentlyDismissed) {
+                    setTimeout(() => { this.showInstallBanner = true; }, 2500);
+                }
+            },
+
+            captureInstallPrompt(event) {
+                this._deferredPrompt = event;
+                const dismissedAt = localStorage.getItem('pheral_install_dismissed_at');
+                const recentlyDismissed = dismissedAt && (Date.now() - parseInt(dismissedAt, 10)) / 86400000 < 7;
+                if (!recentlyDismissed) this.showInstallBanner = true;
+            },
+
+            async triggerInstall() {
+                if (this.isIOS) { this.showIOSInstructions = !this.showIOSInstructions; return; }
+                if (!this._deferredPrompt) return;
+                this._deferredPrompt.prompt();
+                const { outcome } = await this._deferredPrompt.userChoice;
+                this._deferredPrompt = null;
+                this.showInstallBanner = false;
+                if (outcome === 'accepted') localStorage.setItem('pheral_install_dismissed_at', Date.now().toString());
+            },
+
+            dismissInstallBanner() {
+                this.showInstallBanner = false;
+                this.showIOSInstructions = false;
+                localStorage.setItem('pheral_install_dismissed_at', Date.now().toString());
+            },
+        };
+    }
+
+    document.addEventListener("alpine:navigated", () => { if (window.lucide) lucide.createIcons(); });
 </script>
 
 {% block extra_scripts %}{% endblock %}
