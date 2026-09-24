@@ -55,6 +55,7 @@ ALLOWED_HOSTS = [
 CSRF_TRUSTED_ORIGINS = [
     "https://pheral.onrender.com",
     "https://shivering-unscrew-quaintly.ngrok-free.dev",
+    "https://pheral-o94i.onrender.com",
 ]
 
 

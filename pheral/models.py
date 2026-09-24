@@ -39,6 +39,10 @@ class User(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    USERNAME_FIELD = "phone_number"
+    REQUIRED_FIELDS = ["username", "first_name", "last_name"]
+
+
     def __str__(self):
         return f"@{self.username}"
 
@@ -339,6 +343,7 @@ class ConversationParticipant(models.Model):
     is_admin = models.BooleanField(default=False)
     is_muted = models.BooleanField(default=False)
     is_archived = models.BooleanField(default=False)
+    is_pinned = models.BooleanField(default=False)
     joined_at = models.DateTimeField(auto_now_add=True)
     last_read_at = models.DateTimeField(null=True, blank=True)
 

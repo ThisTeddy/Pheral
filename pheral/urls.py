@@ -524,6 +524,10 @@ path("airtime-data/", views.airtime_data, name="airtime_data"),
 path("airtime-data/purchase/", views.purchase_bill, name="purchase_bill"),
 path("wallet/top-up/init/", views.init_top_up, name="init_top_up"),
 path("wallet/top-up/verify/", views.verify_top_up, name="verify_top_up"),
+path("api/check-username/", views.check_username, name="check_username"),
+path("api/lookup-account/", views.lookup_account, name="lookup_account"),
+path("chat/<int:conversation_id>/toggle/<str:flag>/", views.toggle_chat_flag, name="toggle_chat_flag"),
+path("chat/bulk-action/", views.bulk_chat_action, name="bulk_chat_action"),
     # ============================================================
     # DJANGO ADMIN
     # ============================================================

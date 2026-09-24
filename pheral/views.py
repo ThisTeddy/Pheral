@@ -237,6 +237,11 @@ def register(request):
             messages.error(request, "Passwords do not match.")
             return render(request, "register.html", context)
 
+        terms_accepted = request.POST.get("terms_accepted") == "on"
+
+        if not terms_accepted:
+            messages.error(request, "You must accept the Terms of Service to continue.")
+            return render(request, "register.html", context)
         if User.objects.filter(username__iexact=username).exists():
             messages.error(request, "That username is already taken.")
             return render(request, "register.html", context)
@@ -637,15 +642,9 @@ def login_view(request):
 
     phone_number = normalize_phone_number(phone_number)
 
-    try:
-        user_obj = User.objects.get(phone_number=phone_number)
-    except User.DoesNotExist:
-        messages.error(request, "Invalid phone number or password.")
-        return render(request, "login.html")
-
     user = authenticate(
         request,
-        username=user_obj.username,
+        phone_number=phone_number,
         password=password,
     )
 
@@ -1260,6 +1259,7 @@ def chat_list(request):
             "last_message_prefix": last_message_prefix,
             "unread_count": unread_count,
             "is_muted": current_participant.is_muted,
+            "is_pinned": current_participant.is_pinned,
             "is_archived": current_participant.is_archived,
             "is_group": conversation.conversation_type == Conversation.ConversationType.GROUP,
             "is_online": is_online,
@@ -4637,3 +4637,157 @@ def data_purchase(request):
         request, pheral_transaction, outcome, flw_reference,
         f"{plan['name']} sent to {phone}.",
     )
+
+@login_required
+def _unused(): pass  # placeholder marker, ignore
+
+def check_username(request):
+    username = request.GET.get("username", "").strip()
+
+    if len(username) < 3:
+        return JsonResponse({"available": False, "reason": "too_short"})
+
+    if not re.match(r"^[a-zA-Z0-9_]+$", username):
+        return JsonResponse({"available": False, "reason": "invalid_chars"})
+
+    exists = User.objects.filter(username__iexact=username).exists()
+    return JsonResponse({"available": not exists, "reason": "taken" if exists else None})
+
+def lookup_account(request):
+    """
+    Used by the 2-step login flow to show a name/avatar preview
+    before the password field appears. Deliberately returns the
+    SAME shape whether or not the phone exists — real user data
+    only when found, an anonymous placeholder otherwise — so this
+    endpoint can't be used to enumerate registered phone numbers.
+    """
+    phone_raw = request.GET.get("phone", "").strip()
+    region = request.GET.get("region", "NG").strip().upper()
+
+    phone_number = normalize_phone_number(phone_raw, region)
+    if not phone_number:
+        return JsonResponse({"found": False})
+
+    user = User.objects.filter(phone_number=phone_number).first()
+
+    if user:
+        return JsonResponse({
+            "found": True,
+            "first_name": user.first_name,
+            "avatar": user.avatar.url if user.avatar else "",
+        })
+
+    return JsonResponse({"found": False})
+
+def login_view(request):
+    if request.user.is_authenticated:
+        return redirect("chat")
+
+    if request.method != "POST":
+        return render(request, "login.html", {"regions": SUPPORTED_REGIONS, "selected_region": "NG"})
+
+    region = request.POST.get("region", "NG").strip().upper()
+    phone_raw = request.POST.get("phone_number", "").strip()
+    password = request.POST.get("password", "")
+    remember_me = request.POST.get("remember_me") == "on"
+
+    context = {"regions": SUPPORTED_REGIONS, "selected_region": region, "phone_raw": phone_raw}
+
+    if region not in dict(SUPPORTED_REGIONS):
+        region = "NG"
+
+    phone_number = normalize_phone_number(phone_raw, region)
+
+    if not phone_raw:
+        messages.error(request, "Phone number is required.")
+        return render(request, "login.html", context)
+
+    if not phone_number:
+        messages.error(request, "Enter a valid phone number.")
+        return render(request, "login.html", context)
+
+    if not password:
+        messages.error(request, "Password is required.")
+        return render(request, "login.html", context)
+
+    try:
+        user_obj = User.objects.get(phone_number=phone_number)
+    except User.DoesNotExist:
+        messages.error(request, "Invalid phone number or password.")
+        return render(request, "login.html", context)
+
+    user = authenticate(request, phone_number=phone_number, password=password)
+
+    if user is None:
+        messages.error(request, "Invalid phone number or password.")
+        return render(request, "login.html", context)
+
+    if not user.is_active:
+        messages.error(request, "This account is inactive.")
+        return render(request, "login.html", context)
+
+    login(request, user)
+    user.last_seen = timezone.now()
+    user.save(update_fields=["last_seen"])
+
+    if remember_me:
+        request.session.set_expiry(60 * 60 * 24 * 30)  # 30 days
+    else:
+        request.session.set_expiry(0)  # expires when the browser closes
+
+    return redirect("chat")
+
+
+@login_required
+@require_POST
+def toggle_chat_flag(request, conversation_id, flag):
+    """
+    Single endpoint for pin/mute/archive toggles — all three are
+    booleans on ConversationParticipant, all three follow the same
+    "flip it, return the new state" pattern.
+    """
+    if flag not in ("pin", "mute", "archive"):
+        return JsonResponse({"success": False}, status=400)
+
+    participant = get_object_or_404(
+        ConversationParticipant, conversation_id=conversation_id, user=request.user,
+    )
+    field = {"pin": "is_pinned", "mute": "is_muted", "archive": "is_archived"}[flag]
+
+    setattr(participant, field, not getattr(participant, field))
+    participant.save(update_fields=[field])
+
+    return JsonResponse({"success": True, "value": getattr(participant, field)})
+
+
+@login_required
+@require_POST
+def bulk_chat_action(request):
+    """
+    Applies one action to several conversations at once — the
+    multi-select toolbar in chat_list.html. "delete" here means
+    leaving/hiding the conversation for this user only (setting
+    is_archived), never deleting it for the other participant.
+    """
+    action = request.POST.get("action", "")
+    ids = request.POST.getlist("conversation_ids[]")
+
+    if not ids or action not in ("read", "archive", "unarchive", "mute", "unmute"):
+        return JsonResponse({"success": False}, status=400)
+
+    participants = ConversationParticipant.objects.filter(
+        conversation_id__in=ids, user=request.user,
+    )
+
+    if action == "read":
+        participants.update(last_read_at=timezone.now())
+    elif action == "archive":
+        participants.update(is_archived=True)
+    elif action == "unarchive":
+        participants.update(is_archived=False)
+    elif action == "mute":
+        participants.update(is_muted=True)
+    elif action == "unmute":
+        participants.update(is_muted=False)
+
+    return JsonResponse({"success": True, "count": participants.count()})

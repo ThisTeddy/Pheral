@@ -9,7 +9,7 @@
     <link rel="manifest" href="{% url 'pwa_manifest' %}">
     <meta name="theme-color" content="#7C3AED">
     <link rel="apple-touch-icon" href="{% static 'images/pheral-logo.png' %}">
-    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Pheral">
     <link rel="icon" type="image/png" href="{% static 'images/pheral-logo.png' %}">
@@ -33,23 +33,33 @@
         };
     </script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <style>[x-cloak]{display:none!important} html,body{-webkit-tap-highlight-color:transparent}</style>
+    <style>
+        [x-cloak] { display: none !important; }
+        html, body { -webkit-tap-highlight-color: transparent; }
+        .focus-ring:focus-visible { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #9A6BF0; border-radius: 9999px; }
+    </style>
 </head>
 
-<body class="flex h-full min-h-screen flex-col bg-white font-sans text-ink antialiased" x-data="{ showPassword: false }">
+<body class="flex h-full min-h-screen flex-col bg-white font-sans text-ink antialiased" x-data="loginFlow()" x-init="init()">
 
     <header class="flex items-center gap-2 px-5 py-5 md:px-10">
-        <a href="{% url 'landing' %}" class="flex items-center gap-2">
-            <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-accent-500 text-sm font-extrabold text-white">P</span>
+        <a href="{% url 'landing' %}" class="focus-ring flex items-center gap-2">
+            <img src="{% static 'images/pheral-logo.png' %}" alt="Pheral" class="h-9 w-9 rounded-2xl object-cover">
             <span class="text-lg font-bold tracking-tight">Pheral</span>
         </a>
+        <span class="ml-auto flex items-center gap-1 text-[10px] text-muted">
+            <i data-lucide="shield-check" class="h-3.5 w-3.5 text-emerald-500"></i> Secure session
+        </span>
     </header>
 
-    <main class="flex flex-1 items-center justify-center px-5 pb-10">
+    <main class="flex flex-1 items-start justify-center px-5 pb-10 pt-2 md:items-center md:pt-0">
         <div class="w-full max-w-sm">
 
-            <h1 class="mb-1 text-2xl font-bold tracking-tight text-ink">Welcome back</h1>
-            <p class="mb-6 text-sm text-muted">Log in with your phone number and password.</p>
+            <!-- Progress -->
+            <div class="mb-5 flex gap-1.5">
+                <div class="h-1.5 flex-1 rounded-full transition" :class="step >= 1 ? 'bg-accent-500' : 'bg-line'"></div>
+                <div class="h-1.5 flex-1 rounded-full transition" :class="step >= 2 ? 'bg-accent-500' : 'bg-line'"></div>
+            </div>
 
             {% if messages %}
                 <div class="mb-4 space-y-2">
@@ -63,45 +73,178 @@
                 </div>
             {% endif %}
 
-            <form method="post"  action="{% url 'login_view' %}" class="space-y-4">
+            <form method="post" id="login-form" class="space-y-4">
                 {% csrf_token %}
+                <input type="hidden" name="region" :value="region">
 
-                <div>
-                    <label class="mb-1.5 block text-xs font-medium text-muted">Phone number</label>
-                    <input type="tel" name="phone_number" required maxlength="30" autocomplete="tel" placeholder="+234…"
-                           class="w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                <!-- ============================================================
+                     STEP 1 — phone number
+                ============================================================= -->
+                <div x-show="step === 1" x-cloak>
+                    <h1 class="mb-1 text-xl font-bold tracking-tight text-ink">Welcome back</h1>
+                    <p class="mb-5 text-sm text-muted">Enter your phone number to continue.</p>
+
+                    <div class="mb-3.5">
+                        <label class="mb-1.5 block text-xs font-medium text-muted">Country</label>
+                        <div class="relative">
+                            <select x-model="region"
+                                    class="focus-ring w-full appearance-none rounded-2xl border border-line bg-surface px-4 py-2.5 pr-9 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                                {% for code, name in regions %}
+                                    <option value="{{ code }}" {% if code == selected_region %}selected{% endif %}>{{ name }}</option>
+                                {% endfor %}
+                            </select>
+                            <i data-lucide="chevron-down" class="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"></i>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="mb-1.5 block text-xs font-medium text-muted">Phone number</label>
+                        <input type="tel" x-model="phone" maxlength="30" autocomplete="tel" placeholder="e.g. 0801 234 5678"
+                               class="focus-ring w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-accent-200">
+                    </div>
+
+                    <button type="button" @click="lookupAndProceed()" :disabled="phone.trim().length < 6 || looking"
+                            class="focus-ring mt-5 flex w-full items-center justify-center gap-1.5 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
+                        <svg x-show="looking" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                        </svg>
+                        <span x-text="looking ? 'Checking…' : 'Continue'"></span>
+                        <i x-show="!looking" data-lucide="arrow-right" class="h-4 w-4"></i>
+                    </button>
                 </div>
 
-                <div>
-                    <div class="mb-1.5 flex items-center justify-between">
-                        <label class="block text-xs font-medium text-muted">Password</label>
-                        <a href="{% url 'forgot_password' %}" class="text-xs font-medium text-accent-600 hover:underline">Forgot password?</a>
+                <!-- ============================================================
+                     STEP 2 — account preview + password
+                ============================================================= -->
+                <div x-show="step === 2" x-cloak>
+                    <button type="button" @click="step = 1" class="focus-ring mb-4 flex items-center gap-1 text-[11px] font-medium text-muted hover:text-ink">
+                        <i data-lucide="chevron-left" class="h-3.5 w-3.5"></i> Use a different number
+                    </button>
+
+                    <!-- Account preview card -->
+                    <div class="mb-5 flex items-center gap-3 rounded-2xl border border-line bg-surface p-3.5">
+                        <template x-if="accountFound && accountAvatar">
+                            <img :src="accountAvatar" alt="" class="h-11 w-11 rounded-full object-cover">
+                        </template>
+                        <template x-if="!(accountFound && accountAvatar)">
+                            <div class="flex h-11 w-11 items-center justify-center rounded-full bg-accent-100 text-accent-700">
+                                <i data-lucide="user" class="h-5 w-5"></i>
+                            </div>
+                        </template>
+                        <div class="min-w-0 flex-1">
+                            <p class="truncate text-[13px] font-semibold text-ink" x-text="accountFound && accountFirstName ? accountFirstName : 'Your account'"></p>
+                            <p class="truncate text-[11px] text-muted" x-text="phone"></p>
+                        </div>
                     </div>
-                    <div class="relative">
-                        <input :type="showPassword ? 'text' : 'password'" name="password" required autocomplete="current-password"
-                               class="w-full rounded-2xl border border-line bg-surface px-4 py-2.5 pr-11 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
-                        <button type="button" @click="showPassword = !showPassword"
-                                class="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted" aria-label="Toggle password visibility">
-                            <i data-lucide="eye" class="h-4 w-4" x-show="!showPassword"></i>
-                            <i data-lucide="eye-off" class="h-4 w-4" x-show="showPassword" x-cloak></i>
-                        </button>
+
+                    <div>
+                        <div class="mb-1.5 flex items-center justify-between">
+                            <label class="block text-xs font-medium text-muted">Password</label>
+                            <a href="{% url 'forgot_password' %}" class="focus-ring text-xs font-medium text-accent-600 hover:underline">Forgot password?</a>
+                        </div>
+                        <div class="relative">
+                            <input :type="showPassword ? 'text' : 'password'" name="password" x-model="password" autocomplete="current-password" autofocus
+                                   @keyup="checkCapsLock($event)"
+                                   class="focus-ring w-full rounded-2xl border border-line bg-surface px-4 py-2.5 pr-11 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
+                            <button type="button" @click="showPassword = !showPassword" class="focus-ring absolute right-3.5 top-1/2 -translate-y-1/2 text-muted" aria-label="Toggle password visibility">
+                                <i data-lucide="eye" class="h-4 w-4" x-show="!showPassword"></i>
+                                <i data-lucide="eye-off" class="h-4 w-4" x-show="showPassword" x-cloak></i>
+                            </button>
+                        </div>
+                        <p x-show="capsLockOn" x-cloak class="mt-1.5 flex items-center gap-1 text-[10.5px] text-amber-600">
+                            <i data-lucide="alert-triangle" class="h-3 w-3"></i> Caps Lock is on
+                        </p>
+                    </div>
+
+                    <input type="hidden" name="phone_number" :value="phone">
+
+                    <label class="mt-3.5 flex items-center gap-2">
+                        <input type="checkbox" name="remember_me" x-model="rememberMe" class="focus-ring h-4 w-4 rounded border-line text-accent-500">
+                        <span class="text-[12px] text-ink">Keep me signed in on this device</span>
+                    </label>
+
+                    <button type="submit" :disabled="!password"
+                            class="focus-ring mt-4 flex w-full items-center justify-center gap-1.5 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
+                        Log in
+                    </button>
+
+                    <!-- Session security note -->
+                    <div class="mt-4 rounded-2xl bg-surface p-3.5">
+                        <p class="mb-1 flex items-center gap-1.5 text-[10.5px] font-semibold text-ink">
+                            <i data-lucide="lock" class="h-3 w-3 text-accent-500"></i> This device
+                        </p>
+                        <p class="text-[10px] leading-4 text-muted" x-text="deviceSummary"></p>
                     </div>
                 </div>
-
-                <button type="submit"
-                        class="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600">
-                    Log in
-                </button>
             </form>
 
             <p class="mt-6 text-center text-sm text-muted">
                 New to Pheral?
-                <a href="{% url 'register' %}" class="font-semibold text-accent-600 hover:underline">Create an account</a>
+                <a href="{% url 'register' %}" class="focus-ring font-semibold text-accent-600 hover:underline">Create an account</a>
             </p>
+
+            <!-- Trouble logging in -->
+            <details class="mt-4 rounded-2xl border border-line p-3.5">
+                <summary class="cursor-pointer text-[11px] font-medium text-muted">Trouble logging in?</summary>
+                <ul class="mt-2 space-y-1 text-[10.5px] leading-4 text-muted">
+                    <li>• Double-check your country and phone number match what you registered with.</li>
+                    <li>• Passwords are case-sensitive — check Caps Lock.</li>
+                    <li>• Use "Forgot password?" if you're still stuck.</li>
+                </ul>
+            </details>
         </div>
     </main>
 
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script>lucide.createIcons();</script>
+    <script>
+        function loginFlow() {
+            return {
+                step: 1,
+                region: '{{ selected_region|default:"NG" }}',
+                phone: '{{ phone_raw|default:"" }}',
+                password: '',
+                showPassword: false,
+                rememberMe: false,
+                capsLockOn: false,
+                looking: false,
+                accountFound: false,
+                accountFirstName: '',
+                accountAvatar: '',
+                deviceSummary: '',
+
+                init() {
+                    lucide.createIcons();
+                    const ua = navigator.userAgent;
+                    const platform = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iOS' : /Mac/i.test(ua) ? 'Mac' : /Win/i.test(ua) ? 'Windows' : 'this device';
+                    const browser = /Chrome/i.test(ua) ? 'Chrome' : /Firefox/i.test(ua) ? 'Firefox' : /Safari/i.test(ua) ? 'Safari' : 'your browser';
+                    this.deviceSummary = `Signing in from ${browser} on ${platform}. If this wasn't you, change your password immediately after logging in.`;
+                },
+
+                async lookupAndProceed() {
+                    this.looking = true;
+                    try {
+                        const res = await fetch('{% url 'lookup_account' %}?phone=' + encodeURIComponent(this.phone) + '&region=' + encodeURIComponent(this.region));
+                        const data = await res.json();
+                        this.accountFound = !!data.found;
+                        this.accountFirstName = data.first_name || '';
+                        this.accountAvatar = data.avatar || '';
+                    } catch (e) {
+                        this.accountFound = false;
+                    } finally {
+                        this.looking = false;
+                        this.step = 2;
+                        this.$nextTick(() => lucide.createIcons());
+                    }
+                },
+
+                checkCapsLock(event) {
+                    if (typeof event.getModifierState === 'function') {
+                        this.capsLockOn = event.getModifierState('CapsLock');
+                    }
+                },
+            };
+        }
+    </script>
 </body>
 </html>
