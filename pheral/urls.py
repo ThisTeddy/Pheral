@@ -528,12 +528,24 @@ path("api/check-username/", views.check_username, name="check_username"),
 path("api/lookup-account/", views.lookup_account, name="lookup_account"),
 path("chat/<int:conversation_id>/toggle/<str:flag>/", views.toggle_chat_flag, name="toggle_chat_flag"),
 path("chat/bulk-action/", views.bulk_chat_action, name="bulk_chat_action"),
+path("wallet/cards/", views.cards_and_accounts, name="cards_and_accounts"),
+path("wallet/virtual-account/create/", views.create_virtual_account, name="create_virtual_account"),
+path("wallet/cards/create/", views.create_virtual_card, name="create_virtual_card"),
+path("wallet/cards/<int:card_id>/toggle/", views.toggle_card_status, name="toggle_card_status"),
+path("wallet/cards/<int:card_id>/fund/", views.fund_virtual_card, name="fund_virtual_card"),
+path("wallet/cards/<int:card_id>/reveal/", views.reveal_card_details, name="reveal_card_details"),
+path(
+    "wallet/withdraw/add-bank-account/",
+    views.add_bank_account,
+    name="add_bank_account",
+),
+path(
+    "wallet/withdraw/<str:reference>/sync/",
+    views.sync_withdrawal_status,
+    name="sync_withdrawal_status",
+),
     # ============================================================
     # DJANGO ADMIN
     # ============================================================
 
-    path(
-        "admin/",
-        admin.site.urls,
-    ),
 ]

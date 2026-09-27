@@ -195,7 +195,11 @@ class BankAccount(models.Model):
     account_name = models.CharField(max_length=200)
     bank_code = models.CharField(max_length=10)
     bank_name = models.CharField(max_length=150)
-    paystack_recipient_code = models.CharField(max_length=100, unique=True)
+    flutterwave_recipient_id = models.CharField(
+    max_length=100,
+    blank=True,
+    default="",
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -807,3 +811,424 @@ class NetworkProvider(models.Model):
 # GET https://api.flutterwave.com/v3/bill-categories?country=NG
 # before relying on these — Flutterwave's naming isn't perfectly
 # consistent across their own documentation versions.
+
+class VirtualCard(models.Model):
+    """
+    A Flutterwave-issued virtual card funded from the user's wallet.
+    The full card number/CVV are NEVER stored here — only what's
+    safe to keep: masked PAN, expiry, and Flutterwave's own card id
+    (used to re-fetch full details through their secure, one-time
+    reveal endpoint when the user explicitly asks to view them).
+    """
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        FROZEN = "frozen", "Frozen"
+        TERMINATED = "terminated", "Terminated"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="virtual_cards")
+    currency = models.ForeignKey(Currency, on_delete=models.PROTECT, related_name="virtual_cards")
+    flw_card_id = models.CharField(max_length=100, unique=True)
+    masked_pan = models.CharField(max_length=25, blank=True)  # e.g. "5399 23** **** 3782"
+    expiry_month = models.CharField(max_length=2, blank=True)
+    expiry_year = models.CharField(max_length=4, blank=True)
+    card_name = models.CharField(max_length=100, blank=True)
+    balance = models.DecimalField(max_digits=20, decimal_places=2, default=Decimal("0.00"))
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user.username} — {self.masked_pan or self.flw_card_id}"
+
+class VirtualAccount(models.Model):
+    """
+    A dedicated bank account number issued by Flutterwave for one
+    user's wallet — money sent to this account is picked up by the
+    webhook and credited automatically, no manual top-up needed.
+    """
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="virtual_account")
+    wallet = models.ForeignKey(Wallet, on_delete=models.CASCADE, related_name="virtual_accounts")
+    account_number = models.CharField(max_length=20, unique=True)
+    bank_name = models.CharField(max_length=150)
+    account_name = models.CharField(max_length=200)
+    flw_reference = models.CharField(max_length=100, unique=True)
+    order_ref = models.CharField(max_length=100, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.account_name} — {self.bank_name} ({self.account_number})"
+
+# ============================================================
+# MONETIZATION / GROWTH MODELS
+# ============================================================
+
+def generate_genz_reference():
+    return generate_reference("GENZ")
+
+
+def generate_revenue_reference():
+    return generate_reference("REV")
+
+
+class PheralSubscription(models.Model):
+    class Plan(models.TextChoices):
+        PRO = "pro", "Pheral Pro"
+
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        EXPIRED = "expired", "Expired"
+        CANCELLED = "cancelled", "Cancelled"
+        PENDING = "pending", "Pending"
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="pheral_subscription",
+    )
+
+    plan = models.CharField(
+        max_length=30,
+        choices=Plan.choices,
+        default=Plan.PRO,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+
+    price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+    )
+
+    currency = models.ForeignKey(
+        Currency,
+        on_delete=models.PROTECT,
+        related_name="pheral_subscriptions",
+    )
+
+    started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    provider = models.CharField(
+        max_length=50,
+        blank=True,
+    )
+
+    provider_reference = models.CharField(
+        max_length=255,
+        blank=True,
+        db_index=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    @property
+    def is_active(self):
+        return (
+            self.status == self.Status.ACTIVE
+            and self.expires_at is not None
+            and self.expires_at > timezone.now()
+        )
+
+    def __str__(self):
+        return f"{self.user} — {self.plan} — {self.status}"
+
+
+class GenZBadge(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Active"
+        EXPIRED = "expired", "Expired"
+        CANCELLED = "cancelled", "Cancelled"
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="genz_badge",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+        db_index=True,
+    )
+
+    price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
+
+    currency = models.ForeignKey(
+        Currency,
+        on_delete=models.PROTECT,
+        related_name="genz_badges",
+    )
+
+    reference = models.CharField(
+        max_length=30,
+        unique=True,
+        default=generate_genz_reference,
+        editable=False,
+    )
+
+    activated_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    def __str__(self):
+        return f"{self.user} — GenZ Badge — {self.status}"
+
+
+class AIUsage(models.Model):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="ai_usage",
+    )
+
+    date = models.DateField(
+        default=timezone.localdate,
+        db_index=True,
+    )
+
+    requests = models.PositiveIntegerField(
+        default=0,
+    )
+
+    input_tokens = models.PositiveBigIntegerField(
+        default=0,
+    )
+
+    output_tokens = models.PositiveBigIntegerField(
+        default=0,
+    )
+
+    credits_used = models.DecimalField(
+        max_digits=14,
+        decimal_places=4,
+        default=Decimal("0.0000"),
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "date"],
+                name="unique_user_ai_usage_per_day",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user} — {self.date}"
+
+
+class AICreditBalance(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="ai_credit_balance",
+    )
+
+    credits = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
+
+    lifetime_purchased = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
+
+    lifetime_used = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    def __str__(self):
+        return f"{self.user} — {self.credits} AI credits"
+
+
+class SponsoredPost(models.Model):
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        PENDING = "pending", "Pending Review"
+        ACTIVE = "active", "Active"
+        PAUSED = "paused", "Paused"
+        COMPLETED = "completed", "Completed"
+        REJECTED = "rejected", "Rejected"
+
+    advertiser = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="sponsored_posts",
+    )
+
+    post = models.OneToOneField(
+        Post,
+        on_delete=models.CASCADE,
+        related_name="sponsorship",
+    )
+
+    budget = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[
+            MinValueValidator(Decimal("0.01")),
+        ],
+    )
+
+    spent = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
+
+    currency = models.ForeignKey(
+        Currency,
+        on_delete=models.PROTECT,
+        related_name="sponsored_posts",
+    )
+
+    impressions = models.PositiveBigIntegerField(
+        default=0,
+    )
+
+    clicks = models.PositiveBigIntegerField(
+        default=0,
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        db_index=True,
+    )
+
+    starts_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    ends_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    def __str__(self):
+        return f"{self.advertiser} — Sponsored Post — {self.status}"
+
+
+class RevenueRecord(models.Model):
+    class RevenueType(models.TextChoices):
+        PAYMENT_FEE = "payment_fee", "Payment Fee"
+        WITHDRAWAL_FEE = "withdrawal_fee", "Withdrawal Fee"
+        FX_MARGIN = "fx_margin", "FX Margin"
+        CARD_FEE = "card_fee", "Virtual Card Fee"
+        BILL_COMMISSION = "bill_commission", "Bill Commission"
+        JOB_FEE = "job_fee", "Job Fee"
+        SPONSORED_POST = "sponsored_post", "Sponsored Post"
+        GENZ_BADGE = "genz_badge", "GenZ Badge"
+        PRO_SUBSCRIPTION = "pro_subscription", "Pheral Pro"
+        AI = "ai", "AI"
+        FLOAT = "float", "Float Income"
+        OTHER = "other", "Other"
+
+    reference = models.CharField(
+        max_length=30,
+        unique=True,
+        default=generate_revenue_reference,
+        editable=False,
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="revenue_records",
+    )
+
+    revenue_type = models.CharField(
+        max_length=30,
+        choices=RevenueType.choices,
+        db_index=True,
+    )
+
+    amount = models.DecimalField(
+        max_digits=20,
+        decimal_places=2,
+        validators=[
+            MinValueValidator(Decimal("0.00")),
+        ],
+    )
+
+    currency = models.ForeignKey(
+        Currency,
+        on_delete=models.PROTECT,
+        related_name="revenue_records",
+    )
+
+    transaction = models.ForeignKey(
+        PheralTransaction,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="revenue_records",
+    )
+
+    description = models.CharField(
+        max_length=255,
+        blank=True,
+    )
+
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+    )
+
+    def __str__(self):
+        return f"{self.reference} — {self.revenue_type} — {self.amount}"

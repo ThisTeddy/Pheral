@@ -1,173 +1,931 @@
 {% extends "base.html" %}
 
 {% block title %}Withdraw · Pheral{% endblock %}
-{% block page_title %}Withdraw{% endblock %}
-
-{% block extra_head %}
-<style>[x-cloak] { display: none !important; }</style>
-{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-md px-4 pb-10 pt-4 md:pt-6"
-     x-data="{
-        amount: '',
-        accountId: '{{ accounts.first.pk|default:'' }}',
-        step: 'form',
-        expandedId: null,
-        balance: {{ wallet.balance|default:0 }},
-        pct(p) { this.amount = (this.balance * p).toFixed(2); },
-        get selectedAccount() {
-            return this.accounts.find(a => a.id === this.accountId);
-        },
-     }">
 
-    <div class="mb-4 flex items-center gap-2 md:hidden">
-        <a href="{% url 'wallet' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink">
-            <i data-lucide="chevron-left" class="h-[18px] w-[18px]"></i>
-        </a>
-        <h1 class="text-lg font-bold tracking-tight text-ink">Withdraw</h1>
+<div
+    x-data="withdrawApp()"
+    x-init="init()"
+    class="min-h-screen bg-[#FBFAF8] pb-28 text-[#0B0B0F]"
+>
+
+    <!-- HEADER -->
+    <header class="sticky top-0 z-40 border-b border-black/[0.06] bg-[#FBFAF8]/90 backdrop-blur-xl">
+        <div class="mx-auto flex h-16 max-w-[760px] items-center gap-3 px-4">
+
+            <a
+                href="{% url 'wallet' %}"
+                class="flex h-10 w-10 items-center justify-center rounded-full border border-black/[0.08] bg-white transition hover:bg-black/[0.04]"
+            >
+                <i data-lucide="arrow-left" class="h-5 w-5"></i>
+            </a>
+
+            <div>
+                <h1 class="text-[17px] font-semibold tracking-[-0.025em]">
+                    Withdraw
+                </h1>
+
+                <p class="text-xs text-black/40">
+                    Send your money to a bank account
+                </p>
+            </div>
+
+        </div>
+    </header>
+
+
+    <main class="mx-auto max-w-[760px] px-4 py-6 sm:py-8">
+
+        <!-- BALANCE -->
+        <section class="relative overflow-hidden rounded-[28px] bg-[#0B0B0F] p-6 text-white shadow-[0_20px_60px_rgba(11,11,15,.12)]">
+
+            <div class="absolute -right-20 -top-20 h-56 w-56 rounded-full bg-[#6E45FF]/30 blur-3xl"></div>
+            <div class="absolute -bottom-24 -left-20 h-56 w-56 rounded-full bg-[#5934E8]/20 blur-3xl"></div>
+
+            <div class="relative">
+
+                <div class="flex items-center justify-between">
+
+                    <span class="text-sm text-white/50">
+                        Available balance
+                    </span>
+
+                    <div class="flex h-9 w-9 items-center justify-center rounded-full bg-white/10">
+                        <i data-lucide="wallet" class="h-4 w-4"></i>
+                    </div>
+
+                </div>
+
+
+                <div class="mt-5 flex items-baseline gap-2">
+
+                    <span class="text-sm font-medium text-white/45">
+                        {{ currency.symbol }}
+                    </span>
+
+                    <span
+                        id="wallet-balance"
+                        class="text-4xl font-semibold tracking-[-0.045em] sm:text-5xl"
+                    >
+                        {{ wallet.balance|floatformat:2 }}
+                    </span>
+
+                </div>
+
+
+                <div class="mt-5 flex items-center gap-2 text-xs text-white/40">
+
+                    <i data-lucide="shield-check" class="h-4 w-4"></i>
+
+                    Secure Pheral wallet
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- WITHDRAW FORM -->
+        <section class="mt-5 rounded-[28px] border border-black/[0.07] bg-white p-5 shadow-sm sm:p-7">
+
+            <div class="mb-7">
+
+                <h2 class="text-xl font-semibold tracking-[-0.03em]">
+                    Withdraw money
+                </h2>
+
+                <p class="mt-1 text-sm leading-6 text-black/40">
+                    Enter the amount and choose a verified bank account.
+                </p>
+
+            </div>
+
+
+            <form method="POST" class="space-y-7">
+
+                {% csrf_token %}
+
+
+                <!-- AMOUNT -->
+                <div>
+
+                    <div class="mb-2 flex items-center justify-between">
+
+                        <label
+                            for="amount"
+                            class="text-sm font-medium"
+                        >
+                            Amount
+                        </label>
+
+                        <button
+                            type="button"
+                            @click="useMax()"
+                            class="text-xs font-semibold text-[#6E45FF]"
+                        >
+                            Use max
+                        </button>
+
+                    </div>
+
+
+                    <div class="relative">
+
+                        <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg font-medium text-black/30">
+                            {{ currency.symbol }}
+                        </span>
+
+                        <input
+                            id="amount"
+                            name="amount"
+                            type="number"
+                            min="1"
+                            step="0.01"
+                            inputmode="decimal"
+                            placeholder="0.00"
+                            required
+                            class="h-16 w-full rounded-2xl border border-black/[0.09] bg-[#FBFAF8] pl-11 pr-4 text-2xl font-semibold outline-none transition placeholder:text-black/20 focus:border-[#6E45FF] focus:ring-4 focus:ring-[#6E45FF]/10"
+                        >
+
+                    </div>
+
+
+                    <p class="mt-2 text-xs text-black/35">
+                        Available {{ currency.symbol }}{{ wallet.balance|floatformat:2 }}
+                    </p>
+
+                </div>
+
+
+                <!-- BANK ACCOUNT -->
+                <div>
+
+                    <div class="mb-3 flex items-center justify-between">
+
+                        <div>
+
+                            <p class="text-sm font-medium">
+                                Bank account
+                            </p>
+
+                            <p class="mt-1 text-xs text-black/40">
+                                Where should we send the money?
+                            </p>
+
+                        </div>
+
+
+                        <button
+                            type="button"
+                            @click="openBankModal()"
+                            class="inline-flex items-center gap-1.5 rounded-full bg-[#6E45FF]/10 px-3 py-2 text-xs font-semibold text-[#6E45FF]"
+                        >
+
+                            <i data-lucide="plus" class="h-3.5 w-3.5"></i>
+
+                            Add bank
+
+                        </button>
+
+                    </div>
+
+
+                    {% if accounts %}
+
+                    <div class="space-y-3">
+
+                        {% for account in accounts %}
+
+                        <label class="block cursor-pointer">
+
+                            <input
+                                type="radio"
+                                name="bank_account"
+                                value="{{ account.id }}"
+                                class="peer sr-only"
+                                {% if forloop.first %}checked{% endif %}
+                            >
+
+                            <div class="flex items-center gap-3 rounded-2xl border border-black/[0.08] bg-[#FBFAF8] p-4 transition peer-checked:border-[#6E45FF] peer-checked:bg-[#6E45FF]/[0.04]">
+
+                                <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0B0B0F] text-sm font-bold text-white">
+                                    {{ account.bank_name|slice:":1"|upper }}
+                                </div>
+
+
+                                <div class="min-w-0 flex-1">
+
+                                    <div class="flex items-center gap-2">
+
+                                        <p class="truncate text-sm font-semibold">
+                                            {{ account.account_name }}
+                                        </p>
+
+                                        <span class="hidden rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] font-semibold text-green-700 sm:inline">
+                                            Verified
+                                        </span>
+
+                                    </div>
+
+                                    <p class="mt-1 text-xs text-black/40">
+                                        {{ account.bank_name }}
+                                        ···· {{ account.account_number|slice:"-4:" }}
+                                    </p>
+
+                                </div>
+
+
+                                <div class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-black/15 peer-checked:border-[#6E45FF]">
+
+                                    <div class="h-2.5 w-2.5 rounded-full bg-[#6E45FF] opacity-0 peer-checked:opacity-100"></div>
+
+                                </div>
+
+                            </div>
+
+                        </label>
+
+                        {% endfor %}
+
+                    </div>
+
+                    {% else %}
+
+                    <button
+                        type="button"
+                        @click="openBankModal()"
+                        class="w-full rounded-2xl border border-dashed border-black/[0.12] bg-[#FBFAF8] p-7 text-center transition hover:border-[#6E45FF]/40"
+                    >
+
+                        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#6E45FF]/10 text-[#6E45FF]">
+                            <i data-lucide="landmark" class="h-5 w-5"></i>
+                        </div>
+
+                        <p class="mt-4 text-sm font-semibold">
+                            No bank account
+                        </p>
+
+                        <p class="mx-auto mt-1 max-w-xs text-xs leading-5 text-black/40">
+                            Add and verify your Nigerian bank account before withdrawing.
+                        </p>
+
+                        <span class="mt-4 inline-flex items-center gap-2 rounded-full bg-[#0B0B0F] px-4 py-2.5 text-xs font-semibold text-white">
+                            <i data-lucide="plus" class="h-4 w-4"></i>
+                            Add bank account
+                        </span>
+
+                    </button>
+
+                    {% endif %}
+
+                </div>
+
+
+                <!-- SECURITY -->
+                <div class="flex gap-3 rounded-2xl bg-[#FBFAF8] p-4">
+
+                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#6E45FF]/10 text-[#6E45FF]">
+                        <i data-lucide="shield-check" class="h-4 w-4"></i>
+                    </div>
+
+                    <div>
+
+                        <p class="text-xs font-semibold">
+                            Secure withdrawal
+                        </p>
+
+                        <p class="mt-1 text-xs leading-5 text-black/40">
+                            Your balance is reserved while the transfer is processing.
+                            Failed transfers are automatically refunded.
+                        </p>
+
+                    </div>
+
+                </div>
+
+
+                <!-- SUBMIT -->
+                <button
+                    type="submit"
+                    {% if not accounts %}disabled{% endif %}
+                    class="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[#6E45FF] text-sm font-semibold text-white shadow-[0_10px_30px_rgba(110,69,255,.18)] transition hover:bg-[#5934E8] active:scale-[.99] disabled:cursor-not-allowed disabled:bg-black/10 disabled:text-black/30 disabled:shadow-none"
+                >
+
+                    <i data-lucide="arrow-up-right" class="h-5 w-5"></i>
+
+                    Withdraw {{ currency.code }}
+
+                </button>
+
+            </form>
+
+        </section>
+
+
+        <p class="mt-5 px-1 text-center text-xs text-black/35">
+            Bank transfers may take a few minutes to complete.
+        </p>
+
+    </main>
+
+
+    <!-- ====================================================== -->
+    <!-- ADD BANK MODAL -->
+    <!-- ====================================================== -->
+
+    <div
+        x-show="bankModal"
+        x-cloak
+        x-transition.opacity
+        class="fixed inset-0 z-[100]"
+    >
+
+        <!-- BACKDROP -->
+        <div
+            class="absolute inset-0 bg-black/55 backdrop-blur-sm"
+            @click="closeBankModal()"
+        ></div>
+
+
+        <!-- MODAL -->
+        <div class="absolute inset-x-0 bottom-0 mx-auto max-w-xl sm:inset-x-4 sm:bottom-auto sm:top-1/2 sm:-translate-y-1/2">
+
+            <div class="overflow-hidden rounded-t-[30px] bg-white shadow-2xl sm:rounded-[30px]">
+
+                <!-- MOBILE HANDLE -->
+                <div class="flex justify-center pt-3 sm:hidden">
+                    <div class="h-1 w-10 rounded-full bg-black/10"></div>
+                </div>
+
+
+                <!-- HEADER -->
+                <div class="flex items-center justify-between border-b border-black/[0.06] px-5 py-5 sm:px-6">
+
+                    <div>
+
+                        <h2 class="text-lg font-semibold tracking-[-0.025em]">
+                            Add bank account
+                        </h2>
+
+                        <p class="mt-1 text-xs text-black/40">
+                            Search your bank and verify your account
+                        </p>
+
+                    </div>
+
+
+                    <button
+                        type="button"
+                        @click="closeBankModal()"
+                        class="flex h-9 w-9 items-center justify-center rounded-full bg-black/[0.04]"
+                    >
+                        <i data-lucide="x" class="h-4 w-4"></i>
+                    </button>
+
+                </div>
+
+
+                <!-- FORM -->
+                <form
+                    method="POST"
+                    action="{% url 'add_bank_account' %}"
+                    @submit="prepareBankForm($event)"
+                    class="p-5 sm:p-6"
+                >
+
+                    {% csrf_token %}
+
+
+                    <!-- ACCOUNT NUMBER -->
+                    <div>
+
+                        <label
+                            for="bank_account_number"
+                            class="mb-2 block text-sm font-medium"
+                        >
+                            Account number
+                        </label>
+
+                        <input
+                            id="bank_account_number"
+                            name="account_number"
+                            type="text"
+                            inputmode="numeric"
+                            autocomplete="off"
+                            maxlength="10"
+                            minlength="10"
+                            pattern="[0-9]{10}"
+                            placeholder="Enter 10-digit account number"
+                            required
+                            @input="$event.target.value = $event.target.value.replace(/\D/g, '').slice(0, 10)"
+                            class="h-14 w-full rounded-2xl border border-black/[0.09] bg-[#FBFAF8] px-4 text-sm font-medium outline-none transition placeholder:text-black/25 focus:border-[#6E45FF] focus:ring-4 focus:ring-[#6E45FF]/10"
+                        >
+
+                    </div>
+
+
+                    <!-- BANK -->
+                    <div class="mt-5">
+
+                        <label class="mb-2 block text-sm font-medium">
+                            Bank
+                        </label>
+
+
+                        <!-- SELECTED BANK BUTTON -->
+                        <button
+                            type="button"
+                            data-bank-item
+                            @click="toggleBankPicker()"
+                            class="flex h-14 w-full items-center gap-3 rounded-2xl border border-black/[0.09] bg-[#FBFAF8] px-4 text-left transition hover:border-black/15"
+                        >
+
+                            <div
+                                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0B0B0F] text-xs font-bold text-white"
+                                x-text="bankInitial"
+                            ></div>
+
+
+                            <div class="min-w-0 flex-1">
+
+                                <p
+                                    class="truncate text-sm font-medium"
+                                    x-text="selectedBankName || 'Select your bank'"
+                                ></p>
+
+                                <p
+                                    x-show="!selectedBankName"
+                                    class="mt-0.5 text-[11px] text-black/35"
+                                >
+                                    Tap to search banks
+                                </p>
+
+                            </div>
+
+
+                            <i
+                                :class="bankPicker ? 'rotate-180' : ''"
+                                data-lucide="chevron-down"
+                                class="h-4 w-4 shrink-0 text-black/35 transition"
+                            ></i>
+
+                        </button>
+
+
+                        <!-- SEARCHABLE BANK PICKER -->
+                        <div
+                            x-show="bankPicker"
+                            x-transition
+                            class="mt-2 overflow-hidden rounded-2xl border border-black/[0.08] bg-white shadow-xl"
+                        >
+
+                            <!-- SEARCH -->
+                            <div class="border-b border-black/[0.06] p-3">
+
+                                <div class="relative">
+
+                                    <i
+                                        data-lucide="search"
+                                        class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-black/30"
+                                    ></i>
+
+                                    <input
+                                        x-ref="bankSearchInput"
+                                        x-model="bankSearch"
+                                        type="text"
+                                        autocomplete="off"
+                                        placeholder="Search bank name..."
+                                        class="h-11 w-full rounded-xl bg-[#FBFAF8] pl-9 pr-3 text-sm outline-none placeholder:text-black/30 focus:ring-2 focus:ring-[#6E45FF]/10"
+                                    >
+
+                                </div>
+
+                            </div>
+
+
+                            <!-- BANKS -->
+                            <div class="max-h-[300px] overflow-y-auto">
+
+                                {% for bank in banks %}
+
+                                <button
+                                    type="button"
+                                    x-show="matchesBank('{{ bank.name|escapejs }}')"
+                                    @click="selectBank('{{ bank.code|escapejs }}', '{{ bank.name|escapejs }}')"
+                                    class="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-[#FBFAF8]"
+                                >
+
+                                    <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-black/[0.05] text-xs font-bold text-black/70">
+                                        {{ bank.name|slice:":1"|upper }}
+                                    </div>
+
+
+                                    <div class="min-w-0 flex-1">
+
+                                        <p class="truncate text-sm font-medium">
+                                            {{ bank.name }}
+                                        </p>
+
+                                        <p class="mt-0.5 text-[10px] text-black/30">
+                                            Bank code {{ bank.code }}
+                                        </p>
+
+                                    </div>
+
+
+                                    <div
+                                        x-show="selectedBankCode === '{{ bank.code|escapejs }}'"
+                                        class="flex h-7 w-7 items-center justify-center rounded-full bg-[#6E45FF]/10 text-[#6E45FF]"
+                                    >
+                                        <i data-lucide="check" class="h-4 w-4"></i>
+                                    </div>
+
+                                </button>
+
+                                {% endfor %}
+
+
+                                <!-- NO RESULTS -->
+                                <div
+                                    x-show="bankSearch && !hasBankResults()"
+                                    class="px-5 py-9 text-center"
+                                >
+
+                                    <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-black/[0.04]">
+
+                                        <i
+                                            data-lucide="search-x"
+                                            class="h-5 w-5 text-black/30"
+                                        ></i>
+
+                                    </div>
+
+                                    <p class="mt-3 text-sm font-medium">
+                                        No bank found
+                                    </p>
+
+                                    <p class="mt-1 text-xs text-black/35">
+                                        Try searching with a different name.
+                                    </p>
+
+                                </div>
+
+
+                                {% if not banks %}
+
+                                <div class="px-5 py-9 text-center">
+
+                                    <i
+                                        data-lucide="landmark"
+                                        class="mx-auto h-6 w-6 text-black/20"
+                                    ></i>
+
+                                    <p class="mt-3 text-sm font-medium">
+                                        Banks unavailable
+                                    </p>
+
+                                    <p class="mt-1 text-xs text-black/35">
+                                        Check your Flutterwave configuration.
+                                    </p>
+
+                                </div>
+
+                                {% endif %}
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- THESE TWO VALUES ARE ACTUALLY SUBMITTED -->
+                    <input
+                        type="hidden"
+                        name="bank_code"
+                        :value="selectedBankCode"
+                    >
+
+                    <input
+                        type="hidden"
+                        name="bank_name"
+                        :value="selectedBankName"
+                    >
+
+
+                    <!-- INFO -->
+                    <div class="mt-5 flex gap-3 rounded-2xl bg-[#6E45FF]/[0.055] p-4">
+
+                        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#6E45FF]/10 text-[#6E45FF]">
+                            <i data-lucide="shield-check" class="h-4 w-4"></i>
+                        </div>
+
+                        <div>
+
+                            <p class="text-xs font-semibold">
+                                Account verification
+                            </p>
+
+                            <p class="mt-1 text-xs leading-5 text-black/40">
+                                Flutterwave will verify the account number.
+                                Pheral saves the account name returned by the bank.
+                            </p>
+
+                        </div>
+
+                    </div>
+
+
+                    <!-- SUBMIT -->
+                    <button
+                        type="submit"
+                        :disabled="!selectedBankCode || !selectedBankName"
+                        class="mt-5 flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-[#0B0B0F] text-sm font-semibold text-white transition hover:bg-[#1c1c22] active:scale-[.99] disabled:cursor-not-allowed disabled:bg-black/10 disabled:text-black/30"
+                    >
+
+                        <i data-lucide="badge-check" class="h-4 w-4"></i>
+
+                        Verify & Add Account
+
+                    </button>
+
+                </form>
+
+            </div>
+
+        </div>
+
     </div>
 
-    {% if wallet %}
-        <div class="mb-4 rounded-3xl bg-gradient-to-br from-accent-600 via-accent-500 to-accent-400 p-4 text-white">
-            <p class="text-[10px] font-medium uppercase tracking-wide text-white/80">Available to withdraw</p>
-            <p class="mt-0.5 text-[26px] font-extrabold tracking-tight">{{ wallet.currency.symbol }}{{ wallet.balance|floatformat:2 }}</p>
-        </div>
-    {% endif %}
-
-    {% if not accounts %}
-        <div class="flex flex-col items-center gap-2.5 rounded-2xl border border-dashed border-line bg-surface py-12 text-center">
-            <div class="flex h-12 w-12 items-center justify-center rounded-full bg-accent-50">
-                <i data-lucide="landmark" class="h-5 w-5 text-accent-500"></i>
-            </div>
-            <p class="text-[13px] font-semibold text-ink">No bank account added</p>
-            <p class="max-w-xs text-[11px] leading-5 text-muted">Add a bank account to withdraw your funds.</p>
-            <a href="{% url 'add_bank_account' %}" class="mt-1 rounded-full bg-accent-500 px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-accent-600">
-                Add bank account
-            </a>
-        </div>
-    {% else %}
-
-        <!-- STEP 1: FORM -->
-        <div x-show="step === 'form'">
-            <div class="rounded-2xl border border-line bg-white p-4">
-
-                <label class="mb-1.5 block text-[12px] font-semibold text-ink">Amount</label>
-                <div class="mb-1.5 flex items-center gap-2 rounded-2xl bg-surface px-3.5 py-2.5">
-                    <span class="text-[15px] font-semibold text-muted">{{ currency.symbol|default:"₦" }}</span>
-                    <input type="number" name="amount" x-model="amount" step="0.01" min="1" required inputmode="decimal" placeholder="0.00"
-                           class="w-full bg-transparent text-[20px] font-bold text-ink placeholder-line focus:outline-none">
-                </div>
-
-                <div class="mb-4 grid grid-cols-4 gap-1.5">
-                    <button type="button" @click="pct(0.25)" class="rounded-full border border-line py-1.5 text-[10px] font-semibold text-muted transition hover:bg-surface">25%</button>
-                    <button type="button" @click="pct(0.5)" class="rounded-full border border-line py-1.5 text-[10px] font-semibold text-muted transition hover:bg-surface">50%</button>
-                    <button type="button" @click="pct(0.75)" class="rounded-full border border-line py-1.5 text-[10px] font-semibold text-muted transition hover:bg-surface">75%</button>
-                    <button type="button" @click="pct(1)" class="rounded-full bg-accent-50 py-1.5 text-[10px] font-semibold text-accent-600 transition hover:bg-accent-100">Max</button>
-                </div>
-
-                <div class="mb-2 flex items-center justify-between">
-                    <label class="block text-[12px] font-semibold text-ink">Withdraw to</label>
-                    <a href="{% url 'add_bank_account' %}" class="flex items-center gap-1 text-[11px] font-medium text-accent-600 hover:underline">
-                        <i data-lucide="plus" class="h-3 w-3"></i> Add new
-                    </a>
-                </div>
-
-                <div class="space-y-1.5">
-                    {% for account in accounts %}
-                        <div class="rounded-2xl border transition"
-                             :class="accountId === '{{ account.pk }}' ? 'border-accent-500 bg-accent-50' : 'border-line'">
-                            <label class="flex cursor-pointer items-center gap-2.5 p-2.5">
-                                <input type="radio" name="bank_account" value="{{ account.pk }}" x-model="accountId" class="sr-only" {% if forloop.first %}checked{% endif %}>
-                                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white"
-                                      :class="accountId === '{{ account.pk }}' ? 'ring-2 ring-accent-300' : 'border border-line'">
-                                    <i data-lucide="landmark" class="h-3.5 w-3.5"></i>
-                                </span>
-                                <span class="min-w-0 flex-1">
-                                    <span class="block truncate text-[12px] font-semibold text-ink">{{ account.account_name }}</span>
-                                    <span class="block truncate text-[10px] text-muted">{{ account.bank_name }} · ····{{ account.account_number|slice:"-4:" }}</span>
-                                </span>
-                                <button type="button" @click.prevent="expandedId = expandedId === '{{ account.pk }}' ? null : '{{ account.pk }}'"
-                                        class="shrink-0 rounded-full p-1 text-muted hover:bg-white" aria-label="Show details">
-                                    <i data-lucide="chevron-down" class="h-3.5 w-3.5 transition" :class="expandedId === '{{ account.pk }}' ? 'rotate-180' : ''"></i>
-                                </button>
-                                <span class="flex h-4.5 w-4.5 shrink-0 items-center justify-center rounded-full border-2"
-                                      :class="accountId === '{{ account.pk }}' ? 'border-accent-500 bg-accent-500' : 'border-line'">
-                                    <i x-show="accountId === '{{ account.pk }}'" data-lucide="check" class="h-2.5 w-2.5 text-white"></i>
-                                </span>
-                            </label>
-                            <div x-show="expandedId === '{{ account.pk }}'" x-cloak x-collapse class="border-t border-line px-2.5 py-2">
-                                <p class="text-[10px] text-muted">Full account number</p>
-                                <p class="mt-0.5 font-mono text-[12px] text-ink">{{ account.account_number }}</p>
-                            </div>
-                        </div>
-                    {% endfor %}
-                </div>
-            </div>
-
-            <button type="button" @click="step = 'review'"
-                    :disabled="!amount || Number(amount) <= 0 || !accountId"
-                    :class="(!amount || Number(amount) <= 0 || !accountId) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-accent-600'"
-                    class="mt-4 flex w-full items-center justify-center gap-1.5 rounded-2xl bg-accent-500 py-3 text-[13px] font-semibold text-white transition">
-                Review withdrawal
-            </button>
-        </div>
-
-        <!-- STEP 2: REVIEW -->
-        <div x-show="step === 'review'" x-cloak>
-            <div class="rounded-2xl border border-line bg-white p-4">
-                <p class="mb-3 text-[12px] font-semibold text-ink">Confirm withdrawal</p>
-
-                <div class="mb-4 flex flex-col items-center rounded-2xl bg-surface py-5">
-                    <p class="text-[10px] text-muted">You'll withdraw</p>
-                    <p class="mt-0.5 text-[26px] font-extrabold text-ink" x-text="'{{ currency.symbol|default:'₦' }}' + Number(amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})"></p>
-                </div>
-
-                <div class="divide-y divide-line rounded-2xl border border-line text-[12px]">
-                    <div class="flex items-center justify-between px-3.5 py-2.5">
-                        <span class="text-muted">To</span>
-                        <span class="font-medium text-ink" x-text="selectedAccount ? selectedAccount.name + ' — ' + selectedAccount.bank : ''"></span>
-                    </div>
-                    <div class="flex items-center justify-between px-3.5 py-2.5">
-                        <span class="text-muted">Arrival</span>
-                        <span class="font-medium text-ink">Within a few minutes</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="mt-4 flex gap-2.5">
-                <button type="button" @click="step = 'form'" class="flex-1 rounded-2xl border border-line py-3 text-[13px] font-semibold text-ink transition hover:bg-surface">
-                    Back
-                </button>
-                <button type="submit" form="withdraw-form" class="flex-[2] flex items-center justify-center gap-1.5 rounded-2xl bg-accent-500 py-3 text-[13px] font-semibold text-white transition hover:bg-accent-600">
-                    <i data-lucide="arrow-up-from-line" class="h-3.5 w-3.5"></i> Confirm withdrawal
-                </button>
-            </div>
-        </div>
-
-        <form method="post" id="withdraw-form" class="hidden">
-            {% csrf_token %}
-            <input type="hidden" name="amount" :value="amount">
-            <input type="hidden" name="bank_account" :value="accountId">
-        </form>
-
-        <p class="mt-3 flex items-center justify-center gap-1.5 text-center text-[10px] text-muted">
-            <i data-lucide="clock" class="h-3 w-3"></i> Withdrawals are usually processed within a few minutes
-        </p>
-    {% endif %}
 </div>
-{% endblock %}
 
-{% block extra_scripts %}
+
 <script>
-    document.addEventListener('alpine:init', () => {
-        Alpine.data('accountsList', () => ({
-            accounts: [
-                {% for account in accounts %}
-                { id: '{{ account.pk }}', name: '{{ account.account_name|escapejs }}', bank: '{{ account.bank_name|escapejs }}' },
-                {% endfor %}
-            ],
-        }));
-    });
+
+function withdrawApp() {
+
+    return {
+
+        bankModal: false,
+
+        bankPicker: false,
+
+        bankSearch: "",
+
+        selectedBankCode: "",
+
+        selectedBankName: "",
+
+
+        init() {
+
+            this.$nextTick(() => {
+
+                if (window.lucide) {
+                    lucide.createIcons();
+                }
+
+            });
+
+        },
+
+
+        get bankInitial() {
+
+            if (!this.selectedBankName) {
+                return "₦";
+            }
+
+            return this.selectedBankName
+                .trim()
+                .charAt(0)
+                .toUpperCase();
+
+        },
+
+
+        openBankModal() {
+
+            this.bankModal = true;
+
+            this.bankPicker = false;
+
+            this.bankSearch = "";
+
+            document.body.classList.add("overflow-hidden");
+
+            this.$nextTick(() => {
+
+                if (window.lucide) {
+                    lucide.createIcons();
+                }
+
+            });
+
+        },
+
+
+        closeBankModal() {
+
+            this.bankModal = false;
+
+            this.bankPicker = false;
+
+            this.bankSearch = "";
+
+            document.body.classList.remove("overflow-hidden");
+
+        },
+
+
+        toggleBankPicker() {
+
+            this.bankPicker = !this.bankPicker;
+
+            if (this.bankPicker) {
+
+                this.$nextTick(() => {
+
+                    this.$refs.bankSearchInput?.focus();
+
+                    if (window.lucide) {
+                        lucide.createIcons();
+                    }
+
+                });
+
+            }
+
+        },
+
+
+        selectBank(code, name) {
+
+            this.selectedBankCode = code;
+
+            this.selectedBankName = name;
+
+            this.bankPicker = false;
+
+            this.bankSearch = "";
+
+            this.$nextTick(() => {
+
+                if (window.lucide) {
+                    lucide.createIcons();
+                }
+
+            });
+
+        },
+
+
+        matchesBank(name) {
+
+            const query =
+                this.bankSearch
+                    .trim()
+                    .toLowerCase();
+
+            if (!query) {
+                return true;
+            }
+
+            return name
+                .toLowerCase()
+                .includes(query);
+
+        },
+
+
+        hasBankResults() {
+
+            const query =
+                this.bankSearch
+                    .trim()
+                    .toLowerCase();
+
+            if (!query) {
+                return true;
+            }
+
+            const bankButtons =
+                this.$el.querySelectorAll(
+                    "[data-bank-item]"
+                );
+
+            return Array.from(bankButtons).some(
+                button => {
+                    return button.offsetParent !== null;
+                }
+            );
+
+        },
+
+
+        prepareBankForm(event) {
+
+            const accountInput =
+                document.getElementById(
+                    "bank_account_number"
+                );
+
+            const accountNumber =
+                accountInput?.value.trim() || "";
+
+
+            if (!accountNumber || accountNumber.length !== 10) {
+
+                event.preventDefault();
+
+                accountInput?.focus();
+
+                return;
+
+            }
+
+
+            if (!this.selectedBankCode) {
+
+                event.preventDefault();
+
+                this.bankPicker = true;
+
+                this.$nextTick(() => {
+                    this.$refs.bankSearchInput?.focus();
+                });
+
+                return;
+
+            }
+
+        },
+
+
+        useMax() {
+
+            const balanceElement =
+                document.getElementById(
+                    "wallet-balance"
+                );
+
+            const amountInput =
+                document.getElementById(
+                    "amount"
+                );
+
+
+            if (!balanceElement || !amountInput) {
+                return;
+            }
+
+
+            const balance =
+                balanceElement.textContent
+                    .replace(/,/g, "")
+                    .trim();
+
+
+            amountInput.value = balance;
+
+            amountInput.focus();
+
+        }
+
+    };
+
+}
+
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (event.key === "Escape") {
+
+            const app =
+                document.querySelector(
+                    "[x-data]"
+                );
+
+            if (app && app._x_dataStack) {
+
+                const data =
+                    app._x_dataStack[0];
+
+                if (data.bankModal) {
+                    data.closeBankModal();
+                }
+
+            }
+
+        }
+
+    }
+);
+
 </script>
+
 {% endblock %}

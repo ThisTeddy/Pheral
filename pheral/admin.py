@@ -8,6 +8,7 @@ from .models import (
     ExchangeRate,
     Wallet,
     WalletToken,
+    BankAccount,
     PheralTransaction,
     LedgerEntry,
     Receipt,
@@ -30,6 +31,17 @@ from .models import (
     AgentCommand,
     AgentActivity,
     Contact,
+    NetworkProvider,
+    VirtualCard,
+    VirtualAccount,
+
+    # Monetization / Growth
+    PheralSubscription,
+    GenZBadge,
+    AIUsage,
+    AICreditBalance,
+    SponsoredPost,
+    RevenueRecord,
 )
 
 
@@ -244,6 +256,39 @@ class WalletTokenAdmin(admin.ModelAdmin):
 
 
 # ============================================================
+# BANK ACCOUNT
+# ============================================================
+
+@admin.register(BankAccount)
+class BankAccountAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "bank_name",
+        "account_number",
+        "account_name",
+        "created_at",
+    )
+
+    search_fields = (
+        "user__username",
+        "user__phone_number",
+        "bank_name",
+        "account_number",
+        "account_name",
+    )
+
+    list_filter = (
+        "bank_name",
+    )
+
+    readonly_fields = (
+        "created_at",
+    )
+
+    ordering = ("-created_at",)
+
+
+# ============================================================
 # PHERAL TRANSACTION
 # ============================================================
 
@@ -355,6 +400,116 @@ class ReceiptAdmin(admin.ModelAdmin):
     )
 
     ordering = ("-created_at",)
+
+
+# ============================================================
+# VIRTUAL CARD
+# ============================================================
+
+@admin.register(VirtualCard)
+class VirtualCardAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "card_name",
+        "currency",
+        "masked_pan",
+        "expiry_month",
+        "expiry_year",
+        "balance",
+        "status",
+        "created_at",
+    )
+
+    search_fields = (
+        "user__username",
+        "user__phone_number",
+        "card_name",
+        "masked_pan",
+        "flw_card_id",
+    )
+
+    list_filter = (
+        "status",
+        "currency",
+        "created_at",
+    )
+
+    readonly_fields = (
+        "flw_card_id",
+        "masked_pan",
+        "expiry_month",
+        "expiry_year",
+        "created_at",
+    )
+
+    ordering = ("-created_at",)
+
+
+# ============================================================
+# VIRTUAL ACCOUNT
+# ============================================================
+
+@admin.register(VirtualAccount)
+class VirtualAccountAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "account_number",
+        "bank_name",
+        "account_name",
+        "is_active",
+        "created_at",
+    )
+
+    search_fields = (
+        "user__username",
+        "user__phone_number",
+        "account_number",
+        "bank_name",
+        "account_name",
+        "flw_reference",
+        "order_ref",
+    )
+
+    list_filter = (
+        "is_active",
+        "bank_name",
+        "created_at",
+    )
+
+    readonly_fields = (
+        "account_number",
+        "bank_name",
+        "account_name",
+        "flw_reference",
+        "order_ref",
+        "created_at",
+    )
+
+    ordering = ("-created_at",)
+
+
+# ============================================================
+# NETWORK PROVIDER
+# ============================================================
+
+@admin.register(NetworkProvider)
+class NetworkProviderAdmin(admin.ModelAdmin):
+    list_display = (
+        "name",
+        "code",
+        "is_active",
+    )
+
+    search_fields = (
+        "name",
+        "code",
+    )
+
+    list_filter = (
+        "is_active",
+    )
+
+    ordering = ("name",)
 
 
 # ============================================================
@@ -470,7 +625,6 @@ class MessageAdmin(admin.ModelAdmin):
     def short_content(self, obj):
         if not obj.content:
             return "—"
-
         return obj.content[:80]
 
 
@@ -601,7 +755,6 @@ class StatusAdmin(admin.ModelAdmin):
     def short_text(self, obj):
         if not obj.text:
             return "—"
-
         return obj.text[:80]
 
 
@@ -665,7 +818,6 @@ class PostAdmin(admin.ModelAdmin):
     def short_content(self, obj):
         if not obj.content:
             return "—"
-
         return obj.content[:100]
 
 
@@ -722,6 +874,8 @@ class PostCommentAdmin(admin.ModelAdmin):
 
     @admin.display(description="Comment")
     def short_content(self, obj):
+        if not obj.content:
+            return "—"
         return obj.content[:100]
 
 
@@ -893,7 +1047,6 @@ class PushDeviceAdmin(admin.ModelAdmin):
     def token_preview(self, obj):
         if not obj.token:
             return "—"
-
         return f"{obj.token[:20]}..."
 
 
@@ -933,6 +1086,8 @@ class AgentCommandAdmin(admin.ModelAdmin):
 
     @admin.display(description="Command")
     def short_command(self, obj):
+        if not obj.command:
+            return "—"
         return obj.command[:100]
 
 
@@ -997,6 +1152,221 @@ class ContactAdmin(admin.ModelAdmin):
 
     ordering = ("-created_at",)
 
-# admin.py
-from django.contrib import admin
-from .models import Currency
+
+# ============================================================
+# PHERAL PRO SUBSCRIPTION
+# ============================================================
+
+@admin.register(PheralSubscription)
+class PheralSubscriptionAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "plan",
+        "status",
+        "price",
+        "currency",
+        "started_at",
+        "expires_at",
+        "provider",
+        "created_at",
+    )
+
+    search_fields = (
+        "user__username",
+        "user__phone_number",
+        "provider_reference",
+    )
+
+    list_filter = (
+        "plan",
+        "status",
+        "currency",
+        "provider",
+    )
+
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+    )
+
+    ordering = ("-created_at",)
+
+
+# ============================================================
+# GENZ BADGE
+# ============================================================
+
+@admin.register(GenZBadge)
+class GenZBadgeAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "reference",
+        "status",
+        "price",
+        "currency",
+        "activated_at",
+        "expires_at",
+    )
+
+    search_fields = (
+        "user__username",
+        "user__phone_number",
+        "reference",
+    )
+
+    list_filter = (
+        "status",
+        "currency",
+    )
+
+    readonly_fields = (
+        "reference",
+        "activated_at",
+    )
+
+    ordering = ("-activated_at",)
+
+
+# ============================================================
+# AI USAGE
+# ============================================================
+
+@admin.register(AIUsage)
+class AIUsageAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "date",
+        "requests",
+        "input_tokens",
+        "output_tokens",
+        "credits_used",
+    )
+
+    search_fields = (
+        "user__username",
+        "user__phone_number",
+    )
+
+    list_filter = (
+        "date",
+    )
+
+    readonly_fields = (
+        "date",
+        "requests",
+        "input_tokens",
+        "output_tokens",
+        "credits_used",
+    )
+
+    ordering = (
+        "-date",
+        "-requests",
+    )
+
+
+# ============================================================
+# AI CREDIT BALANCE
+# ============================================================
+
+@admin.register(AICreditBalance)
+class AICreditBalanceAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "credits",
+        "lifetime_purchased",
+        "lifetime_used",
+        "updated_at",
+    )
+
+    search_fields = (
+        "user__username",
+        "user__phone_number",
+    )
+
+    readonly_fields = (
+        "updated_at",
+    )
+
+    ordering = ("-updated_at",)
+
+
+# ============================================================
+# SPONSORED POST
+# ============================================================
+
+@admin.register(SponsoredPost)
+class SponsoredPostAdmin(admin.ModelAdmin):
+    list_display = (
+        "advertiser",
+        "post",
+        "budget",
+        "spent",
+        "currency",
+        "impressions",
+        "clicks",
+        "status",
+        "starts_at",
+        "ends_at",
+        "created_at",
+    )
+
+    search_fields = (
+        "advertiser__username",
+        "advertiser__phone_number",
+        "post__content",
+    )
+
+    list_filter = (
+        "status",
+        "currency",
+        "created_at",
+    )
+
+    readonly_fields = (
+        "spent",
+        "impressions",
+        "clicks",
+        "created_at",
+        "updated_at",
+    )
+
+    ordering = ("-created_at",)
+
+
+# ============================================================
+# REVENUE RECORD
+# ============================================================
+
+@admin.register(RevenueRecord)
+class RevenueRecordAdmin(admin.ModelAdmin):
+    list_display = (
+        "reference",
+        "revenue_type",
+        "amount",
+        "currency",
+        "user",
+        "transaction",
+        "created_at",
+    )
+
+    search_fields = (
+        "reference",
+        "user__username",
+        "user__phone_number",
+        "transaction__reference",
+        "description",
+    )
+
+    list_filter = (
+        "revenue_type",
+        "currency",
+        "created_at",
+    )
+
+    readonly_fields = (
+        "reference",
+        "created_at",
+    )
+
+    ordering = ("-created_at",)
