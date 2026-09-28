@@ -5105,207 +5105,222 @@ def add_bank_account(request):
 
     return redirect("withdraw")
 
-@login_required
-@require_POST
-def sync_withdrawal_status(request, reference):
-    """
-    Sync a Pheral withdrawal with its current Flutterwave status.
-    """
+import hmac
+import json
+import logging
+from decimal import Decimal
 
-    pheral_transaction = (
-        PheralTransaction.objects
-        .filter(
-            user=request.user,
-            reference=reference,
-            transaction_type=(
-                PheralTransaction.TransactionType.WITHDRAWAL
-            ),
-        )
-        .first()
+import requests
+from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
+from django.db import transaction
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
+from django.shortcuts import redirect, render
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
+
+# Adjust these imports to match your project layout
+# from .models import (
+#     BankAccount, LedgerEntry, PheralTransaction, RevenueRecord, Wallet,
+# )
+# from .utils import get_default_currency, get_or_create_wallet, parse_amount
+
+logger = logging.getLogger(__name__)
+
+FLW_API = "https://api.flutterwave.com/v3"
+
+
+# =============================================================
+# Helpers
+# =============================================================
+
+def get_withdrawal_fee():
+    """
+    Flat withdrawal fee in NGN, charged on top of the amount withdrawn.
+    Set WITHDRAWAL_FEE in settings (e.g. WITHDRAWAL_FEE = "50.00").
+    Defaults to 0 if unset, so set it before going live.
+    """
+    return Decimal(str(getattr(settings, "WITHDRAWAL_FEE", "0"))).quantize(
+        Decimal("0.01")
     )
 
-    if not pheral_transaction:
-        return JsonResponse(
-            {
-                "status": "error",
-                "message": "Withdrawal not found.",
-            },
-            status=404,
-        )
 
-    if not settings.FLW_SECRET_KEY:
-        return JsonResponse(
-            {
-                "status": "error",
-                "message": "Flutterwave is not configured.",
-            },
-            status=500,
-        )
+def _flw_headers():
+    return {
+        "Authorization": f"Bearer {settings.FLW_SECRET_KEY}",
+        "Content-Type": "application/json",
+    }
 
+
+def get_nigerian_banks():
+    """Nigerian bank list from Flutterwave, cached for 24 hours."""
+    banks = cache.get("flw_banks_ng")
+    if banks is not None:
+        return banks
+
+    banks = []
     try:
         response = requests.get(
-            "https://api.flutterwave.com/v3/transfers",
-            params={
-                "reference": reference,
-            },
-            headers={
-                "Authorization": (
-                    f"Bearer {settings.FLW_SECRET_KEY}"
-                ),
-                "Content-Type": "application/json",
-            },
+            f"{FLW_API}/banks/NG",
+            headers=_flw_headers(),
             timeout=15,
         )
-
-        data = response.json()
-
+        body = response.json()
+        if body.get("status") == "success":
+            banks = body.get("data") or []
     except (requests.RequestException, ValueError):
-        return JsonResponse(
-            {
-                "status": "error",
-                "message": "Could not contact Flutterwave.",
-            },
-            status=502,
+        logger.warning("Could not fetch Flutterwave bank list", exc_info=True)
+
+    if banks:
+        cache.set("flw_banks_ng", banks, 60 * 60 * 24)
+
+    return banks
+
+
+def _status_label(status):
+    if status == PheralTransaction.Status.COMPLETED:
+        return "completed"
+    if status == PheralTransaction.Status.FAILED:
+        return "failed"
+    return "pending"
+
+
+def settle_withdrawal(reference, flw_status, transfer_id=""):
+    """
+    Single place where a withdrawal leaves PENDING.
+
+    Safe to call from the withdraw view, the sync endpoint and the
+    webhook, in any order and any number of times: the row is locked
+    and only a PENDING transaction is ever changed.
+
+    Returns "completed", "failed", "pending", or None if the
+    reference is unknown.
+    """
+    flw_status = (flw_status or "").upper()
+
+    # NEW / PENDING / anything else: Flutterwave is still working on it
+    if flw_status not in ("SUCCESSFUL", "FAILED"):
+        return "pending"
+
+    with transaction.atomic():
+        txn = (
+            PheralTransaction.objects
+            .select_for_update()
+            .filter(
+                reference=reference,
+                transaction_type=PheralTransaction.TransactionType.WITHDRAWAL,
+            )
+            .first()
         )
 
-    transfer_data = data.get("data") or {}
+        if txn is None:
+            return None
 
-    flutterwave_status = (
-        transfer_data.get("status") or ""
-    ).upper()
+        # Already settled by another path
+        if txn.status != PheralTransaction.Status.PENDING:
+            return _status_label(txn.status)
 
-    # ---------------------------------------------------------
-    # SUCCESSFUL
-    # ---------------------------------------------------------
-    if flutterwave_status == "SUCCESSFUL":
+        txn.external_reference = str(
+            transfer_id or txn.external_reference or ""
+        )
+        txn.completed_at = timezone.now()
 
-        with transaction.atomic():
-
-            locked_txn = (
-                PheralTransaction.objects
-                .select_for_update()
-                .get(pk=pheral_transaction.pk)
+        if flw_status == "SUCCESSFUL":
+            txn.status = PheralTransaction.Status.COMPLETED
+            txn.save(
+                update_fields=["status", "completed_at", "external_reference"]
             )
 
-            if locked_txn.status == (
-                PheralTransaction.Status.PENDING
-            ):
-                locked_txn.status = (
-                    PheralTransaction.Status.COMPLETED
+            # The fee is only earned once the transfer succeeds
+            if txn.fee and txn.fee > 0:
+                RevenueRecord.objects.create(
+                    user_id=txn.sender_id,
+                    revenue_type=RevenueRecord.RevenueType.WITHDRAWAL_FEE,
+                    amount=txn.fee,
+                    currency_id=txn.currency_id,
+                    transaction=txn,
+                    description="Withdrawal fee",
                 )
-                locked_txn.completed_at = timezone.now()
-                locked_txn.external_reference = str(
-                    transfer_data.get("id") or ""
-                )
+            return "completed"
 
-                locked_txn.save(
-                    update_fields=[
-                        "status",
-                        "completed_at",
-                        "external_reference",
-                    ]
-                )
+        # FAILED: refund the wallet
+        wallet = Wallet.objects.select_for_update().get(
+            pk=txn.sender_wallet_id
+        )
+        refund_total = txn.amount + txn.fee
+        balance_before = wallet.balance
+        wallet.balance += refund_total
+        wallet.save(update_fields=["balance", "updated_at"])
 
-        return JsonResponse(
-            {
-                "status": "success",
-                "transaction_status": "completed",
-            }
+        txn.status = PheralTransaction.Status.FAILED
+        txn.save(
+            update_fields=["status", "completed_at", "external_reference"]
         )
 
-    # ---------------------------------------------------------
-    # FAILED
-    # ---------------------------------------------------------
-    if flutterwave_status == "FAILED":
-
-        with transaction.atomic():
-
-            locked_txn = (
-                PheralTransaction.objects
-                .select_for_update()
-                .get(pk=pheral_transaction.pk)
-            )
-
-            if locked_txn.status == (
-                PheralTransaction.Status.PENDING
-            ):
-
-                locked_wallet = (
-                    Wallet.objects
-                    .select_for_update()
-                    .get(
-                        pk=locked_txn.sender_wallet_id
-                    )
-                )
-
-                balance_before = locked_wallet.balance
-
-                locked_wallet.balance += locked_txn.amount
-
-                locked_wallet.save(
-                    update_fields=[
-                        "balance",
-                        "updated_at",
-                    ]
-                )
-
-                locked_txn.status = (
-                    PheralTransaction.Status.FAILED
-                )
-                locked_txn.completed_at = timezone.now()
-                locked_txn.external_reference = str(
-                    transfer_data.get("id") or ""
-                )
-
-                locked_txn.save(
-                    update_fields=[
-                        "status",
-                        "completed_at",
-                        "external_reference",
-                    ]
-                )
-
-                LedgerEntry.objects.create(
-                    transaction=locked_txn,
-                    wallet=locked_wallet,
-                    entry_type=LedgerEntry.EntryType.CREDIT,
-                    amount=locked_txn.amount,
-                    balance_before=balance_before,
-                    balance_after=locked_wallet.balance,
-                    description="Withdrawal failed — refunded",
-                )
-
-        return JsonResponse(
-            {
-                "status": "success",
-                "transaction_status": "failed",
-            }
+        LedgerEntry.objects.create(
+            transaction=txn,
+            wallet=wallet,
+            entry_type=LedgerEntry.EntryType.CREDIT,
+            amount=refund_total,
+            balance_before=balance_before,
+            balance_after=wallet.balance,
+            description="Withdrawal failed, refunded",
         )
+        return "failed"
 
-    # ---------------------------------------------------------
-    # STILL PROCESSING
-    # ---------------------------------------------------------
-    return JsonResponse(
-        {
-            "status": "success",
-            "transaction_status": "pending",
-            "flutterwave_status": flutterwave_status,
-        }
+
+def _fetch_transfer(txn):
+    """
+    Look up a transfer on Flutterwave. Returns a dict or None.
+    Raises requests.RequestException / ValueError on transport problems.
+    """
+    if txn.external_reference:
+        response = requests.get(
+            f"{FLW_API}/transfers/{txn.external_reference}",
+            headers=_flw_headers(),
+            timeout=15,
+        )
+        data = response.json().get("data")
+        if isinstance(data, dict):
+            return data
+
+    response = requests.get(
+        f"{FLW_API}/transfers",
+        params={"reference": txn.reference},
+        headers=_flw_headers(),
+        timeout=15,
     )
+    data = response.json().get("data")
+
+    # The list endpoint returns a list of transfers
+    if isinstance(data, list):
+        return next(
+            (t for t in data if t.get("reference") == txn.reference),
+            None,
+        )
+    return data if isinstance(data, dict) else None
+
+
+# =============================================================
+# Withdraw
+# =============================================================
 
 @login_required
 def withdraw(request):
     """
-    Withdraw funds from the user's Pheral wallet to a verified bank account
+    Withdraw funds from the user's Pheral wallet to a saved bank account
     using Flutterwave Transfers.
+
+    Flow: debit + PENDING transaction -> submit transfer -> the result
+    is settled by settle_withdrawal() (webhook, sync endpoint, or
+    immediately if Flutterwave rejects the request outright).
     """
-
     currency = get_default_currency()
-
     wallet_obj = (
-        get_or_create_wallet(request.user, currency)
-        if currency
-        else None
+        get_or_create_wallet(request.user, currency) if currency else None
     )
 
     accounts = BankAccount.objects.filter(
@@ -5313,272 +5328,285 @@ def withdraw(request):
         is_active=True,
     ).order_by("-created_at")
 
-    # ---------------------------------------------------------
-    # Fetch Nigerian banks for the Add Bank Account UI
-    # ---------------------------------------------------------
-    banks = []
-
-    if settings.FLW_SECRET_KEY:
-        try:
-            response = requests.get(
-                "https://api.flutterwave.com/v3/banks/NG",
-                headers={
-                    "Authorization": f"Bearer {settings.FLW_SECRET_KEY}",
-                    "Content-Type": "application/json",
-                },
-                timeout=15,
-            )
-
-            bank_data = response.json()
-
-            if bank_data.get("status") == "success":
-                banks = bank_data.get("data") or []
-
-        except (requests.RequestException, ValueError):
-            banks = []
+    fee = get_withdrawal_fee()
 
     context = {
         "accounts": accounts,
+        "fee": fee,
         "wallet": wallet_obj,
         "currency": currency,
-        "banks": banks,
+        "banks": get_nigerian_banks() if settings.FLW_SECRET_KEY else [],
     }
 
+    if request.method != "POST":
+        return render(request, "withdraw.html", context)
+
     # ---------------------------------------------------------
-    # Withdrawal
+    # Configuration checks
     # ---------------------------------------------------------
-    if request.method == "POST":
+    if not currency or not wallet_obj:
+        messages.error(request, "No withdrawal currency is configured.")
+        return redirect("wallet")
 
-        amount = parse_amount(request.POST.get("amount"))
+    if not settings.FLW_SECRET_KEY:
+        messages.error(request, "Withdrawals are not configured yet.")
+        return redirect("wallet")
 
-        bank_account = accounts.filter(
-            pk=request.POST.get("bank_account")
-        ).first()
+    if currency.code.upper() != "NGN":
+        messages.error(
+            request,
+            "Nigerian bank withdrawals are currently available in NGN only.",
+        )
+        return redirect("wallet")
 
-        if amount is None:
-            messages.error(
-                request,
-                "Enter a valid withdrawal amount.",
-            )
-            return render(
-                request,
-                "withdraw.html",
-                context,
-            )
+    # ---------------------------------------------------------
+    # Input validation
+    # ---------------------------------------------------------
+    amount = parse_amount(request.POST.get("amount"))
 
-        if not currency:
-            messages.error(
-                request,
-                "No withdrawal currency is configured.",
-            )
-            return redirect("wallet")
+    if amount is not None:
+        amount = amount.quantize(Decimal("0.01"))
 
-        if not bank_account:
-            messages.error(
-                request,
-                "Select a valid bank account.",
-            )
-            return render(
-                request,
-                "withdraw.html",
-                context,
-            )
+    if amount is None or amount < Decimal("0.01"):
+        messages.error(request, "Enter a valid withdrawal amount.")
+        return render(request, "withdraw.html", context)
 
-        if not settings.FLW_SECRET_KEY:
-            messages.error(
-                request,
-                "Withdrawals are not configured yet.",
-            )
-            return redirect("wallet")
+    bank_account = accounts.filter(
+        pk=request.POST.get("bank_account")
+    ).first()
 
-        if currency.code.upper() != "NGN":
-            messages.error(
-                request,
-                "Nigerian bank withdrawals are currently available in NGN only.",
-            )
-            return redirect("wallet")
+    if not bank_account:
+        messages.error(request, "Select a valid bank account.")
+        return render(request, "withdraw.html", context)
 
-        # -----------------------------------------------------
-        # Lock wallet + debit funds + create pending transaction
-        # -----------------------------------------------------
-        with transaction.atomic():
+    # ---------------------------------------------------------
+    # Lock wallet, debit funds, create PENDING transaction
+    # ---------------------------------------------------------
+    insufficient = False
 
-            locked_wallet = (
-                Wallet.objects
-                .select_for_update()
-                .get(pk=wallet_obj.pk)
-            )
+    with transaction.atomic():
+        locked_wallet = Wallet.objects.select_for_update().get(
+            pk=wallet_obj.pk
+        )
 
-            if locked_wallet.balance < amount:
-                messages.error(
-                    request,
-                    "Insufficient wallet balance.",
-                )
+        total_debit = amount + fee
 
-                context["wallet"] = locked_wallet
-
-                return render(
-                    request,
-                    "withdraw.html",
-                    context,
-                )
-
+        if locked_wallet.balance < total_debit:
+            insufficient = True
+        else:
             balance_before = locked_wallet.balance
-
-            locked_wallet.balance -= amount
-
-            locked_wallet.save(
-                update_fields=[
-                    "balance",
-                    "updated_at",
-                ]
-            )
+            locked_wallet.balance -= total_debit
+            locked_wallet.save(update_fields=["balance", "updated_at"])
 
             pheral_transaction = PheralTransaction.objects.create(
                 sender=request.user,
                 sender_wallet=locked_wallet,
-                transaction_type=(
-                    PheralTransaction.TransactionType.WITHDRAWAL
-                ),
+                transaction_type=PheralTransaction.TransactionType.WITHDRAWAL,
                 amount=amount,
+                fee=fee,
                 currency=currency,
                 status=PheralTransaction.Status.PENDING,
-                description=(
-                    f"Withdrawal to "
-                    f"{bank_account.bank_name}"
-                ),
+                description=f"Withdrawal to {bank_account.bank_name}",
             )
-            # SANDBOX TESTING ONLY
-            pheral_transaction.reference = (
-            f"{pheral_transaction.reference}_PMCKDU_1"
-            )
-            pheral_transaction.save(update_fields=["reference"])
+
+            # Sandbox only: set FLW_SANDBOX_REFERENCE_SUFFIX in your dev
+            # settings (e.g. "_PMCKDU_1"). Leave it unset in production.
+            suffix = getattr(settings, "FLW_SANDBOX_REFERENCE_SUFFIX", "")
+            if suffix:
+                pheral_transaction.reference = (
+                    f"{pheral_transaction.reference}{suffix}"
+                )
+                pheral_transaction.save(update_fields=["reference"])
 
             LedgerEntry.objects.create(
                 transaction=pheral_transaction,
                 wallet=locked_wallet,
                 entry_type=LedgerEntry.EntryType.DEBIT,
-                amount=amount,
+                amount=total_debit,
                 balance_before=balance_before,
                 balance_after=locked_wallet.balance,
                 description="Withdrawal (pending)",
             )
 
-        # -----------------------------------------------------
-        # Submit transfer to Flutterwave
-        # -----------------------------------------------------
-        try:
+    if insufficient:
+        messages.error(request, "Insufficient wallet balance.")
+        context["wallet"] = locked_wallet
+        return render(request, "withdraw.html", context)
 
-            response = requests.post(
-                "https://api.flutterwave.com/v3/transfers",
-                json={
-                    "account_bank": bank_account.bank_code,
-                    "account_number": bank_account.account_number,
-                    "amount": float(amount),
-                    "currency": currency.code.upper(),
-                    "narration": "Pheral wallet withdrawal",
-                    "reference": pheral_transaction.reference,
-                },
-                headers={
-                    "Authorization": (
-                        f"Bearer {settings.FLW_SECRET_KEY}"
-                    ),
-                    "Content-Type": "application/json",
-                },
-                timeout=20,
-            )
-
-            data = response.json()
-            print("FLUTTERWAVE WITHDRAWAL RESPONSE:", response.status_code, data)
-
-        except (requests.RequestException, ValueError):
-
-            data = {
-                "status": "error",
-            }
-
-        # -----------------------------------------------------
-        # Flutterwave rejected the transfer
-        # -----------------------------------------------------
-        if data.get("status") != "success":
-
-            with transaction.atomic():
-
-                locked_txn = (
-                    PheralTransaction.objects
-                    .select_for_update()
-                    .get(pk=pheral_transaction.pk)
-                )
-
-                if (
-                    locked_txn.status
-                    == PheralTransaction.Status.PENDING
-                ):
-
-                    locked_wallet = (
-                        Wallet.objects
-                        .select_for_update()
-                        .get(
-                            pk=locked_txn.sender_wallet_id
-                        )
-                    )
-
-                    balance_before_refund = locked_wallet.balance
-
-                    locked_wallet.balance += locked_txn.amount
-
-                    locked_wallet.save(
-                        update_fields=[
-                            "balance",
-                            "updated_at",
-                        ]
-                    )
-
-                    locked_txn.status = (
-                        PheralTransaction.Status.FAILED
-                    )
-
-                    locked_txn.completed_at = timezone.now()
-
-                    locked_txn.save(
-                        update_fields=[
-                            "status",
-                            "completed_at",
-                        ]
-                    )
-
-                    LedgerEntry.objects.create(
-                        transaction=locked_txn,
-                        wallet=locked_wallet,
-                        entry_type=LedgerEntry.EntryType.CREDIT,
-                        amount=locked_txn.amount,
-                        balance_before=balance_before_refund,
-                        balance_after=locked_wallet.balance,
-                        description=(
-                            "Withdrawal failed — refunded"
-                        ),
-                    )
-
-            messages.error(
-                request,
-                "Withdrawal could not be started. "
-                "Your balance has been refunded.",
-            )
-
-            return redirect("wallet")
-
-        # -----------------------------------------------------
-        # Transfer accepted by Flutterwave
-        # -----------------------------------------------------
-        messages.success(
-            request,
-            "Withdrawal initiated — it may take a few minutes.",
+    # ---------------------------------------------------------
+    # Submit transfer to Flutterwave
+    # ---------------------------------------------------------
+    try:
+        response = requests.post(
+            f"{FLW_API}/transfers",
+            json={
+                "account_bank": bank_account.bank_code,
+                "account_number": bank_account.account_number,
+                "amount": float(amount),
+                "currency": currency.code.upper(),
+                "narration": "Pheral wallet withdrawal",
+                "reference": pheral_transaction.reference,
+            },
+            headers=_flw_headers(),
+            timeout=20,
         )
-
+        data = response.json()
+    except (requests.RequestException, ValueError):
+        # Unknown outcome: the transfer may or may not have been created.
+        # Do NOT refund here. Leave it PENDING; the webhook / sync
+        # endpoint will settle it either way.
+        logger.exception(
+            "Flutterwave transfer request failed (outcome unknown): %s",
+            pheral_transaction.reference,
+        )
+        messages.warning(
+            request,
+            "We couldn't confirm your withdrawal yet. It is being checked "
+            "and your balance will be refunded automatically if it fails.",
+        )
         return redirect("wallet")
 
-    return render(
-        request,
-        "withdraw.html",
-        context,
+    logger.info(
+        "Flutterwave transfer response ref=%s http=%s status=%s message=%s",
+        pheral_transaction.reference,
+        response.status_code,
+        data.get("status"),
+        data.get("message"),
     )
+
+    # Server error on their side: outcome unknown, same handling as a timeout
+    if response.status_code >= 500:
+        messages.warning(
+            request,
+            "We couldn't confirm your withdrawal yet. It is being checked "
+            "and your balance will be refunded automatically if it fails.",
+        )
+        return redirect("wallet")
+
+    # ---------------------------------------------------------
+    # Definite rejection: refund now
+    # ---------------------------------------------------------
+    if data.get("status") != "success":
+        settle_withdrawal(pheral_transaction.reference, "FAILED")
+        messages.error(
+            request,
+            "Withdrawal could not be started. Your balance has been refunded.",
+        )
+        return redirect("wallet")
+
+    # ---------------------------------------------------------
+    # Accepted (queued). Save the transfer id; final status comes
+    # from the webhook or the sync endpoint.
+    # ---------------------------------------------------------
+    transfer = data.get("data") or {}
+
+    PheralTransaction.objects.filter(
+        pk=pheral_transaction.pk,
+        status=PheralTransaction.Status.PENDING,
+    ).update(external_reference=str(transfer.get("id") or ""))
+
+    # In the rare case it is already final in the response
+    settle_withdrawal(
+        pheral_transaction.reference,
+        transfer.get("status"),
+        transfer.get("id"),
+    )
+
+    messages.success(
+        request,
+        "Withdrawal initiated. It may take a few minutes.",
+    )
+    return redirect("wallet")
+
+
+# =============================================================
+# Sync (called from the wallet page while a withdrawal is pending)
+# =============================================================
+
+@login_required
+@require_POST
+def sync_withdrawal_status(request, reference):
+    txn = PheralTransaction.objects.filter(
+        sender=request.user,
+        reference=reference,
+        transaction_type=PheralTransaction.TransactionType.WITHDRAWAL,
+    ).first()
+
+    if not txn:
+        return JsonResponse(
+            {"status": "error", "message": "Withdrawal not found."},
+            status=404,
+        )
+
+    if txn.status != PheralTransaction.Status.PENDING:
+        return JsonResponse(
+            {
+                "status": "success",
+                "transaction_status": _status_label(txn.status),
+            }
+        )
+
+    if not settings.FLW_SECRET_KEY:
+        return JsonResponse(
+            {"status": "error", "message": "Flutterwave is not configured."},
+            status=500,
+        )
+
+    try:
+        transfer = _fetch_transfer(txn)
+    except (requests.RequestException, ValueError):
+        logger.exception("Could not sync withdrawal %s", reference)
+        return JsonResponse(
+            {"status": "error", "message": "Could not contact Flutterwave."},
+            status=502,
+        )
+
+    # Not visible on Flutterwave (yet): never refund on absence
+    if not transfer:
+        return JsonResponse(
+            {"status": "success", "transaction_status": "pending"}
+        )
+
+    result = settle_withdrawal(
+        reference,
+        transfer.get("status"),
+        transfer.get("id"),
+    )
+
+    return JsonResponse(
+        {
+            "status": "success",
+            "transaction_status": result or "pending",
+            "flutterwave_status": (transfer.get("status") or "").upper(),
+        }
+    )
+
+
+# =============================================================
+# Webhook (transfer.completed)
+# =============================================================
+
+@csrf_exempt
+@require_POST
+def flutterwave_webhook(request):
+    expected = getattr(settings, "FLW_WEBHOOK_HASH", "")
+    received = request.headers.get("verif-hash", "")
+
+    if not expected or not hmac.compare_digest(received, expected):
+        return HttpResponseForbidden()
+
+    try:
+        payload = json.loads(request.body)
+    except ValueError:
+        return HttpResponse(status=400)
+
+    if payload.get("event") == "transfer.completed":
+        data = payload.get("data") or {}
+        settle_withdrawal(
+            data.get("reference"),
+            data.get("status"),
+            data.get("id"),
+        )
+
+    # Always 200 for authenticated events so Flutterwave stops retrying
+    return HttpResponse(status=200)
