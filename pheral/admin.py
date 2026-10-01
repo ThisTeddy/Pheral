@@ -1370,3 +1370,40 @@ class RevenueRecordAdmin(admin.ModelAdmin):
     )
 
     ordering = ("-created_at",)
+
+
+import csv
+ 
+from django.contrib import admin
+from django.http import HttpResponse
+ 
+from .models import WaitlistEntry
+ 
+ 
+def _csv_safe(value):
+    """Stop spreadsheet formula injection in exported cells."""
+    value = str(value)
+    return "'" + value if value[:1] in ("=", "+", "-", "@") else value
+ 
+ 
+@admin.register(WaitlistEntry)
+class WaitlistEntryAdmin(admin.ModelAdmin):
+    list_display = ("contact", "kind", "source", "invited", "created_at")
+    list_filter = ("kind", "invited", "source")
+    search_fields = ("contact",)
+    actions = ["mark_invited", "export_csv"]
+ 
+    @admin.action(description="Mark selected as invited")
+    def mark_invited(self, request, queryset):
+        queryset.update(invited=True)
+ 
+    @admin.action(description="Export selected to CSV")
+    def export_csv(self, request, queryset):
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="pheral-waitlist.csv"'
+        writer = csv.writer(response)
+        writer.writerow(["contact", "kind", "source", "invited", "created_at"])
+        for e in queryset:
+            writer.writerow([_csv_safe(e.contact), e.kind, _csv_safe(e.source), e.invited, e.created_at.isoformat()])
+        return response
+ 

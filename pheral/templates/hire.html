@@ -21,12 +21,12 @@
 
         <div class="mb-3 grid grid-cols-3 gap-2 lg:max-w-md">
             <div class="rounded-xl border border-line bg-white px-3 py-2.5 text-center shadow-card">
-                <p class="text-[15px] font-bold text-ink">{{ jobs|length }}</p>
+                <p class="text-[15px] font-bold text-ink">{{ open_count }}</p>
                 <p class="text-[10px] text-muted">Open jobs</p>
             </div>
             <div class="rounded-xl border border-line bg-white px-3 py-2.5 text-center shadow-card">
-                <p class="text-[15px] font-bold text-ink">{{ jobs|length }}</p>
-                <p class="text-[10px] text-muted">Hiring now</p>
+                <p class="text-[15px] font-bold text-ink">{{ recent_count }}</p>
+                <p class="text-[10px] text-muted">Posted this week</p>
             </div>
             <a href="{% url 'create_hire_job' %}" class="focus-ring flex flex-col items-center justify-center gap-0.5 rounded-xl bg-accent-500 px-3 py-2.5 text-center transition hover:bg-accent-600 lg:hidden">
                 <i data-lucide="plus" class="h-3.5 w-3.5 text-white"></i>
@@ -95,6 +95,18 @@
                     <p class="text-[11px] text-muted">Try a different keyword or clear the search.</p>
                 </div>
             </div>
+
+            {% if page_obj.paginator.num_pages > 1 %}
+                <div class="mt-5 flex items-center justify-center gap-2">
+                    {% if page_obj.has_previous %}
+                        <a href="?page={{ page_obj.previous_page_number }}" class="focus-ring rounded-full border border-line px-3.5 py-1.5 text-[11px] font-medium text-ink transition hover:bg-surface">Previous</a>
+                    {% endif %}
+                    <span class="text-[11px] text-muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+                    {% if page_obj.has_next %}
+                        <a href="?page={{ page_obj.next_page_number }}" class="focus-ring rounded-full border border-line px-3.5 py-1.5 text-[11px] font-medium text-ink transition hover:bg-surface">Next</a>
+                    {% endif %}
+                </div>
+            {% endif %}
         {% else %}
             <div class="flex flex-col items-center gap-2 py-20 text-center">
                 <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50"><i data-lucide="briefcase" class="h-6 w-6 text-accent-500"></i></div>

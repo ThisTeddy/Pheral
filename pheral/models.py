@@ -768,7 +768,11 @@ class NetworkProvider(models.Model):
         blank=True,
         default="",
     )
-
+    flutterwave_airtime_item_code = models.CharField(
+        max_length=50,
+        blank=True,
+        default="",
+    )
     flutterwave_data_biller = models.CharField(
         max_length=100,
         blank=True,
@@ -1232,3 +1236,24 @@ class RevenueRecord(models.Model):
 
     def __str__(self):
         return f"{self.reference} — {self.revenue_type} — {self.amount}"
+
+
+class WaitlistEntry(models.Model):
+    """One person on the private-beta waitlist. `contact` is a lower-cased
+    email or an E.164 phone number, so duplicates are caught reliably."""
+ 
+    class Kind(models.TextChoices):
+        EMAIL = "email", "Email"
+        PHONE = "phone", "Phone"
+ 
+    contact = models.CharField(max_length=254, unique=True)
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    source = models.CharField(max_length=50, blank=True)   # from ?src=tiktok etc.
+    invited = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+ 
+    class Meta:
+        ordering = ["created_at"]
+ 
+    def __str__(self):
+        return self.contact

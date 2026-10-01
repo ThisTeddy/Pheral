@@ -1,275 +1,192 @@
 {% extends "base.html" %}
+{% load l10n %}
 
 {% block title %}Airtime · Pheral{% endblock %}
-{% block page_title %}Airtime{% endblock %}
+{% block page_title %}Buy airtime{% endblock %}
 
 {% block extra_head %}
-<style>
-    [x-cloak] { display: none !important; }
-
-    .network-card {
-        transition:
-            border-color .18s ease,
-            background-color .18s ease,
-            transform .18s ease;
-    }
-
-    .network-card:active {
-        transform: scale(.98);
-    }
-</style>
+<style>[x-cloak] { display: none !important; }</style>
 {% endblock %}
 
 {% block content %}
+
 <div
-    class="mx-auto max-w-lg px-4 pb-28 pt-4 md:pt-6"
+    class="mx-auto max-w-lg px-4 py-3 lg:max-w-5xl lg:px-7 lg:py-6"
     x-data="{
         network: '',
-        phone: '{{ request.user.phone_number|default:''|escapejs }}',
+        phone: '',
         amount: '',
-        amounts: ['100', '200', '500', '1000'],
-        get ready() {
-            return this.network && this.phone && this.amount;
-        }
+        submitting: false,
+        symbol: '{{ currency.symbol|escapejs }}',
+        balance: {% if wallet %}{{ wallet.balance|unlocalize }}{% else %}0{% endif %},
+        quick: [100, 200, 500, 1000, 2000],
+
+        networks: [
+            {% for n in networks %}
+            { id: '{{ n.pk }}', name: '{{ n.name|escapejs }}', logo: '{% if n.logo %}{{ n.logo.url|escapejs }}{% endif %}' }{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ],
+
+        get phoneClean() {
+            return this.phone.replace(/[^0-9+]/g, '');
+        },
+        get phoneOk() {
+            const p = this.phoneClean;
+            return /^0\d{10}$/.test(p) || /^\+234\d{10}$/.test(p) || /^234\d{10}$/.test(p);
+        },
+        get amountNum() {
+            const n = parseFloat(this.amount);
+            return isNaN(n) ? 0 : n;
+        },
+        get over() {
+            return this.amountNum > this.balance;
+        },
+        get canSubmit() {
+            return !!this.network && this.phoneOk && this.amountNum > 0 && !this.over && !this.submitting;
+        },
+        get selectedName() {
+            const n = this.networks.find(n => n.id === this.network);
+            return n ? n.name : '';
+        },
+
+        money(value) {
+            return this.symbol + Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        },
     }"
+    x-init="$nextTick(() => { if (window.lucide) lucide.createIcons(); })"
+    @pageshow.window="submitting = false"
 >
 
-    <!-- HEADER -->
-    <div class="mb-6 flex items-center gap-3">
-        <a
-            href="{% url 'wallet' %}"
-            class="flex h-9 w-9 items-center justify-center rounded-full bg-surface text-ink"
-        >
-            <i data-lucide="arrow-left" class="h-4 w-4"></i>
-        </a>
+    <h1 class="mb-3 text-lg font-bold tracking-tight text-ink lg:hidden">Buy airtime</h1>
 
-        <div>
-            <h1 class="text-[18px] font-bold tracking-tight text-ink">
-                Buy airtime
-            </h1>
-            <p class="text-[10px] text-muted">
-                Recharge any Nigerian number
-            </p>
-        </div>
-    </div>
-
-    <!-- WALLET BALANCE -->
-    {% if wallet %}
-    <div class="mb-6 flex items-center justify-between rounded-2xl bg-ink px-4 py-3.5 text-white">
-        <div class="flex items-center gap-2.5">
-            <span class="flex h-8 w-8 items-center justify-center rounded-full bg-white/10">
-                <i data-lucide="wallet" class="h-4 w-4"></i>
-            </span>
-
-            <div>
-                <p class="text-[9px] uppercase tracking-[0.12em] text-white/50">
-                    Wallet balance
-                </p>
-                <p class="mt-0.5 text-[13px] font-semibold">
-                    {{ currency.symbol }}{{ wallet.balance|floatformat:2 }}
-                </p>
-            </div>
-        </div>
-
-        <a
-            href="{% url 'top_up' %}"
-            class="rounded-full bg-white/10 px-3 py-1.5 text-[10px] font-semibold text-white transition hover:bg-white/15"
-        >
-            Add money
-        </a>
+    {% if messages %}
+    <div class="mb-3 space-y-2">
+        {% for message in messages %}
+        <p class="rounded-xl px-3.5 py-2.5 text-[11px] {% if message.tags == 'error' %}bg-red-50 text-red-700{% elif message.tags == 'success' %}bg-emerald-50 text-emerald-700{% else %}bg-amber-50 text-amber-700{% endif %}">{{ message }}</p>
+        {% endfor %}
     </div>
     {% endif %}
 
-    <form
-        method="post"
-        action="{% url 'airtime_purchase' %}"
-        class="space-y-6"
-    >
-        {% csrf_token %}
+    {% if not currency %}
+    <div class="rounded-2xl border border-line bg-surface p-5 text-center text-[12px] text-muted">
+        Airtime isn't available right now. Please try again later.
+    </div>
+    {% else %}
 
-        <!-- NETWORK -->
-        <section>
-            <div class="mb-2.5 flex items-end justify-between">
-                <div>
-                    <p class="text-[12px] font-bold text-ink">
-                        Select network
-                    </p>
-                    <p class="mt-0.5 text-[10px] text-muted">
-                        Which network are you recharging?
-                    </p>
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1.3fr_1fr]">
+
+        <!-- ============================================================
+             LEFT — network, number, amount
+        ============================================================= -->
+        <form method="post" @submit="submitting = true">
+            {% csrf_token %}
+            <input type="hidden" name="network" :value="network">
+
+            <!-- Network -->
+            <div>
+                <label class="mb-1.5 block text-[11px] font-medium text-ink">Network</label>
+                {% if networks %}
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <template x-for="n in networks" :key="n.id">
+                        <button type="button" @click="network = n.id"
+                                class="focus-ring flex flex-col items-center gap-1.5 rounded-2xl border bg-white px-2 py-3 transition"
+                                :class="network === n.id ? 'border-accent-500 bg-surface shadow-card' : 'border-line hover:bg-surface'">
+                            <template x-if="n.logo">
+                                <img :src="n.logo" :alt="n.name" class="h-8 w-8 rounded-full object-cover">
+                            </template>
+                            <template x-if="!n.logo">
+                                <span class="flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-bold"
+                                      :class="network === n.id ? 'bg-accent-500 text-white' : 'bg-surface text-muted'"
+                                      x-text="n.name.slice(0, 2).toUpperCase()"></span>
+                            </template>
+                            <span class="text-[11px] font-semibold text-ink" x-text="n.name"></span>
+                        </button>
+                    </template>
                 </div>
-            </div>
-
-            <div class="grid grid-cols-2 gap-2.5">
-                {% for net in networks %}
-                <label class="cursor-pointer">
-                    <input
-                        type="radio"
-                        name="network"
-                        value="{{ net.id }}"
-                        x-model="network"
-                        class="peer hidden"
-                        required
-                    >
-
-                    <div
-                        class="network-card rounded-2xl border border-line bg-white p-3.5 peer-checked:border-accent-400 peer-checked:bg-accent-50"
-                    >
-                        <div class="flex items-center gap-3">
-                            {% if net.logo %}
-                                <img
-                                    src="{{ net.logo.url }}"
-                                    alt="{{ net.name }}"
-                                    class="h-10 w-10 rounded-xl object-cover"
-                                >
-                            {% else %}
-                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-50 text-sm font-bold text-accent-600">
-                                    {{ net.name|first }}
-                                </div>
-                            {% endif %}
-
-                            <div class="min-w-0 flex-1">
-                                <p class="truncate text-[12px] font-bold text-ink">
-                                    {{ net.name }}
-                                </p>
-                                <p class="mt-0.5 text-[9px] text-muted">
-                                    Mobile airtime
-                                </p>
-                            </div>
-
-                            <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-line peer-checked:border-accent-500 peer-checked:bg-accent-500">
-                                <i
-                                    data-lucide="check"
-                                    class="h-3 w-3 text-white opacity-0 peer-checked:opacity-100"
-                                ></i>
-                            </span>
-                        </div>
-                    </div>
-                </label>
-                {% endfor %}
-            </div>
-        </section>
-
-        <!-- PHONE -->
-        <section>
-            <div class="mb-2.5">
-                <p class="text-[12px] font-bold text-ink">
-                    Phone number
-                </p>
-                <p class="mt-0.5 text-[10px] text-muted">
-                    Enter the number you want to recharge
-                </p>
-            </div>
-
-            <div class="flex items-center gap-2 rounded-2xl border border-line bg-white px-4 py-3.5 focus-within:border-accent-400 focus-within:ring-2 focus-within:ring-accent-100">
-                <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface">
-                    <i data-lucide="smartphone" class="h-4 w-4 text-muted"></i>
-                </div>
-
-                <input
-                    type="tel"
-                    name="phone_number"
-                    x-model="phone"
-                    required
-                    inputmode="tel"
-                    autocomplete="tel"
-                    placeholder="08012345678"
-                    class="min-w-0 flex-1 bg-transparent text-[14px] font-semibold text-ink placeholder:text-muted focus:outline-none"
-                >
-
-                {% if request.user.phone_number %}
-                <button
-                    type="button"
-                    @click="phone = '{{ request.user.phone_number|escapejs }}'"
-                    class="shrink-0 rounded-full bg-accent-50 px-2.5 py-1.5 text-[9px] font-bold text-accent-600"
-                >
-                    Mine
-                </button>
+                {% else %}
+                <p class="rounded-xl bg-surface px-3.5 py-2.5 text-[11px] text-muted">No networks are available right now.</p>
                 {% endif %}
             </div>
-        </section>
 
-        <!-- AMOUNT -->
-        <section>
-            <div class="mb-2.5">
-                <p class="text-[12px] font-bold text-ink">
-                    Amount
-                </p>
-                <p class="mt-0.5 text-[10px] text-muted">
-                    How much airtime do you want to buy?
-                </p>
+            <!-- Phone -->
+            <div class="mt-4">
+                <label class="mb-1.5 block text-[11px] font-medium text-ink">Phone number</label>
+                <div class="focus-within:border-accent-400 flex items-center gap-2 rounded-2xl border border-line bg-white px-4 py-3 transition">
+                    <input type="tel" name="phone_number" x-model="phone" inputmode="tel" autocomplete="tel"
+                           placeholder="08012345678"
+                           class="w-full bg-transparent text-[15px] font-semibold text-ink placeholder-muted focus:outline-none">
+                </div>
+                <p x-show="phone && !phoneOk" x-cloak class="mt-1.5 text-[11px] text-red-600">Enter a valid Nigerian number, like 08012345678.</p>
+                <p class="mt-1.5 text-[10px] text-muted">Airtime is for Nigerian numbers only. Pick the network the number is on today.</p>
             </div>
 
-            <div class="rounded-2xl border border-line bg-white p-4 focus-within:border-accent-400 focus-within:ring-2 focus-within:ring-accent-100">
-                <div class="flex items-center gap-2">
-                    <span class="text-xl font-bold text-muted">
-                        {{ currency.symbol }}
-                    </span>
+            <!-- Amount -->
+            <div class="mt-4">
+                <label class="mb-1.5 block text-[11px] font-medium text-ink">Amount</label>
+                <div class="focus-within:border-accent-400 flex items-center gap-2 rounded-2xl border border-line bg-white px-4 py-3 transition">
+                    <span class="text-lg font-semibold text-muted" x-text="symbol"></span>
+                    <input type="number" name="amount" x-model="amount" step="0.01" min="1" placeholder="0.00"
+                           class="w-full bg-transparent text-lg font-semibold text-ink placeholder-muted focus:outline-none">
+                </div>
+                <p x-show="over" x-cloak class="mt-1.5 text-[11px] text-red-600">That is more than your wallet balance.</p>
+            </div>
 
-                    <input
-                        type="number"
-                        name="amount"
-                        x-model="amount"
-                        min="50"
-                        step="0.01"
-                        inputmode="decimal"
-                        required
-                        placeholder="0"
-                        class="w-full bg-transparent text-[28px] font-extrabold tracking-tight text-ink placeholder:text-line focus:outline-none"
-                    >
+            <!-- Quick amounts -->
+            <div class="mt-4 flex flex-wrap gap-2">
+                <template x-for="v in quick" :key="v">
+                    <button type="button" @click="amount = v.toString()"
+                            class="focus-ring rounded-full border border-line px-3.5 py-1.5 text-[12px] font-medium text-ink transition hover:bg-surface">
+                        <span x-text="symbol"></span><span x-text="v.toLocaleString()"></span>
+                    </button>
+                </template>
+            </div>
+
+            <!-- Summary -->
+            <div x-show="amountNum > 0 && !over" x-cloak class="mt-5 rounded-2xl border border-line bg-white p-4">
+                <div class="flex items-center justify-between">
+                    <span class="text-[12px] text-muted">You pay</span>
+                    <span class="text-[13px] font-semibold text-ink" x-text="money(amountNum)"></span>
+                </div>
+                <div class="mt-2 flex items-center justify-between border-t border-line pt-2">
+                    <span class="text-[11px] text-muted">Balance after</span>
+                    <span class="text-[11px] font-medium text-ink" x-text="money(balance - amountNum)"></span>
                 </div>
             </div>
 
-            <div class="mt-2.5 flex gap-2 overflow-x-auto pb-1">
-                <template x-for="value in amounts" :key="value">
-                    <button
-                        type="button"
-                        @click="amount = value"
-                        class="shrink-0 rounded-full border border-line bg-white px-4 py-2 text-[10px] font-semibold text-ink transition hover:border-accent-300 hover:bg-accent-50"
-                        x-text="'{{ currency.symbol }}' + Number(value).toLocaleString()"
-                    ></button>
-                </template>
-            </div>
-        </section>
+            <button type="submit" :disabled="!canSubmit"
+                    class="focus-ring mt-5 flex w-full items-center justify-center gap-1.5 rounded-full bg-accent-500 py-3.5 text-[13px] font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
+                <span x-text="submitting ? 'Please wait…' : (selectedName ? 'Buy ' + selectedName + ' airtime' : 'Buy airtime')"></span>
+            </button>
 
-        <!-- SUMMARY -->
-        <div
-            x-show="ready"
-            x-cloak
-            class="rounded-2xl bg-surface p-4"
-        >
-            <div class="flex items-center justify-between">
-                <span class="text-[10px] text-muted">You'll purchase</span>
+            <p class="mt-3 flex items-center justify-center gap-1.5 text-center text-[10px] text-muted">
+                <i data-lucide="shield-check" class="h-3.5 w-3.5"></i>
+                Paid from your wallet. A failed purchase is refunded automatically.
+            </p>
+        </form>
 
-                <span
-                    class="text-[11px] font-semibold text-ink"
-                    x-text="phone"
-                ></span>
+        <!-- ============================================================
+             RIGHT — balance + notes
+        ============================================================= -->
+        <div class="space-y-4">
+
+            <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-accent-600 via-accent-500 to-accent-400 p-5 text-white shadow-card">
+                <div class="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10"></div>
+                <p class="relative text-[10px] font-medium uppercase tracking-wide text-white/80">Wallet balance</p>
+                <p class="relative mt-1.5 text-[28px] font-extrabold tracking-tight" x-text="money(balance)"></p>
             </div>
 
-            <div class="mt-3 flex items-end justify-between">
-                <span class="text-[10px] text-muted">Total</span>
-
-                <span
-                    class="text-xl font-extrabold tracking-tight text-ink"
-                    x-text="'{{ currency.symbol }}' + Number(amount || 0).toLocaleString(undefined, {minimumFractionDigits: 2})"
-                ></span>
+            <div class="rounded-2xl border border-line bg-surface p-4">
+                <p class="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold text-ink">
+                    <i data-lucide="info" class="h-3.5 w-3.5 text-accent-500"></i> Good to know
+                </p>
+                <p class="text-[11px] leading-5 text-muted">
+                    Airtime usually arrives within seconds. If it takes longer, your balance is held while we
+                    confirm with the network, so check your transactions before buying again. If the purchase
+                    fails, the money goes back to your wallet.
+                </p>
             </div>
         </div>
-
-        <!-- SUBMIT -->
-        <button
-            type="submit"
-            :disabled="!ready"
-            class="flex w-full items-center justify-center gap-2 rounded-full bg-accent-500 py-4 text-[12px] font-bold text-white shadow-sm transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-            <i data-lucide="smartphone" class="h-4 w-4"></i>
-            Buy airtime
-        </button>
-
-        <p class="text-center text-[9px] leading-4 text-muted">
-            Airtime will be delivered directly to the number you entered.
-        </p>
-    </form>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

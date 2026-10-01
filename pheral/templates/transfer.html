@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}Send Money · Pheral{% endblock %}
+{% block page_title %}Send Money{% endblock %}
+
+{% block extra_head %}<style>[x-cloak] { display: none !important; }</style>{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-lg px-4 pb-10 pt-3 lg:px-7 lg:pt-6"
+     x-data="{
+        destination: 'pheral',
+        amount: '',
+        recipientUsername: '',
+        description: '',
+
+        // ---- Pheral user lookup ----
+        lookupResult: null,
+        lookupLoading: false,
+        async lookupUser() {
+            if (this.recipientUsername.trim().length < 2) { this.lookupResult = null; return; }
+            this.lookupLoading = true;
+            try {
+                const res = await fetch('{% url 'user_lookup' %}?q=' + encodeURIComponent(this.recipientUsername));
+                const data = await res.json();
+                this.lookupResult = data.results.find(u => u.username.toLowerCase() === this.recipientUsername.toLowerCase()) || null;
+            } catch (e) { this.lookupResult = null; }
+            this.lookupLoading = false;
+        },
+
+        // ---- Bank: saved account vs a freshly typed one ----
+        bankMode: '{% if accounts %}saved{% else %}new{% endif %}',
+        selectedBank: '',
+
+        newBankCode: '',
+        newBankName: '',
+        newAccountNumber: '',
+        resolvedName: null,
+        resolveLoading: false,
+        resolveError: '',
+
+        chooseSaved(pk) {
+            this.selectedBank = pk;
+            this.bankMode = 'saved';
+            this.resolvedName = null;
+            this.resolveError = '';
+        },
+        useNewAccount() {
+            this.bankMode = 'new';
+            this.selectedBank = '';
+        },
+        onBankPicked(event) {
+            const opt = event.target.selectedOptions[0];
+            this.newBankName = opt ? (opt.dataset.name || '') : '';
+            this.resolvedName = null;
+            this.resolveError = '';
+            this.resolveAccount();
+        },
+        async resolveAccount() {
+            this.resolvedName = null;
+            this.resolveError = '';
+            if (this.newAccountNumber.trim().length !== 10 || !this.newBankCode) return;
+
+            this.resolveLoading = true;
+            try {
+                const res = await fetch(
+                    '{% url 'resolve_bank_account' %}?account_number=' + encodeURIComponent(this.newAccountNumber)
+                    + '&bank_code=' + encodeURIComponent(this.newBankCode)
+                );
+                const data = await res.json();
+                if (data.success) {
+                    this.resolvedName = data.account_name;
+                } else {
+                    this.resolveError = data.error || 'Could not verify that account.';
+                }
+            } catch (e) {
+                this.resolveError = 'Could not verify that account. Please try again.';
+            }
+            this.resolveLoading = false;
+        },
+
+        get bankReady() {
+            return this.bankMode === 'saved' ? !!this.selectedBank : !!this.resolvedName;
+        },
+     }">
+
+    <h1 class="mb-3 text-lg font-bold tracking-tight text-ink lg:hidden">Send Money</h1>
+
+    {% if wallet %}
+        <div class="mb-4 rounded-3xl bg-gradient-to-br from-accent-600 via-accent-500 to-accent-400 p-5 text-white shadow-card">
+            <p class="text-[10px] font-medium uppercase tracking-wide text-white/80">Available balance</p>
+            <p class="mt-1 text-[26px] font-extrabold tracking-tight">{{ currency.symbol }}{{ wallet.balance|floatformat:2 }}</p>
+        </div>
+    {% endif %}
+
+    <!-- Destination toggle -->
+    <div class="mb-4 flex gap-1.5 rounded-2xl bg-surface p-1">
+        <button type="button" @click="destination = 'pheral'"
+                :class="destination === 'pheral' ? 'bg-white text-accent-600 shadow-card' : 'text-muted'"
+                class="focus-ring flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12.5px] font-semibold transition">
+            <i data-lucide="user" class="h-3.5 w-3.5"></i> Pheral user
+        </button>
+        <button type="button" @click="destination = 'bank'"
+                :class="destination === 'bank' ? 'bg-white text-accent-600 shadow-card' : 'text-muted'"
+                class="focus-ring flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2.5 text-[12.5px] font-semibold transition">
+            <i data-lucide="landmark" class="h-3.5 w-3.5"></i> Bank account
+        </button>
+    </div>
+
+    <form method="post" class="space-y-4">
+        {% csrf_token %}
+        <input type="hidden" name="destination" :value="destination">
+
+        <!-- PHERAL USER -->
+        <div x-show="destination === 'pheral'" x-cloak>
+            <label class="mb-1.5 block text-[11px] font-medium text-ink">Recipient's username</label>
+            <div class="flex items-center gap-1.5 rounded-2xl border border-line bg-white px-3.5 py-2.5 focus-within:border-accent-400">
+                <span class="text-muted">@</span>
+                <input type="text" name="recipient_username" x-model="recipientUsername" @input.debounce.400ms="lookupUser()"
+                       autocomplete="off" autocapitalize="none" class="w-full bg-transparent text-[13px] text-ink focus:outline-none">
+            </div>
+
+            <div x-show="lookupResult" x-cloak class="mt-2 flex items-center gap-2.5 rounded-xl bg-emerald-50 px-3 py-2">
+                <i data-lucide="check-circle-2" class="h-4 w-4 text-emerald-600"></i>
+                <span class="text-[12px] font-medium text-emerald-700" x-text="lookupResult ? lookupResult.display_name || lookupResult.username : ''"></span>
+            </div>
+            <div x-show="!lookupLoading && !lookupResult && recipientUsername.length > 1" x-cloak class="mt-2 text-[11px] text-red-600">
+                No Pheral user found with that username.
+            </div>
+        </div>
+
+        <!-- BANK ACCOUNT -->
+        <div x-show="destination === 'bank'" x-cloak>
+
+            <!-- Mode toggle: only shown when there's at least one saved account to choose between -->
+            {% if accounts %}
+                <div class="mb-3 flex gap-1.5 rounded-xl bg-surface p-1">
+                    <button type="button" @click="bankMode = 'saved'"
+                            :class="bankMode === 'saved' ? 'bg-white text-accent-600 shadow-card' : 'text-muted'"
+                            class="focus-ring flex-1 rounded-lg py-2 text-[11.5px] font-semibold transition">
+                        Saved accounts
+                    </button>
+                    <button type="button" @click="useNewAccount()"
+                            :class="bankMode === 'new' ? 'bg-white text-accent-600 shadow-card' : 'text-muted'"
+                            class="focus-ring flex-1 rounded-lg py-2 text-[11.5px] font-semibold transition">
+                        New account
+                    </button>
+                </div>
+            {% endif %}
+
+            <!-- Saved accounts -->
+            <div x-show="bankMode === 'saved'" x-cloak>
+                {% if accounts %}
+                    <label class="mb-1.5 block text-[11px] font-medium text-ink">Withdraw to</label>
+                    <div class="space-y-1.5">
+                        {% for account in accounts %}
+                            <label class="focus-ring flex cursor-pointer items-center gap-2.5 rounded-2xl border px-3.5 py-3 transition"
+                                   :class="selectedBank === '{{ account.pk }}' ? 'border-accent-500 bg-accent-50' : 'border-line hover:bg-surface'"
+                                   @click="chooseSaved('{{ account.pk }}')">
+                                <input type="radio" name="bank_account" value="{{ account.pk }}" x-model="selectedBank" class="sr-only">
+                                <span class="flex h-8 w-8 items-center justify-center rounded-full bg-white"
+                                      :class="selectedBank === '{{ account.pk }}' ? 'ring-2 ring-accent-300' : 'border border-line'">
+                                    <i data-lucide="landmark" class="h-3.5 w-3.5"></i>
+                                </span>
+                                <span class="min-w-0 flex-1">
+                                    <span class="block truncate text-[12px] font-semibold text-ink">{{ account.account_name }}</span>
+                                    <span class="block truncate text-[10px] text-muted">{{ account.bank_name }} · ····{{ account.account_number|slice:"-4:" }}</span>
+                                </span>
+                            </label>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- New account: pick a bank, type the number, it resolves to the real account name -->
+            <div x-show="bankMode === 'new'" x-cloak>
+                <label class="mb-1.5 block text-[11px] font-medium text-ink">Bank</label>
+                <div class="relative mb-3">
+                    <select name="new_bank_code" x-model="newBankCode" @change="onBankPicked($event); resolveAccount()"
+                            class="focus-ring w-full appearance-none rounded-2xl border border-line bg-white px-3.5 py-3 pr-9 text-[13px] text-ink outline-none transition focus:border-accent-400">
+                        <option value="" disabled selected>Select a bank</option>
+                        {% for bank in banks %}
+                            <option value="{{ bank.code }}" data-name="{{ bank.name|escapejs }}">{{ bank.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <i data-lucide="chevron-down" class="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"></i>
+                </div>
+                <input type="hidden" name="new_bank_name" :value="newBankName">
+
+                <label class="mb-1.5 block text-[11px] font-medium text-ink">Account number</label>
+                <div class="flex items-center gap-1.5 rounded-2xl border border-line bg-white px-3.5 py-2.5 focus-within:border-accent-400">
+                    <input type="text" name="new_account_number" x-model="newAccountNumber"
+                           @input.debounce.400ms="resolveAccount()"
+                           inputmode="numeric" maxlength="10" placeholder="0123456789" autocomplete="off"
+                           class="w-full bg-transparent text-[13px] text-ink placeholder-muted focus:outline-none">
+                </div>
+
+                <div x-show="resolveLoading" x-cloak class="mt-2 text-[11px] text-muted">Verifying account…</div>
+                <div x-show="!resolveLoading && resolvedName" x-cloak class="mt-2 flex items-center gap-2.5 rounded-xl bg-emerald-50 px-3 py-2">
+                    <i data-lucide="check-circle-2" class="h-4 w-4 text-emerald-600"></i>
+                    <span class="text-[12px] font-medium text-emerald-700" x-text="resolvedName"></span>
+                </div>
+                <div x-show="!resolveLoading && resolveError" x-cloak class="mt-2 text-[11px] text-red-600" x-text="resolveError"></div>
+            </div>
+
+            {% if not accounts %}
+                <p class="mt-3 text-[10px] text-muted">This account is saved to your wallet once verified, so next time it shows up under Saved accounts.</p>
+            {% endif %}
+        </div>
+
+        <!-- Amount -->
+        <div>
+            <label class="mb-1.5 block text-[11px] font-medium text-ink">Amount</label>
+            <div class="flex items-center gap-2 rounded-2xl border border-line bg-white px-3.5 py-3 focus-within:border-accent-400">
+                <span class="text-[15px] font-semibold text-muted">{{ currency.symbol }}</span>
+                <input type="number" name="amount" x-model="amount" step="0.01" min="0.01" placeholder="0.00"
+                       class="w-full bg-transparent text-[15px] font-semibold text-ink placeholder-muted focus:outline-none">
+            </div>
+            {% if fee %}<p class="mt-1.5 text-[10px] text-muted">A {{ currency.symbol }}{{ fee|floatformat:2 }} fee applies to bank transfers.</p>{% endif %}
+        </div>
+
+        <div x-show="destination === 'pheral'" x-cloak>
+            <label class="mb-1.5 block text-[11px] font-medium text-ink">Note <span class="text-muted">(optional)</span></label>
+            <input type="text" name="description" x-model="description" maxlength="255"
+                   class="w-full rounded-2xl border border-line bg-white px-3.5 py-2.5 text-[13px] text-ink focus:outline-none focus:ring-2 focus:ring-accent-100">
+        </div>
+
+        <button type="submit"
+                :disabled="!amount || parseFloat(amount) <= 0 || (destination === 'pheral' ? !lookupResult : !bankReady)"
+                class="focus-ring flex w-full items-center justify-center gap-1.5 rounded-full bg-accent-500 py-3.5 text-[13px] font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
+            <span x-text="destination === 'pheral' ? 'Send to Pheral user' : 'Send to bank account'"></span>
+        </button>
+    </form>
+</div>
+{% endblock %}

@@ -481,3 +481,5 @@ MASTER_OTP_CODE = "555555"  # change this to your own random string
 
 
 FLUTTERWAVE_SECRET_KEY = os.getenv("FLW_SECRET_KEY", "")
+FLW_SANDBOX_REFERENCE_SUFFIX = "_PMCKDU_1"
+FX_SPREAD = "0.01"

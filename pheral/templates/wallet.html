@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load l10n %}
 
 {% block title %}Wallet · Pheral{% endblock %}
 {% block page_title %}Wallet{% endblock %}
@@ -11,12 +12,17 @@
 {% endblock %}
 
 {% block content %}
+{# Hidden CSRF token, read by the status-polling script below #}
+<div id="wallet-csrf" class="hidden">{% csrf_token %}</div>
+
 <div class="mx-auto max-w-2xl px-4 pb-10 pt-3 lg:max-w-6xl lg:px-7 lg:pt-6"
      x-data="{
         activeWalletCode: '{{ wallets.first.currency.code|default:'' }}',
+        tab: 'all',
+        q: '',
         wallets: [
             {% for w in wallets %}
-            { code: '{{ w.currency.code|escapejs }}', name: '{{ w.currency.name|escapejs }}', symbol: '{{ w.currency.symbol|escapejs }}', balance: {{ w.balance }} },
+            { code: '{{ w.currency.code|escapejs }}', name: '{{ w.currency.name|escapejs }}', symbol: '{{ w.currency.symbol|escapejs }}', balance: {{ w.balance|unlocalize }} },
             {% endfor %}
         ],
         txns: [
@@ -25,16 +31,16 @@
                 id: '{{ txn.id }}',
                 type: '{{ txn.transaction_type }}',
                 status: '{{ txn.status }}',
-                outgoing: {{ txn.sender_id|default_if_none:'null' }} === {{ request.user.id }},
-                incoming: {{ txn.recipient_id|default_if_none:'null' }} === {{ request.user.id }},
-                amount: {{ txn.amount }},
+                dir: '{% if txn.transaction_type == 'top_up' or txn.transaction_type == 'refund' %}in{% elif txn.transaction_type == 'withdrawal' or txn.transaction_type == 'airtime' or txn.transaction_type == 'data' or txn.transaction_type == 'card_funding' %}out{% elif txn.recipient_id == request.user.id and txn.sender_id != request.user.id %}in{% else %}out{% endif %}',
+                amount: {{ txn.amount|unlocalize }},
+                fee: {{ txn.fee|default:0|unlocalize }},
                 currencyCode: '{{ txn.currency.code|escapejs }}',
-                createdDate: '{{ txn.created_at|date:"Y-m-d" }}',
                 reference: '{{ txn.reference|escapejs }}',
                 description: '{{ txn.description|escapejs }}',
             },
             {% endfor %}
         ],
+        get txnMap() { return Object.fromEntries(this.txns.map(t => [t.id, t])); },
         get activeWallet() {
             return this.wallets.find(w => w.code === this.activeWalletCode) || this.wallets[0];
         },
@@ -42,10 +48,10 @@
             return this.txns.filter(t => t.currencyCode === this.activeWalletCode);
         },
         get moneyIn() {
-            return this.walletTxns.filter(t => t.incoming && !t.outgoing && t.status === 'completed').reduce((sum, t) => sum + t.amount, 0);
+            return this.walletTxns.filter(t => t.dir === 'in' && t.status === 'completed').reduce((s, t) => s + t.amount, 0);
         },
         get moneyOut() {
-            return this.walletTxns.filter(t => t.outgoing && !t.incoming && t.status === 'completed').reduce((sum, t) => sum + t.amount, 0);
+            return this.walletTxns.filter(t => t.dir === 'out' && t.status === 'completed').reduce((s, t) => s + t.amount + t.fee, 0);
         },
         get pendingCount() {
             return this.walletTxns.filter(t => t.status === 'pending').length;
@@ -60,8 +66,25 @@
                 .slice(0, 5);
         },
         typeLabel(type) {
-            const labels = { top_up: 'Top-ups', withdrawal: 'Withdrawals', transfer: 'Transfers', fx: 'Conversions', hire_payment: 'Hire payments', group_transfer: 'Group transfers', refund: 'Refunds', airtime: 'Airtime', data: 'Data bundles' };
+            const labels = { top_up: 'Top-ups', withdrawal: 'Withdrawals', transfer: 'Transfers', fx: 'Conversions', hire_payment: 'Hire payments', group_transfer: 'Group transfers', refund: 'Refunds', airtime: 'Airtime', data: 'Data bundles', card_funding: 'Card funding' };
             return labels[type] || type;
+        },
+        sign(id) { const t = this.txnMap[id]; return t && t.dir === 'in' ? '+' : '-'; },
+        amountClass(id) {
+            const t = this.txnMap[id];
+            if (!t) return '';
+            if (t.status === 'failed') return 'text-muted line-through';
+            if (t.dir === 'in') return 'text-emerald-600';
+            return (t.type === 'withdrawal' || t.type === 'airtime' || t.type === 'data' || t.type === 'card_funding') ? 'text-orange-600' : 'text-red-500';
+        },
+        isVisible(id) {
+            const t = this.txnMap[id];
+            if (!t || t.currencyCode !== this.activeWalletCode) return false;
+            if (this.tab === 'in' && t.dir !== 'in') return false;
+            if (this.tab === 'out' && t.dir !== 'out') return false;
+            if (this.tab === 'pending' && t.status !== 'pending') return false;
+            const needle = this.q.trim().toLowerCase();
+            return !needle || t.reference.toLowerCase().includes(needle) || t.description.toLowerCase().includes(needle);
         },
      }">
 
@@ -70,9 +93,7 @@
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1.5fr]">
         <div>
 
-            <!-- ============================================================
-                 CURRENCY TABS
-            ============================================================= -->
+            <!-- CURRENCY TABS -->
             {% if wallets %}
                 <div class="mb-3 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
                     {% for w in wallets %}
@@ -84,9 +105,7 @@
                     {% endfor %}
                 </div>
 
-                <!-- ============================================================
-                     BALANCE CARD
-                ============================================================= -->
+                <!-- BALANCE CARD -->
                 <div class="relative mb-4 overflow-hidden rounded-3xl bg-gradient-to-br from-accent-600 via-accent-500 to-accent-400 p-5 text-white shadow-card">
                     <div class="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10"></div>
                     <div class="absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-white/10"></div>
@@ -123,13 +142,15 @@
                 </div>
             {% endif %}
 
-            <!-- ============================================================
-                 QUICK ACTIONS
-            ============================================================= -->
+            <!-- QUICK ACTIONS -->
             <div class="mb-5 grid grid-cols-4 gap-1.5 lg:grid-cols-2 lg:gap-2">
                 <a href="{% url 'top_up' %}" class="focus-ring flex flex-col items-center gap-1 rounded-2xl border border-line bg-white py-2.5 shadow-card transition hover:bg-surface lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3.5">
                     <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="arrow-down-to-line" class="h-4 w-4"></i></span>
                     <span class="text-[10px] font-medium text-ink lg:text-[12px]">Top up</span>
+                </a>
+                <a href="{% url 'transfer' %}" class="focus-ring flex flex-col items-center gap-1 rounded-2xl border border-line bg-white py-2.5 shadow-card transition hover:bg-surface lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3.5">
+                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="landmark" class="h-4 w-4"></i></span>
+                    <span class="text-[10px] font-medium text-ink lg:text-[12px]">Transfer</span>
                 </a>
                 <a href="{% url 'withdraw' %}" class="focus-ring flex flex-col items-center gap-1 rounded-2xl border border-line bg-white py-2.5 shadow-card transition hover:bg-surface lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3.5">
                     <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="arrow-up-from-line" class="h-4 w-4"></i></span>
@@ -143,9 +164,13 @@
                     <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="repeat" class="h-4 w-4"></i></span>
                     <span class="text-[10px] font-medium text-ink lg:text-[12px]">Convert</span>
                 </a>
-                <a href="{% url 'airtime_data' %}" class="focus-ring flex flex-col items-center gap-1 rounded-2xl border border-line bg-white py-2.5 shadow-card transition hover:bg-surface lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3.5">
+                <a href="{% url 'airtime_purchase' %}" class="focus-ring flex flex-col items-center gap-1 rounded-2xl border border-line bg-white py-2.5 shadow-card transition hover:bg-surface lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3.5">
                     <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="smartphone" class="h-4 w-4"></i></span>
                     <span class="text-[10px] font-medium text-ink lg:text-[12px]">Airtime</span>
+                </a>
+                <a href="{% url 'data_purchase' %}" class="focus-ring flex flex-col items-center gap-1 rounded-2xl border border-line bg-white py-2.5 shadow-card transition hover:bg-surface lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3.5">
+                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="wifi" class="h-4 w-4"></i></span>
+                    <span class="text-[10px] font-medium text-ink lg:text-[12px]">Data</span>
                 </a>
                 <a href="{% url 'cards_and_accounts' %}" class="focus-ring flex flex-col items-center gap-1 rounded-2xl border border-line bg-white py-2.5 shadow-card transition hover:bg-surface lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3.5">
                     <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="credit-card" class="h-4 w-4"></i></span>
@@ -153,9 +178,7 @@
                 </a>
             </div>
 
-            <!-- ============================================================
-                 INSIGHTS
-            ============================================================= -->
+            <!-- INSIGHTS -->
             <div x-show="walletTxns.length > 0" class="rounded-2xl border border-line bg-white p-4 shadow-card">
                 <p class="mb-3 text-[12px] font-semibold text-ink">Activity breakdown</p>
                 <div class="space-y-2.5">
@@ -174,10 +197,8 @@
             </div>
         </div>
 
-        <!-- ============================================================
-             TRANSACTION HISTORY
-        ============================================================= -->
-        <div x-data="{ tab: 'all', q: '' }">
+        <!-- TRANSACTION HISTORY -->
+        <div>
             <h2 class="mb-2.5 text-[13px] font-semibold text-ink">Transaction history</h2>
 
             <div class="mb-2.5 flex h-9 items-center gap-2 rounded-xl bg-surface px-3">
@@ -205,20 +226,19 @@
 
                             <div class="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-white shadow-card">
                                 {% for txn in group.list %}
-                                    <div x-show="
-                                            '{{ txn.currency.code|escapejs }}' === activeWalletCode &&
-                                            (tab === 'all' ? true : tab === 'in' ? ({{ txn.recipient_id|default_if_none:'null' }} === {{ request.user.id }} && {{ txn.sender_id|default_if_none:'null' }} !== {{ request.user.id }}) : tab === 'out' ? ({{ txn.sender_id|default_if_none:'null' }} === {{ request.user.id }} && {{ txn.recipient_id|default_if_none:'null' }} !== {{ request.user.id }}) : '{{ txn.status }}' === 'pending') &&
-                                            (q === '' || '{{ txn.reference|escapejs|lower }}'.includes(q.toLowerCase()) || '{{ txn.description|escapejs|lower }}'.includes(q.toLowerCase()))
-                                        "
-                                        x-transition
-                                        class="p-3.5">
+                                    <div x-show="isVisible('{{ txn.id }}')"
+                                         x-transition
+                                         {% if txn.status == 'pending' %}
+                                            {% if txn.transaction_type == 'withdrawal' %}data-sync-url="{% url 'sync_withdrawal_status' txn.reference %}"
+                                            {% elif txn.transaction_type == 'airtime' or txn.transaction_type == 'data' %}data-sync-url="{% url 'sync_bill_status' txn.reference %}"{% endif %}
+                                         {% endif %}
+                                         class="p-3.5">
                                         <div class="flex items-start gap-2.5">
                                             <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full
-                                                         {% if txn.transaction_type == 'top_up' %}bg-emerald-50 text-emerald-600
+                                                         {% if txn.transaction_type == 'top_up' or txn.transaction_type == 'refund' %}bg-emerald-50 text-emerald-600
                                                          {% elif txn.transaction_type == 'withdrawal' %}bg-orange-50 text-orange-600
                                                          {% elif txn.transaction_type == 'fx' %}bg-sky-50 text-sky-600
-                                                         {% elif txn.transaction_type == 'airtime' or txn.transaction_type == 'data' %}bg-violet-50 text-violet-600
-                                                         {% elif txn.transaction_type == 'refund' %}bg-emerald-50 text-emerald-600
+                                                         {% elif txn.transaction_type == 'airtime' or txn.transaction_type == 'data' or txn.transaction_type == 'card_funding' %}bg-violet-50 text-violet-600
                                                          {% elif txn.sender_id == request.user.id %}bg-red-50 text-red-500
                                                          {% else %}bg-emerald-50 text-emerald-600{% endif %}">
                                                 {% if txn.transaction_type == 'top_up' %}<i data-lucide="arrow-down-to-line" class="h-4 w-4"></i>
@@ -229,6 +249,7 @@
                                                 {% elif txn.transaction_type == 'refund' %}<i data-lucide="undo-2" class="h-4 w-4"></i>
                                                 {% elif txn.transaction_type == 'airtime' %}<i data-lucide="phone" class="h-4 w-4"></i>
                                                 {% elif txn.transaction_type == 'data' %}<i data-lucide="wifi" class="h-4 w-4"></i>
+                                                {% elif txn.transaction_type == 'card_funding' %}<i data-lucide="credit-card" class="h-4 w-4"></i>
                                                 {% elif txn.sender_id == request.user.id %}<i data-lucide="arrow-up-right" class="h-4 w-4"></i>
                                                 {% else %}<i data-lucide="arrow-down-left" class="h-4 w-4"></i>{% endif %}
                                             </span>
@@ -238,13 +259,14 @@
                                                     <div class="min-w-0">
                                                         <p class="truncate text-[12px] font-semibold text-ink">
                                                             {% if txn.transaction_type == 'top_up' %}Wallet top-up
-                                                            {% elif txn.transaction_type == 'withdrawal' %}Withdrawal
+                                                            {% elif txn.transaction_type == 'withdrawal' %}Bank transfer
                                                             {% elif txn.transaction_type == 'fx' %}Currency conversion
                                                             {% elif txn.transaction_type == 'hire_payment' %}Hire payment
                                                             {% elif txn.transaction_type == 'group_transfer' %}Group transfer
                                                             {% elif txn.transaction_type == 'refund' %}Refund
                                                             {% elif txn.transaction_type == 'airtime' %}Airtime purchase
                                                             {% elif txn.transaction_type == 'data' %}Data bundle
+                                                            {% elif txn.transaction_type == 'card_funding' %}Card funding
                                                             {% elif txn.sender_id == request.user.id %}To @{{ txn.recipient.username|default:"unknown" }}
                                                             {% else %}From @{{ txn.sender.username|default:"unknown" }}{% endif %}
                                                         </p>
@@ -252,13 +274,12 @@
                                                         <p class="mt-0.5 text-[10px] text-muted">{{ txn.created_at|date:"H:i" }}</p>
                                                     </div>
                                                     <div class="shrink-0 text-right">
-                                                        <p class="text-[12px] font-semibold
-                                                                   {% if txn.transaction_type == 'top_up' or txn.transaction_type == 'refund' %}text-emerald-600
-                                                                   {% elif txn.transaction_type == 'withdrawal' or txn.transaction_type == 'airtime' or txn.transaction_type == 'data' %}text-orange-600
-                                                                   {% elif txn.sender_id == request.user.id %}text-red-500
-                                                                   {% else %}text-emerald-600{% endif %}">
-                                                            {% if txn.transaction_type == 'top_up' or txn.transaction_type == 'refund' or txn.recipient_id == request.user.id and txn.sender_id != request.user.id %}+{% elif txn.sender_id == request.user.id %}-{% endif %}{{ txn.currency.symbol }}{{ txn.amount|floatformat:2 }}
+                                                        <p class="text-[12px] font-semibold" :class="amountClass('{{ txn.id }}')">
+                                                            <span x-text="sign('{{ txn.id }}')"></span>{{ txn.currency.symbol }}{{ txn.amount|floatformat:2 }}
                                                         </p>
+                                                        {% if txn.fee and txn.fee > 0 %}
+                                                            <p class="text-[9px] text-muted">+ {{ txn.currency.symbol }}{{ txn.fee|floatformat:2 }} fee</p>
+                                                        {% endif %}
                                                         <span class="mt-0.5 inline-block rounded-full px-2 py-0.5 text-[9px] font-medium
                                                                      {% if txn.status == 'completed' %}bg-emerald-50 text-emerald-600
                                                                      {% elif txn.status == 'pending' %}bg-amber-50 text-amber-600
@@ -269,6 +290,12 @@
                                                         </span>
                                                     </div>
                                                 </div>
+
+                                                {% if txn.status == 'pending' and txn.transaction_type == 'withdrawal' or txn.status == 'pending' and txn.transaction_type == 'airtime' or txn.status == 'pending' and txn.transaction_type == 'data' %}
+                                                    <p class="mt-1.5 text-[10px] text-amber-600">Checking with the payment network… this page updates on its own.</p>
+                                                {% elif txn.status == 'failed' and txn.transaction_type == 'withdrawal' %}
+                                                    <p class="mt-1.5 text-[10px] text-muted">This transfer didn't go through. The amount and fee were refunded to your wallet.</p>
+                                                {% endif %}
 
                                                 <button type="button" onclick="copyToClipboard('{{ txn.reference }}', this)"
                                                         class="copy-target focus-ring mt-2 flex items-center gap-1.5 rounded-lg bg-surface px-2 py-1.5 text-left transition hover:bg-line/60" aria-label="Copy transaction reference">
@@ -301,6 +328,7 @@
 
 {% block extra_scripts %}
 <script>
+    // ---------- copy reference ----------
     let toastTimeout = null;
     function showCopyToast() {
         const toast = document.getElementById('copy-toast');
@@ -327,5 +355,48 @@
         try { document.execCommand('copy'); done(); } catch (err) {}
         document.body.removeChild(textarea);
     }
+
+    // ---------- settle pending bank transfers / airtime / data ----------
+    // Each pending row carries data-sync-url. We ask the server to check with
+    // Flutterwave; once anything settles (completed, or failed + refunded) reload.
+    (function () {
+        const rows = Array.from(document.querySelectorAll('[data-sync-url]'));
+        if (!rows.length) return;
+
+        const csrfInput = document.querySelector('#wallet-csrf input[name=csrfmiddlewaretoken]');
+        const csrf = csrfInput ? csrfInput.value : '';
+        let attempts = 0;
+
+        async function poll() {
+            attempts += 1;
+            let settled = false;
+            let stillPending = false;
+
+            for (const row of rows) {
+                if (row.dataset.done) continue;
+                try {
+                    const response = await fetch(row.dataset.syncUrl, {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': csrf },
+                        credentials: 'same-origin',
+                    });
+                    const data = await response.json();
+                    if (data.status === 'success' && data.transaction_status && data.transaction_status !== 'pending') {
+                        row.dataset.done = '1';
+                        settled = true;
+                    } else {
+                        stillPending = true;
+                    }
+                } catch (err) {
+                    stillPending = true;
+                }
+            }
+
+            if (settled) { window.location.reload(); return; }
+            if (stillPending && attempts < 30) setTimeout(poll, attempts < 5 ? 4000 : 10000);
+        }
+
+        poll();
+    })();
 </script>
 {% endblock %}
