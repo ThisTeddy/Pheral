@@ -29,12 +29,18 @@
     <div class="flex gap-3 overflow-x-auto px-4 pb-3 pt-1 scrollbar-none lg:px-7">
         <a href="{% if my_status %}{% url 'status_detail' status_id=my_status.latest.id %}{% else %}{% url 'create_status' %}{% endif %}"
            class="focus-ring flex shrink-0 flex-col items-center gap-1">
-            <span class="relative">
-                <span class="{% if my_status %}rounded-full p-[2px] ring-2 ring-accent-500{% endif %} block">
-                    {% if request.user.avatar %}
-                        <img src="{{ request.user.avatar.url }}" alt="" class="h-14 w-14 rounded-full object-cover">
+            <span class="relative block h-14 w-14">
+                <span class="block h-14 w-14 overflow-hidden rounded-full {% if my_status %}ring-2 ring-accent-500{% endif %}">
+                    {% if my_status.thumbnail_url %}
+                        <img src="{{ my_status.thumbnail_url }}" alt="" class="h-full w-full object-cover">
+                    {% elif my_status %}
+                        <div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-accent-600 to-accent-400 text-white">
+                            <i data-lucide="message-square-text" class="h-5 w-5"></i>
+                        </div>
+                    {% elif request.user.avatar %}
+                        <img src="{{ request.user.avatar.url }}" alt="" class="h-full w-full object-cover">
                     {% else %}
-                        <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-100 text-lg font-semibold text-accent-700">{{ request.user.username|first|upper }}</div>
+                        <div class="flex h-full w-full items-center justify-center bg-accent-100 text-lg font-semibold text-accent-700">{{ request.user.username|first|upper }}</div>
                     {% endif %}
                 </span>
                 {% if not my_status %}
@@ -45,12 +51,25 @@
         </a>
         {% for entry in story_others %}
             <a href="{% url 'status_detail' status_id=entry.latest.id %}" class="focus-ring flex shrink-0 flex-col items-center gap-1">
-                <span class="block rounded-full p-[2px] ring-2 ring-accent-500">
-                    {% if entry.user.avatar %}
-                        <img src="{{ entry.user.avatar.url }}" alt="" class="h-14 w-14 rounded-full object-cover">
-                    {% else %}
-                        <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-100 text-lg font-semibold text-accent-700">{{ entry.user.username|first|upper }}</div>
-                    {% endif %}
+                <span class="relative block h-14 w-14">
+                    <span class="block h-14 w-14 overflow-hidden rounded-full ring-2 {% if entry.all_viewed %}ring-line{% else %}ring-accent-500{% endif %}">
+                        {% if entry.thumbnail_url %}
+                            <img src="{{ entry.thumbnail_url }}" alt="" class="h-full w-full object-cover">
+                        {% else %}
+                            <div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-accent-600 to-accent-400 text-white">
+                                <i data-lucide="message-square-text" class="h-5 w-5"></i>
+                            </div>
+                        {% endif %}
+                    </span>
+                    <!-- Small avatar badge: with a photo preview filling the circle, this is
+                         what still tells you whose status it is. -->
+                    <span class="absolute -bottom-0.5 -right-0.5 block h-5 w-5 overflow-hidden rounded-full ring-2 ring-white">
+                        {% if entry.user.avatar %}
+                            <img src="{{ entry.user.avatar.url }}" alt="" class="h-full w-full object-cover">
+                        {% else %}
+                            <div class="flex h-full w-full items-center justify-center bg-accent-100 text-[8px] font-semibold text-accent-700">{{ entry.user.username|first|upper }}</div>
+                        {% endif %}
+                    </span>
                 </span>
                 <span class="max-w-[60px] truncate text-[10px] font-medium text-ink">{{ entry.user.first_name|default:entry.user.username }}</span>
             </a>

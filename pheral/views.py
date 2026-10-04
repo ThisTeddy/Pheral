@@ -1112,7 +1112,71 @@ def presence_heartbeat(request):
 
 
 @login_required
+def _status_thumbnail_url(status):
+    """
+    Best-effort preview image for a status's latest post, for the small
+    circle in the chat list's status strip. Images use the media URL as-is.
+    Videos have no separate thumbnail field, so this relies on Cloudinary's
+    own convention of serving an auto-generated frame when the same public
+    ID is requested with a .jpg extension instead of the video's own
+    extension. Text-only statuses have no media and return None — the
+    template falls back to a plain colored swatch for those.
+    """
+    if not status.media or status.status_type == Status.StatusType.TEXT:
+        return None
+
+    if status.status_type == Status.StatusType.IMAGE:
+        return status.media.url
+
+    # VIDEO: swap the extension for Cloudinary's frame-grab convention.
+    url = status.media.url
+    root, dot, ext = url.rpartition(".")
+    return f"{root}.jpg" if dot else None
+
+
 def chat_list(request):
+    # Status strip: your own status plus your contacts' active statuses — not
+    # every user on the platform. A chat list showing strangers' statuses next
+    # to your actual conversations would be both a privacy miss and visual
+    # noise, so this scopes to Contact rows the same way the rest of the chat
+    # UI already does (group member search, etc).
+    now = timezone.now()
+    contact_ids = Contact.objects.filter(owner=request.user).values_list("contact_user_id", flat=True)
+
+    active_statuses = (
+        Status.objects.filter(is_active=True, expires_at__gt=now)
+        .filter(Q(user=request.user) | Q(user_id__in=contact_ids))
+        .select_related("user").order_by("-created_at")
+    )
+
+    viewed_status_ids = set(
+        StatusView.objects.filter(
+            viewer=request.user, status__in=active_statuses,
+        ).values_list("status_id", flat=True)
+    )
+
+    status_groups = {}
+    for item in active_statuses:
+        status_groups.setdefault(item.user_id, []).append(item)
+
+    my_status = None
+    story_others = []
+    for user_id, user_statuses in status_groups.items():
+        entry = {
+            "user": user_statuses[0].user,
+            "latest": user_statuses[0],
+            "statuses": user_statuses,
+            "count": len(user_statuses),
+            "all_viewed": all(s.id in viewed_status_ids for s in user_statuses),
+            "thumbnail_url": _status_thumbnail_url(user_statuses[0]),
+        }
+        if user_id == request.user.id:
+            my_status = entry
+        else:
+            story_others.append(entry)
+
+    story_others.sort(key=lambda entry: entry["latest"].created_at, reverse=True)
+
     conversations = (
         Conversation.objects.filter(participants__user=request.user, is_active=True)
         .prefetch_related(
@@ -1216,6 +1280,8 @@ def chat_list(request):
         "conversations": conversations,
         "chat_items": chat_items,
         "current_user": request.user,
+        "my_status": my_status,
+        "story_others": story_others,
     })
 
 
