@@ -3,137 +3,338 @@
 {% block title %}Contacts · Pheral{% endblock %}
 {% block page_title %}Contacts{% endblock %}
 
-{% block extra_head %}
-<style>[x-cloak] { display: none !important; }</style>
-{% endblock %}
+{% block extra_head %}<style>[x-cloak] { display: none !important; }</style>{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-2xl" x-data="{
-    syncSupported: 'contacts' in navigator && 'ContactsManager' in window,
-    syncing: false,
-    syncResult: null,
-    async syncDeviceContacts() {
-        if (!this.syncSupported) return;
-        this.syncing = true;
-        this.syncResult = null;
-        try {
-            const picked = await navigator.contacts.select(['name', 'tel'], { multiple: true });
-            const payload = picked.map(p => ({
-                name: (p.name && p.name[0]) || '',
-                phone: (p.tel && p.tel[0]) || '',
-            })).filter(c => c.phone);
+<div class="mx-auto w-full max-w-2xl lg:max-w-3xl"
+     x-data="contactsPage()" x-init="init()">
 
-            const csrftoken = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
-            const res = await fetch('{% url 'sync_contacts' %}', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
-                body: JSON.stringify({ contacts: payload }),
-            });
-            const data = await res.json();
-            this.syncResult = data;
-            if (data.success && data.matched_count > 0) {
-                setTimeout(() => window.location.reload(), 1200);
-            }
-        } catch (e) {
-            this.syncResult = { success: false };
-        } finally {
-            this.syncing = false;
-        }
-    },
-    scrollToLetter(letter) {
-        const el = document.getElementById('letter-' + letter);
-        if (el) el.scrollIntoView({ block: 'start' });
-    },
-}">
+    <h1 class="px-4 pt-3 text-lg font-bold tracking-tight text-ink lg:hidden">Contacts</h1>
 
-    <h1 class="px-4 pt-4 text-lg font-bold tracking-tight text-ink md:hidden">Contacts</h1>
+    <div class="px-4 pb-10 pt-3 lg:px-7 lg:pt-6">
 
-    <form method="get" action="{% url 'contacts' %}" class="px-4 pt-3">
-        <div class="flex h-9 items-center gap-2 rounded-xl bg-surface px-3">
+        <!-- ============================================================
+             SEARCH — client-side filter of your own contacts, plus a live
+             AJAX search across every Pheral user (user_lookup), since this
+             page is the app's "find someone new to chat with" entry point.
+        ============================================================= -->
+        <div class="mb-3 flex h-9 items-center gap-2 rounded-xl bg-surface px-3 lg:h-10">
             <i data-lucide="search" class="h-3.5 w-3.5 shrink-0 text-muted"></i>
-            <input type="text" name="q" value="{{ query }}" placeholder="Search contacts" autocomplete="off"
-                   class="w-full bg-transparent text-[12px] text-ink placeholder-muted focus:outline-none">
+            <input type="text" x-model="q" @input.debounce.300ms="searchPheral()" placeholder="Search contacts or find someone on Pheral"
+                   autocomplete="off" class="w-full bg-transparent text-[12px] text-ink placeholder-muted focus:outline-none">
+            <button type="button" x-show="q" @click="q = ''; pheralResults = []" class="focus-ring shrink-0 text-muted"><i data-lucide="x" class="h-3.5 w-3.5"></i></button>
         </div>
-    </form>
 
-    <div class="flex items-center gap-2 px-4 pt-2.5">
-        <template x-if="syncSupported">
-            <button @click="syncDeviceContacts()" :disabled="syncing"
-                    class="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-line py-2 text-[12px] font-semibold text-ink transition hover:bg-surface disabled:opacity-60">
-                <i data-lucide="contact-round" class="h-3.5 w-3.5"></i>
-                <span x-text="syncing ? 'Syncing…' : 'Sync device contacts'"></span>
-            </button>
-        </template>
-        <a href="{% url 'search' %}" class="flex flex-1 items-center justify-center gap-1.5 rounded-full border border-line py-2 text-[12px] font-semibold text-ink transition hover:bg-surface">
-            <i data-lucide="user-search" class="h-3.5 w-3.5"></i> Find people
-        </a>
-    </div>
-
-    <template x-if="syncResult">
-        <div class="mx-4 mt-2.5 rounded-xl px-3 py-2 text-[11px]"
-             :class="syncResult.success ? 'bg-accent-50 text-accent-700' : 'bg-red-50 text-red-700'">
-            <span x-show="syncResult.success" x-text="syncResult.matched_count + ' contact(s) found on Pheral' + (syncResult.not_on_pheral_count ? ', ' + syncResult.not_on_pheral_count + ' not yet on Pheral.' : '.')"></span>
-            <span x-show="!syncResult.success">Couldn't sync contacts. Please try again.</span>
-        </div>
-    </template>
-
-    {% if contacts %}
-        <div class="relative flex">
-            <div class="min-w-0 flex-1 px-4 py-3">
-                {% regroup contacts by contact_user.username|first|upper as letter_groups %}
-                {% for group in letter_groups %}
-                    <div id="letter-{{ group.grouper }}" class="pt-3 first:pt-0">
-                        <p class="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted">{{ group.grouper }}</p>
-                        <div class="divide-y divide-line">
-                            {% for contact in group.list %}
-                                <div class="-mx-1 flex items-center gap-2.5 rounded-xl px-1 py-2.5 transition hover:bg-surface">
-                                    <a href="{% url 'start_chat' username=contact.contact_user.username %}" class="flex min-w-0 flex-1 items-center gap-2.5">
-                                        {% if contact.contact_user.avatar %}
-                                            <img src="{{ contact.contact_user.avatar.url }}" alt="" class="h-10 w-10 shrink-0 rounded-full object-cover">
-                                        {% else %}
-                                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[12px] font-semibold text-accent-700">
-                                                {{ contact.contact_user.username|first|upper }}
-                                            </div>
-                                        {% endif %}
-                                        <div class="min-w-0 flex-1">
-                                            <p class="truncate text-[13px] font-semibold text-ink">
-                                                {{ contact.nickname|default:contact.contact_user.display_name|default:contact.contact_user.username }}
-                                            </p>
-                                            <p class="truncate text-[11px] text-muted">@{{ contact.contact_user.username }}{% if contact.phone_number %} · {{ contact.phone_number }}{% endif %}</p>
-                                        </div>
-                                    </a>
-                                    <a href="{% url 'pay_user' username=contact.contact_user.username %}"
-                                       class="shrink-0 rounded-full p-2 text-muted transition hover:bg-white hover:text-accent-600" aria-label="Pay">
-                                        <i data-lucide="banknote" class="h-3.5 w-3.5"></i>
-                                    </a>
-                                </div>
-                            {% endfor %}
-                        </div>
+        <!-- Live "People on Pheral" results, only while actively searching -->
+        <div x-show="q.trim().length > 1" x-cloak class="mb-5">
+            <p class="mb-2 text-[11px] font-semibold text-ink">People on Pheral</p>
+            <div x-show="pheralLoading" x-cloak class="py-3 text-center text-[11px] text-muted">Searching…</div>
+            <div x-show="!pheralLoading && pheralResults.length === 0" x-cloak class="py-3 text-center text-[11px] text-muted">No one found for "<span x-text="q"></span>".</div>
+            <div x-show="!pheralLoading && pheralResults.length > 0" x-cloak class="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-white shadow-card">
+                <template x-for="person in pheralResults" :key="person.username">
+                    <div class="flex items-center gap-2.5 p-3">
+                        <template x-if="person.avatar">
+                            <img :src="person.avatar" alt="" class="h-10 w-10 rounded-full object-cover">
+                        </template>
+                        <template x-if="!person.avatar">
+                            <span class="flex h-10 w-10 items-center justify-center rounded-full bg-accent-100 text-[13px] font-semibold text-accent-700" x-text="person.username.charAt(0).toUpperCase()"></span>
+                        </template>
+                        <span class="min-w-0 flex-1">
+                            <span class="block truncate text-[13px] font-semibold text-ink" x-text="person.display_name || person.username"></span>
+                            <span class="block truncate text-[11px] text-muted" x-text="'@' + person.username"></span>
+                        </span>
+                        <button type="button" x-show="!isContact(person.username)" @click="addAndMessage(person.username)"
+                                class="focus-ring shrink-0 rounded-full bg-accent-500 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-accent-600">
+                            Add
+                        </button>
+                        <a x-show="isContact(person.username)" :href="chatUrl(person.username)"
+                           class="focus-ring shrink-0 rounded-full border border-line px-3 py-1.5 text-[11px] font-semibold text-ink transition hover:bg-surface">
+                            Message
+                        </a>
                     </div>
-                {% endfor %}
+                </template>
+            </div>
+        </div>
+
+        <!-- ============================================================
+             SYNC PHONE CONTACTS
+        ============================================================= -->
+        <div class="mb-5 rounded-2xl border border-line bg-white p-4 shadow-card">
+            <div class="flex items-start gap-3">
+                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-600">
+                    <i data-lucide="contact" class="h-5 w-5"></i>
+                </span>
+                <div class="min-w-0 flex-1">
+                    <p class="text-[13px] font-semibold text-ink">Find people from your phone</p>
+                    <p class="mt-0.5 text-[11px] leading-4 text-muted">See who's already on Pheral, and invite the rest — free, no SMS cost to you.</p>
+                </div>
             </div>
 
-            <!-- A-Z scrubber -->
-            <div class="sticky top-16 flex h-fit shrink-0 flex-col items-center gap-[1px] px-1.5 py-3 md:top-20">
-                {% regroup contacts by contact_user.username|first|upper as scrub_groups %}
-                {% for group in scrub_groups %}
-                    <button type="button" @click="scrollToLetter('{{ group.grouper }}')"
-                            class="text-[9px] font-semibold text-muted transition hover:text-accent-600">
-                        {{ group.grouper }}
-                    </button>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+                <button type="button" x-show="pickerSupported" x-cloak @click="syncFromPicker()" :disabled="syncing"
+                        class="focus-ring inline-flex items-center gap-1.5 rounded-full bg-accent-500 px-3.5 py-2 text-[11.5px] font-semibold text-white transition hover:bg-accent-600 disabled:opacity-50">
+                    <i data-lucide="users" class="h-3.5 w-3.5"></i>
+                    <span x-text="syncing ? 'Syncing…' : 'Sync phone contacts'"></span>
+                </button>
+
+                <label x-show="!pickerSupported" x-cloak
+                       class="focus-ring inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-accent-500 px-3.5 py-2 text-[11.5px] font-semibold text-white transition hover:bg-accent-600">
+                    <i data-lucide="upload" class="h-3.5 w-3.5"></i>
+                    <span x-text="syncing ? 'Syncing…' : 'Import contacts (.vcf)'"></span>
+                    <input type="file" accept=".vcf,text/vcard" class="hidden" :disabled="syncing" @change="syncFromVcf($event)">
+                </label>
+
+                <button type="button" x-show="syncResult" x-cloak @click="syncResult = null" class="focus-ring text-[11px] font-medium text-muted hover:text-ink">
+                    Clear results
+                </button>
+            </div>
+
+            <p x-show="!pickerSupported" x-cloak class="mt-2 text-[10px] leading-4 text-muted">
+                Your browser can't read your contacts directly here — export them as a .vcf file (most phones offer this from the Contacts app's share/export option) and upload it.
+            </p>
+            <p x-show="syncError" x-cloak class="mt-2 text-[11px] text-red-600" x-text="syncError"></p>
+        </div>
+
+        <!-- Sync results -->
+        <div x-show="syncResult" x-cloak x-transition class="mb-5 space-y-4">
+
+            <div x-show="syncResult && syncResult.matched && syncResult.matched.length">
+                <p class="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-ink">
+                    <i data-lucide="check-circle-2" class="h-3.5 w-3.5 text-emerald-600"></i>
+                    <span x-text="syncResult ? syncResult.matched.length + ' already on Pheral' : ''"></span>
+                </p>
+                <div class="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-white shadow-card">
+                    <template x-for="match in (syncResult ? syncResult.matched : [])" :key="match.id">
+                        <a :href="chatUrl(match.username)" class="flex items-center gap-2.5 p-3 transition hover:bg-surface">
+                            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[12px] font-semibold text-accent-700" x-text="match.username.charAt(0).toUpperCase()"></span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block truncate text-[12.5px] font-semibold text-ink" x-text="match.name"></span>
+                                <span class="block truncate text-[10.5px] text-muted" x-text="'@' + match.username"></span>
+                            </span>
+                            <i data-lucide="message-circle" class="h-4 w-4 shrink-0 text-accent-500"></i>
+                        </a>
+                    </template>
+                </div>
+            </div>
+
+            <div x-show="syncResult && syncResult.not_on_pheral && syncResult.not_on_pheral.length">
+                <p class="mb-2 flex items-center gap-1.5 text-[11px] font-semibold text-ink">
+                    <i data-lucide="user-plus" class="h-3.5 w-3.5 text-accent-500"></i>
+                    <span x-text="syncResult ? 'Invite ' + syncResult.not_on_pheral.length + ' to Pheral' : ''"></span>
+                </p>
+                <div class="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-white shadow-card">
+                    <template x-for="(person, idx) in (syncResult ? syncResult.not_on_pheral : [])" :key="idx">
+                        <div class="flex items-center gap-2.5 p-3">
+                            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface text-muted">
+                                <i data-lucide="user" class="h-4 w-4"></i>
+                            </span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block truncate text-[12.5px] font-medium text-ink" x-text="person.name || person.phone"></span>
+                                <span class="block truncate text-[10.5px] text-muted" x-text="person.phone"></span>
+                            </span>
+                            <button type="button" @click="invite(person)" class="focus-ring shrink-0 rounded-full border border-line px-3 py-1.5 text-[11px] font-semibold text-accent-600 transition hover:bg-accent-50">
+                                Invite
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================
+             YOUR SAVED CONTACTS
+        ============================================================= -->
+        <p class="mb-2 text-[11px] font-semibold text-ink">Your contacts</p>
+        {% if contacts %}
+            <div class="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-white shadow-card">
+                {% for contact in contacts %}
+                    <a href="{% url 'chat_user' username=contact.contact_user.username %}" class="flex items-center gap-2.5 p-3 transition hover:bg-surface">
+                        {% if contact.contact_user.avatar %}
+                            <img src="{{ contact.contact_user.avatar.url }}" alt="" class="h-10 w-10 rounded-full object-cover">
+                        {% else %}
+                            <span class="flex h-10 w-10 items-center justify-center rounded-full bg-accent-100 text-[13px] font-semibold text-accent-700">{{ contact.contact_user.username|first|upper }}</span>
+                        {% endif %}
+                        <span class="min-w-0 flex-1">
+                            <span class="block truncate text-[13px] font-semibold text-ink">{{ contact.nickname|default:contact.contact_user.display_name|default:contact.contact_user.username }}</span>
+                            <span class="block truncate text-[11px] text-muted">@{{ contact.contact_user.username }}</span>
+                        </span>
+                        <i data-lucide="chevron-right" class="h-4 w-4 shrink-0 text-muted"></i>
+                    </a>
                 {% endfor %}
             </div>
-        </div>
-    {% else %}
-        <div class="flex flex-col items-center gap-2 px-4 py-16 text-center">
-            <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50">
-                <i data-lucide="users" class="h-6 w-6 text-accent-500"></i>
+        {% else %}
+            <div class="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-line bg-surface py-14 text-center">
+                <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50"><i data-lucide="users" class="h-6 w-6 text-accent-500"></i></div>
+                <p class="text-[13px] font-semibold text-ink">No contacts yet</p>
+                <p class="max-w-xs text-[11px] leading-5 text-muted">Sync your phone, or search above to find someone by username.</p>
             </div>
-            <p class="text-[13px] font-semibold text-ink">
-                {% if query %}No contacts match "{{ query }}"{% else %}No contacts yet{% endif %}
-            </p>
-            <p class="max-w-xs text-[11px] leading-5 text-muted">Sync your device contacts or search for people by username.</p>
-        </div>
-    {% endif %}
+        {% endif %}
+    </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function contactsPage() {
+        return {
+            // search
+            q: '',
+            pheralResults: [],
+            pheralLoading: false,
+            contactUsernames: [{% for contact in contacts %}'{{ contact.contact_user.username|escapejs }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+
+            // sync
+            pickerSupported: false,
+            syncing: false,
+            syncError: '',
+            syncResult: null,
+
+            init() {
+                this.pickerSupported = ('contacts' in navigator && 'ContactsManager' in window);
+            },
+
+            getCookie(name) {
+                const match = document.cookie.match("(^|;)\\s*" + name + "\\s*=\\s*([^;]+)");
+                return match ? match.pop() : "";
+            },
+
+            chatUrl(username) {
+                return '{% url "chat_user" username="PLACEHOLDER" %}'.replace('PLACEHOLDER', username);
+            },
+
+            isContact(username) {
+                return this.contactUsernames.includes(username);
+            },
+
+            // ---------- find anyone on Pheral ----------
+            async searchPheral() {
+                if (this.q.trim().length < 2) { this.pheralResults = []; return; }
+                this.pheralLoading = true;
+                try {
+                    const res = await fetch('{% url "user_lookup" %}?q=' + encodeURIComponent(this.q));
+                    const data = await res.json();
+                    this.pheralResults = data.results || [];
+                } catch (e) {
+                    this.pheralResults = [];
+                }
+                this.pheralLoading = false;
+            },
+
+            async addAndMessage(username) {
+                try {
+                    await fetch('{% url "add_contact" username="PLACEHOLDER" %}'.replace('PLACEHOLDER', username), {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': this.getCookie('csrftoken') },
+                    });
+                } catch (e) { /* even if this fails, still try to open the chat */ }
+                window.location.href = this.chatUrl(username);
+            },
+
+            // ---------- sync phone contacts ----------
+            async postSync(contactsArr) {
+                try {
+                    const res = await fetch('{% url "sync_contacts" %}', {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': this.getCookie('csrftoken'), 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contacts: contactsArr }),
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        this.syncResult = data;
+                        // Keep the "already a contact" check accurate for anyone the sync just matched.
+                        for (const m of (data.matched || [])) {
+                            if (!this.contactUsernames.includes(m.username)) this.contactUsernames.push(m.username);
+                        }
+                    } else {
+                        this.syncError = data.error || 'Could not sync contacts.';
+                    }
+                } catch (e) {
+                    this.syncError = 'Could not sync contacts. Please try again.';
+                }
+            },
+
+            async syncFromPicker() {
+                this.syncing = true; this.syncError = ''; this.syncResult = null;
+                try {
+                    const picked = await navigator.contacts.select(['name', 'tel'], { multiple: true });
+                    const flat = [];
+                    for (const p of picked) {
+                        const name = (p.name && p.name[0]) || '';
+                        for (const tel of (p.tel || [])) {
+                            if (tel) flat.push({ name, phone: tel });
+                        }
+                    }
+                    if (flat.length) await this.postSync(flat);
+                } catch (e) {
+                    // user cancelled the native picker — not an error worth showing
+                }
+                this.syncing = false;
+            },
+
+            parseVcf(text) {
+                const unfolded = text.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '');
+                const lines = unfolded.split(/\r\n|\n|\r/);
+                const cards = [];
+                let current = null;
+
+                for (const rawLine of lines) {
+                    const line = rawLine.trim();
+                    if (line.toUpperCase() === 'BEGIN:VCARD') { current = { name: '', phones: [] }; continue; }
+                    if (line.toUpperCase() === 'END:VCARD') { if (current) cards.push(current); current = null; continue; }
+                    if (!current) continue;
+
+                    const idx = line.indexOf(':');
+                    if (idx === -1) continue;
+                    const key = line.slice(0, idx).split(';')[0].toUpperCase();
+                    const value = line.slice(idx + 1);
+
+                    if (key === 'FN') current.name = value;
+                    else if (key === 'TEL') current.phones.push(value.replace(/[^0-9+]/g, ''));
+                }
+
+                const flat = [];
+                for (const c of cards) {
+                    for (const phone of c.phones) {
+                        if (phone) flat.push({ name: c.name, phone });
+                    }
+                }
+                return flat;
+            },
+
+            async syncFromVcf(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+                this.syncing = true; this.syncError = ''; this.syncResult = null;
+                try {
+                    const text = await file.text();
+                    const contactsArr = this.parseVcf(text);
+                    if (!contactsArr.length) {
+                        this.syncError = 'No phone numbers found in that file.';
+                    } else {
+                        await this.postSync(contactsArr);
+                    }
+                } catch (e) {
+                    this.syncError = 'Could not read that file.';
+                }
+                this.syncing = false;
+                event.target.value = '';
+            },
+
+            invite(person) {
+                // Opens the PERSON'S OWN device share sheet / SMS app — their phone sends
+                // this, not our backend, so this costs nothing and needs no SMS provider.
+                const firstName = person.name ? person.name.split(' ')[0] : '';
+                const text = 'Hey' + (firstName ? ' ' + firstName : '') + '! I\'m on Pheral — chat and pay friends in one app. Join me: https://pheral.app';
+
+                if (navigator.share) {
+                    navigator.share({ text }).catch(() => {});
+                } else if (person.phone) {
+                    window.location.href = 'sms:' + encodeURIComponent(person.phone) + '?&body=' + encodeURIComponent(text);
+                } else if (navigator.clipboard) {
+                    navigator.clipboard.writeText(text);
+                }
+            },
+        };
+    }
+</script>
 {% endblock %}
