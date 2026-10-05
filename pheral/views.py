@@ -4523,3 +4523,75 @@ self.addEventListener("fetch", event => {
     response = HttpResponse(javascript, content_type="application/javascript")
     response["Cache-Control"] = "no-cache"
     return response
+
+
+# Replace the existing service_worker() view in views.py with this one.
+#
+# What changed from the old worker:
+#  * Navigation preload: the browser starts the page request while the worker boots,
+#    instead of waiting for the worker first. This alone removes a chunk of the delay.
+#  * Logged-in pages are NO LONGER cached. The old worker saved every page, including
+#    chats and wallet, into the browser cache, where they stayed after logout.
+#    Activating this version also deletes that old "pheral-v1" cache.
+#  * /static/ files are served from cache instantly and refreshed in the background.
+#  * Offline: shows a short message instead of the browser's error page.
+
+def service_worker(request):
+    javascript = """
+const STATIC_CACHE = "pheral-static-v2";
+
+const OFFLINE_HTML = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Offline</title><body style="font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;text-align:center;color:#1C1730">
+<div><h2>You are offline</h2><p style="color:#8B84A3">Check your connection and try again.</p>
+<button onclick="location.reload()" style="margin-top:12px;padding:10px 20px;border:0;border-radius:999px;background:#7C3AED;color:#fff;font-size:14px">Retry</button></div></body>`;
+
+self.addEventListener("install", () => self.skipWaiting());
+
+self.addEventListener("activate", event => {
+    event.waitUntil((async () => {
+        if (self.registration.navigationPreload) {
+            await self.registration.navigationPreload.enable();
+        }
+        for (const key of await caches.keys()) {
+            if (key !== STATIC_CACHE) await caches.delete(key);   // also purges old cached pages
+        }
+        await self.clients.claim();
+    })());
+});
+
+self.addEventListener("fetch", event => {
+    const request = event.request;
+    if (request.method !== "GET") return;
+
+    const url = new URL(request.url);
+
+    // Static files: cache first, refresh in the background.
+    if (url.origin === self.location.origin && url.pathname.startsWith("/static/")) {
+        event.respondWith((async () => {
+            const cache = await caches.open(STATIC_CACHE);
+            const hit = await cache.match(request);
+            const refresh = fetch(request).then(response => {
+                if (response.ok) cache.put(request, response.clone());
+                return response;
+            }).catch(() => hit);
+            return hit || refresh;
+        })());
+        return;
+    }
+
+    // Pages: use the preloaded response if the browser already started it. Never cache them.
+    if (request.mode === "navigate") {
+        event.respondWith((async () => {
+            try {
+                const preloaded = await event.preloadResponse;
+                return preloaded || await fetch(request);
+            } catch (e) {
+                return new Response(OFFLINE_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+            }
+        })());
+    }
+});
+"""
+    response = HttpResponse(javascript, content_type="application/javascript")
+    response["Cache-Control"] = "no-cache"
+    return response

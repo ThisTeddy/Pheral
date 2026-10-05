@@ -74,6 +74,13 @@
       @keydown.window.escape="commandOpen = false; moreOpen = false"
       @beforeinstallprompt.window.prevent="captureInstallPrompt($event)">
 
+      <!-- ================================================================
+     SPLASH LOADER — shown immediately on every page load, hidden
+     once the page is actually interactive. Pure CSS animation, no
+     JS dependency, so it works even before Alpine/Lucide finish
+     loading (which is exactly when you need a loader most).
+================================================================= -->
+
 <!-- ================================================================
      INSTALL BANNER — real beforeinstallprompt on Chrome/Android/Edge;
      manual instructions on iOS Safari, which never fires that event.
