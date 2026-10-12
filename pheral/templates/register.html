@@ -1,364 +1,374 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-white">
+<html lang="en" class="h-full">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>Create your account · Pheral</title>
-
-    <link rel="manifest" href="{% url 'pwa_manifest' %}">
-    <meta name="theme-color" content="#7C3AED">
-    <link rel="apple-touch-icon" href="{% static 'images/pheral-logo.png' %}">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Pheral">
-    <link rel="icon" type="image/png" href="{% static 'images/pheral-logo.png' %}">
-
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['"Plus Jakarta Sans"', 'sans-serif'] },
-                    colors: {
-                        ink: '#1C1730', muted: '#8B84A3', line: '#EAE6F4', surface: '#FAF9FE',
-                        accent: { 50: '#F5F1FE', 100: '#EBE3FD', 200: '#D3C2FA', 400: '#9A6BF0', 500: '#7C3AED', 600: '#6D28D9', 700: '#5B21B6' },
-                    },
-                },
-            },
-        };
-    </script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        [x-cloak] { display: none !important; }
-        html, body { -webkit-tap-highlight-color: transparent; }
-        .focus-ring:focus-visible { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #9A6BF0; border-radius: 9999px; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Create your account · Pheral</title>
+<link rel="manifest" href="{% url 'pwa_manifest' %}">
+<meta name="theme-color" content="#7C3AED">
+<link rel="apple-touch-icon" href="{% static 'images/pheral-logo.png' %}">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Pheral">
+<link rel="icon" type="image/png" href="{% static 'images/pheral-logo.png' %}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  fontFamily: { display: ['"Bricolage Grotesque"', 'system-ui', 'sans-serif'], sans: ['Figtree', 'system-ui', 'sans-serif'] },
+  colors: { ink: '#1A1230', muted: '#6B6485', line: '#E9E4F5', tint: '#F7F3FF',
+    brand: { 50: '#F5F1FE', 100: '#EBE3FD', 200: '#D3C2FA', 400: '#9A6BF0', 500: '#7C3AED', 600: '#6D28D9', 700: '#5B21B6', 900: '#2E1065' },
+    cash: { 100: '#D9F6E4', 500: '#16A460', 600: '#12804A' } },
+} } };
+</script>
+<script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
+<style type="text/tailwindcss">
+  @layer components {
+    .lbl { @apply mb-1.5 block text-sm font-semibold; }
+    .fld { @apply w-full rounded-xl border border-line bg-white px-4 py-3 text-[15px] text-ink outline-none transition placeholder:text-muted/60 focus:border-brand-400 focus:ring-4 focus:ring-brand-100; }
+    .btn { @apply flex items-center justify-center gap-2 rounded-full py-3.5 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 disabled:cursor-not-allowed disabled:opacity-40; }
+    .btn-primary { @apply bg-brand-500 text-white shadow-lg shadow-brand-500/25 hover:bg-brand-600; }
+    .btn-ghost { @apply border border-line bg-white text-ink hover:bg-tint; }
+    .hint { @apply mt-1.5 text-xs text-muted; }
+  }
+</style>
+<style>
+  [x-cloak]{display:none!important}
+  html,body{-webkit-tap-highlight-color:transparent}
+  .glow{background:radial-gradient(60% 45% at 30% 20%,#EBE3FD 0,transparent 70%)}
+  .pop{animation:pop .3s cubic-bezier(.2,.8,.2,1)}
+  @keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){.pop{animation:none}}
+</style>
 </head>
 
-<body class="flex h-full min-h-screen flex-col bg-white font-sans text-ink antialiased"
-      x-data="registerWizard()" x-init="init()">
+<body class="min-h-full bg-white font-sans text-ink antialiased" x-data="registerWizard()" x-init="init()">
+<div class="grid min-h-screen lg:grid-cols-[.9fr_1.1fr]">
 
-    <header class="flex items-center gap-2 px-5 py-5 md:px-10">
-        <a href="{% url 'landing' %}" class="focus-ring flex items-center gap-2">
-            <img src="{% static 'images/pheral-logo.png' %}" alt="Pheral" class="h-9 w-9 rounded-2xl object-cover">
-            <span class="text-lg font-bold tracking-tight">Pheral</span>
-        </a>
+  <!-- Brand panel (desktop) -->
+  <aside class="glow relative hidden flex-col justify-between overflow-hidden border-r border-line bg-tint/70 p-10 lg:flex" style="padding-top:calc(env(safe-area-inset-top,0px) + 2.5rem)">
+    <a href="{% url 'landing' %}" class="flex w-fit items-center gap-2 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500">
+      <img src="{% static 'images/favicon-48.png' %}" alt="" class="h-9 w-9 rounded-xl"><span class="font-display text-xl font-extrabold tracking-tight">Pheral</span>
+    </a>
+    <div>
+      <h2 class="max-w-sm font-display text-4xl font-extrabold leading-[1.05] tracking-tight xl:text-5xl">Your next payment starts with a <span class="text-brand-500">hello.</span></h2>
+      <div class="mt-8 max-w-xs space-y-2.5 text-sm">
+        <p class="w-fit rounded-2xl rounded-bl-md bg-white px-3.5 py-2.5 shadow-sm">Can you pay the balance today?</p>
+        <div class="ml-auto w-[85%] rounded-2xl rounded-br-md bg-brand-500 p-3.5 text-white shadow-lg shadow-brand-500/25"><p class="text-xs text-white/75">You sent</p><p class="font-display text-2xl font-bold">₦50,000</p><p class="mt-1 text-xs text-white/85">Ama receives GH₵ 487.20</p></div>
+        <p class="flex w-fit items-center gap-1.5 rounded-full bg-cash-100 px-3 py-1.5 text-xs font-semibold text-cash-600"><svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Delivered</p>
+      </div>
+    </div>
+    <ul class="space-y-2 text-sm text-muted">
+      <li>Sign up with just your phone number</li><li>No card needed to get started</li><li>13 currencies across Africa and beyond</li>
+    </ul>
+  </aside>
+
+  <!-- Form side -->
+  <div class="flex flex-col" style="padding-top:env(safe-area-inset-top,0px)">
+    <header class="flex items-center justify-between px-5 py-5 md:px-10">
+      <a href="{% url 'landing' %}" class="flex items-center gap-2 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 lg:invisible">
+        <img src="{% static 'images/favicon-48.png' %}" alt="" class="h-9 w-9 rounded-xl"><span class="font-display text-lg font-extrabold tracking-tight">Pheral</span>
+      </a>
+      <p class="text-sm text-muted">Have an account? <a href="{% url 'login_view' %}" class="font-semibold text-brand-600 hover:underline">Log in</a></p>
     </header>
 
-    <main class="flex flex-1 items-start justify-center px-5 pb-10 pt-2 md:items-center md:pt-0">
-        <div class="w-full max-w-md">
+    <main class="flex flex-1 items-start justify-center px-5 pb-12 pt-2 lg:items-center lg:pt-0">
+      <div class="w-full max-w-md">
 
-            {% if messages %}
-                <div class="mb-4 space-y-2">
-                    {% for message in messages %}
-                        <div class="flex items-start gap-2 rounded-2xl border px-4 py-3 text-sm
-                                    {% if message.tags == 'error' %}border-red-100 bg-red-50 text-red-700
-                                    {% else %}border-accent-100 bg-accent-50 text-accent-700{% endif %}">
-                            {{ message }}
-                        </div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-
-            <!-- Progress -->
-            <div class="mb-6">
-                <div class="mb-2 flex items-center justify-between text-[10px] font-medium text-muted">
-                    <span>Step <span x-text="step"></span> of 4</span>
-                    <span x-text="stepLabels[step - 1]"></span>
-                </div>
-                <div class="flex gap-1.5">
-                    <template x-for="i in 4" :key="i">
-                        <div class="h-1.5 flex-1 rounded-full transition" :class="i <= step ? 'bg-accent-500' : 'bg-line'"></div>
-                    </template>
-                </div>
-            </div>
-
-            <form method="post" id="register-form" class="space-y-4">
-                {% csrf_token %}
-
-                <!-- ============================================================
-                     STEP 1 — Identity
-                ============================================================= -->
-                <div x-show="step === 1" x-cloak>
-                    <h1 class="mb-1 text-xl font-bold tracking-tight text-ink">Let's start with you</h1>
-                    <p class="mb-5 text-sm text-muted">Tell us your name and pick a username.</p>
-
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="mb-1.5 block text-xs font-medium text-muted">First name</label>
-                            <input type="text" name="first_name" x-model="firstName" maxlength="100" autocomplete="given-name"
-                                   class="focus-ring w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
-                        </div>
-                        <div>
-                            <label class="mb-1.5 block text-xs font-medium text-muted">Last name</label>
-                            <input type="text" name="last_name" x-model="lastName" maxlength="100" autocomplete="family-name"
-                                   class="focus-ring w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
-                        </div>
-                    </div>
-
-                    <div class="mt-3.5">
-                        <label class="mb-1.5 block text-xs font-medium text-muted">Username</label>
-                        <div class="relative flex items-center gap-1 rounded-2xl border bg-surface px-4 py-2.5 transition"
-                             :class="usernameStatus === 'taken' ? 'border-red-300' : usernameStatus === 'available' ? 'border-emerald-300' : 'border-line'">
-                            <span class="text-muted">@</span>
-                            <input type="text" name="username" x-model="username" @input="checkUsername()" maxlength="30" autocomplete="off" autocapitalize="none"
-                                   class="w-full bg-transparent text-sm text-ink focus:outline-none">
-                            <template x-if="usernameChecking">
-                                <svg class="h-3.5 w-3.5 animate-spin text-muted" viewBox="0 0 24 24" fill="none">
-                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-                                </svg>
-                            </template>
-                            <i x-show="!usernameChecking && usernameStatus === 'available'" data-lucide="check-circle-2" class="h-4 w-4 text-emerald-500"></i>
-                            <i x-show="!usernameChecking && usernameStatus === 'taken'" data-lucide="x-circle" class="h-4 w-4 text-red-500"></i>
-                        </div>
-                        <p class="mt-1 text-[10px]" :class="usernameStatus === 'taken' ? 'text-red-600' : usernameStatus === 'available' ? 'text-emerald-600' : 'text-muted'" x-text="usernameMessage"></p>
-                    </div>
-
-                    <button type="button" @click="goNext()" :disabled="!canProceedStep1"
-                            class="focus-ring mt-5 flex w-full items-center justify-center gap-1.5 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
-                        Continue <i data-lucide="arrow-right" class="h-4 w-4"></i>
-                    </button>
-                </div>
-
-                <!-- ============================================================
-                     STEP 2 — Contact
-                ============================================================= -->
-                <div x-show="step === 2" x-cloak>
-                    <h1 class="mb-1 text-xl font-bold tracking-tight text-ink">Where are you?</h1>
-                    <p class="mb-5 text-sm text-muted">We'll use this to send your verification code.</p>
-
-                    <div class="mb-3.5">
-                        <label class="mb-1.5 block text-xs font-medium text-muted">Country</label>
-                        <div class="relative">
-                            <select name="region" x-model="region"
-                                    class="focus-ring w-full appearance-none rounded-2xl border border-line bg-surface px-4 py-2.5 pr-9 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
-                                {% for code, name in regions %}
-                                    <option value="{{ code }}" {% if code == selected_region %}selected{% endif %}>{{ name }}</option>
-                                {% endfor %}
-                            </select>
-                            <i data-lucide="chevron-down" class="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted"></i>
-                        </div>
-                    </div>
-
-                    <div>
-                        <label class="mb-1.5 block text-xs font-medium text-muted">Phone number</label>
-                        <input type="tel" name="phone_number" x-model="phone" maxlength="30" autocomplete="tel"
-                               placeholder="e.g. 0801 234 5678"
-                               class="focus-ring w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
-                        <p class="mt-1 text-[10px] text-muted">Enter it as you'd normally dial it locally — we'll match it to the country above.</p>
-                    </div>
-
-                    <div class="mt-3.5">
-                        <label class="mb-1.5 block text-xs font-medium text-muted">Referral code <span class="text-muted/70">(optional)</span></label>
-                        <input type="text" name="referral_code" x-model="referralCode" maxlength="20" autocomplete="off"
-                               placeholder="e.g. PHR-ABC123"
-                               class="focus-ring w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-sm text-ink placeholder-muted focus:outline-none focus:ring-2 focus:ring-accent-200">
-                    </div>
-
-                    <div class="mt-5 flex gap-2.5">
-                        <button type="button" @click="goBack()" class="focus-ring flex-1 rounded-2xl border border-line py-3.5 text-sm font-semibold text-ink transition hover:bg-surface">Back</button>
-                        <button type="button" @click="goNext()" :disabled="!canProceedStep2"
-                                class="focus-ring flex-[2] flex items-center justify-center gap-1.5 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
-                            Continue <i data-lucide="arrow-right" class="h-4 w-4"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- ============================================================
-                     STEP 3 — Security
-                ============================================================= -->
-                <div x-show="step === 3" x-cloak>
-                    <h1 class="mb-1 text-xl font-bold tracking-tight text-ink">Secure your account</h1>
-                    <p class="mb-5 text-sm text-muted">Choose a strong password.</p>
-
-                    <div>
-                        <label class="mb-1.5 block text-xs font-medium text-muted">Password</label>
-                        <div class="relative">
-                            <input :type="showPassword ? 'text' : 'password'" name="password" x-model="password" @input="evaluatePassword()" autocomplete="new-password"
-                                   class="focus-ring w-full rounded-2xl border border-line bg-surface px-4 py-2.5 pr-11 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-accent-200">
-                            <button type="button" @click="showPassword = !showPassword" class="focus-ring absolute right-3.5 top-1/2 -translate-y-1/2 text-muted" aria-label="Toggle password visibility">
-                                <i data-lucide="eye" class="h-4 w-4" x-show="!showPassword"></i>
-                                <i data-lucide="eye-off" class="h-4 w-4" x-show="showPassword" x-cloak></i>
-                            </button>
-                        </div>
-
-                        <!-- Strength meter -->
-                        <div class="mt-2 flex gap-1">
-                            <template x-for="i in 4" :key="i">
-                                <div class="h-1 flex-1 rounded-full transition" :class="i <= passwordScore ? strengthColor : 'bg-line'"></div>
-                            </template>
-                        </div>
-                        <p class="mt-1 text-[10px]" :class="passwordScore <= 1 ? 'text-red-600' : passwordScore === 2 ? 'text-amber-600' : 'text-emerald-600'" x-text="strengthLabel"></p>
-
-                        <!-- Requirements checklist -->
-                        <ul class="mt-2.5 space-y-1">
-                            <li class="flex items-center gap-1.5 text-[10.5px]" :class="password.length >= 8 ? 'text-emerald-600' : 'text-muted'">
-                                <i :data-lucide="password.length >= 8 ? 'check' : 'circle'" class="h-3 w-3"></i> At least 8 characters
-                            </li>
-                            <li class="flex items-center gap-1.5 text-[10.5px]" :class="/[A-Z]/.test(password) ? 'text-emerald-600' : 'text-muted'">
-                                <i :data-lucide="/[A-Z]/.test(password) ? 'check' : 'circle'" class="h-3 w-3"></i> One uppercase letter
-                            </li>
-                            <li class="flex items-center gap-1.5 text-[10.5px]" :class="/[0-9]/.test(password) ? 'text-emerald-600' : 'text-muted'">
-                                <i :data-lucide="/[0-9]/.test(password) ? 'check' : 'circle'" class="h-3 w-3"></i> One number
-                            </li>
-                            <li class="flex items-center gap-1.5 text-[10.5px]" :class="/[^A-Za-z0-9]/.test(password) ? 'text-emerald-600' : 'text-muted'">
-                                <i :data-lucide="/[^A-Za-z0-9]/.test(password) ? 'check' : 'circle'" class="h-3 w-3"></i> One symbol
-                            </li>
-                        </ul>
-                    </div>
-
-                    <div class="mt-3.5">
-                        <label class="mb-1.5 block text-xs font-medium text-muted">Confirm password</label>
-                        <div class="relative">
-                            <input :type="showConfirm ? 'text' : 'password'" name="password_confirm" x-model="passwordConfirm" autocomplete="new-password"
-                                   class="focus-ring w-full rounded-2xl border px-4 py-2.5 pr-11 text-sm text-ink focus:outline-none focus:ring-2"
-                                   :class="passwordConfirm && passwordConfirm !== password ? 'border-red-300 focus:ring-red-100' : 'border-line focus:ring-accent-200'">
-                            <button type="button" @click="showConfirm = !showConfirm" class="focus-ring absolute right-3.5 top-1/2 -translate-y-1/2 text-muted" aria-label="Toggle password visibility">
-                                <i data-lucide="eye" class="h-4 w-4" x-show="!showConfirm"></i>
-                                <i data-lucide="eye-off" class="h-4 w-4" x-show="showConfirm" x-cloak></i>
-                            </button>
-                        </div>
-                        <p x-show="passwordConfirm && passwordConfirm !== password" x-cloak class="mt-1 text-[10px] text-red-600">Passwords don't match</p>
-                    </div>
-
-                    <div class="mt-5 flex gap-2.5">
-                        <button type="button" @click="goBack()" class="focus-ring flex-1 rounded-2xl border border-line py-3.5 text-sm font-semibold text-ink transition hover:bg-surface">Back</button>
-                        <button type="button" @click="goNext()" :disabled="!canProceedStep3"
-                                class="focus-ring flex-[2] flex items-center justify-center gap-1.5 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
-                            Continue <i data-lucide="arrow-right" class="h-4 w-4"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- ============================================================
-                     STEP 4 — Review + terms
-                ============================================================= -->
-                <div x-show="step === 4" x-cloak>
-                    <h1 class="mb-1 text-xl font-bold tracking-tight text-ink">Review & confirm</h1>
-                    <p class="mb-5 text-sm text-muted">Make sure everything looks right.</p>
-
-                    <div class="divide-y divide-line rounded-2xl border border-line bg-surface/50 text-[12.5px]">
-                        <div class="flex items-center justify-between px-4 py-2.5">
-                            <span class="text-muted">Name</span>
-                            <span class="font-medium text-ink" x-text="(firstName + ' ' + lastName).trim() || '—'"></span>
-                        </div>
-                        <div class="flex items-center justify-between px-4 py-2.5">
-                            <span class="text-muted">Username</span>
-                            <span class="font-medium text-ink" x-text="'@' + (username || '—')"></span>
-                        </div>
-                        <div class="flex items-center justify-between px-4 py-2.5">
-                            <span class="text-muted">Phone</span>
-                            <span class="font-medium text-ink" x-text="phone || '—'"></span>
-                        </div>
-                        <div class="flex items-center justify-between px-4 py-2.5" x-show="referralCode">
-                            <span class="text-muted">Referral</span>
-                            <span class="font-medium text-ink" x-text="referralCode"></span>
-                        </div>
-                    </div>
-
-                    <label class="mt-4 flex items-start gap-2.5">
-                        <input type="checkbox" name="terms_accepted" x-model="termsAccepted" class="focus-ring mt-0.5 h-4 w-4 rounded border-line text-accent-500">
-                        <span class="text-[11.5px] leading-5 text-ink">
-                            I agree to Pheral's <a href="#" class="font-semibold text-accent-600 hover:underline">Terms of Service</a> and <a href="#" class="font-semibold text-accent-600 hover:underline">Privacy Policy</a>.
-                        </span>
-                    </label>
-
-                    <label class="mt-2.5 flex items-start gap-2.5">
-                        <input type="checkbox" name="marketing_opt_in" x-model="marketingOptIn" class="focus-ring mt-0.5 h-4 w-4 rounded border-line text-accent-500">
-                        <span class="text-[11.5px] leading-5 text-muted">Send me product updates and tips (optional).</span>
-                    </label>
-
-                    <div class="mt-5 flex gap-2.5">
-                        <button type="button" @click="goBack()" class="focus-ring flex-1 rounded-2xl border border-line py-3.5 text-sm font-semibold text-ink transition hover:bg-surface">Back</button>
-                        <button type="submit" :disabled="!termsAccepted"
-                                class="focus-ring flex-[2] flex items-center justify-center gap-1.5 rounded-2xl bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
-                            <i data-lucide="check" class="h-4 w-4"></i> Create account
-                        </button>
-                    </div>
-                </div>
-            </form>
-
-            <p class="mt-6 text-center text-sm text-muted">
-                Already have an account?
-                <a href="{% url 'login_view' %}" class="focus-ring font-semibold text-accent-600 hover:underline">Log in</a>
-            </p>
+        {% if messages %}
+        <div class="mb-5 space-y-2" role="alert">
+          {% for message in messages %}
+          <div class="rounded-xl border px-4 py-3 text-sm {% if message.tags == 'error' %}border-red-200 bg-red-50 text-red-700{% else %}border-brand-100 bg-brand-50 text-brand-700{% endif %}">{{ message }}</div>
+          {% endfor %}
         </div>
+        {% endif %}
+
+        <!-- Progress: clickable for steps already completed -->
+        <nav class="mb-8" aria-label="Progress">
+          <ol class="flex items-center gap-2">
+            <template x-for="(label, i) in stepLabels" :key="i">
+              <li class="flex flex-1 items-center gap-2">
+                <button type="button" @click="goTo(i + 1)" :disabled="i + 1 >= step" :aria-current="step === i + 1 ? 'step' : null"
+                        class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition disabled:cursor-default"
+                        :class="step === i + 1 ? 'bg-brand-500 text-white ring-4 ring-brand-100' : i + 1 < step ? 'bg-brand-100 text-brand-700' : 'bg-line text-muted'">
+                  <svg x-show="i + 1 < step" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                  <span x-show="i + 1 >= step" x-text="i + 1"></span>
+                </button>
+                <span class="hidden text-xs font-semibold sm:block" :class="step === i + 1 ? 'text-ink' : 'text-muted'" x-text="label"></span>
+                <span x-show="i < 3" class="h-px flex-1" :class="i + 1 < step ? 'bg-brand-400' : 'bg-line'"></span>
+              </li>
+            </template>
+          </ol>
+        </nav>
+
+        <form method="post" id="register-form" class="space-y-4" novalidate
+              @keydown.enter="if ($event.target.tagName !== 'BUTTON' && step < 4) { $event.preventDefault(); goNext(); }"
+              @submit="if (!termsAccepted || submitting) { $event.preventDefault(); return; } submitting = true">
+          {% csrf_token %}
+
+          <!-- STEP 1 -->
+          <div x-show="step === 1" x-cloak class="pop">
+            <h1 class="font-display text-3xl font-extrabold tracking-tight">Let's start with you</h1>
+            <p class="mb-6 mt-1 text-muted">Your name and a username people can find you by.</p>
+            <div class="grid grid-cols-2 gap-3">
+              <div><label class="lbl" for="first_name">First name</label><input id="first_name" type="text" name="first_name" x-model="firstName" maxlength="100" autocomplete="given-name" class="fld"></div>
+              <div><label class="lbl" for="last_name">Last name</label><input id="last_name" type="text" name="last_name" x-model="lastName" maxlength="100" autocomplete="family-name" class="fld"></div>
+            </div>
+            <div class="mt-4">
+              <label class="lbl" for="username">Username</label>
+              <div class="flex items-center gap-1 rounded-xl border bg-white px-4 py-3 transition focus-within:ring-4"
+                   :class="usernameStatus === 'taken' ? 'border-red-300 focus-within:ring-red-100' : usernameStatus === 'available' ? 'border-cash-500 focus-within:ring-cash-100' : 'border-line focus-within:border-brand-400 focus-within:ring-brand-100'">
+                <span class="text-muted">@</span>
+                <input id="username" type="text" name="username" x-model="username" @input="onUsernameInput()" maxlength="30" autocomplete="off" autocapitalize="none" spellcheck="false" class="w-full bg-transparent text-[15px] outline-none">
+                <svg x-show="usernameChecking" x-cloak class="h-4 w-4 animate-spin text-muted" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                <svg x-show="!usernameChecking && usernameStatus === 'available'" x-cloak class="h-5 w-5 text-cash-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>
+                <svg x-show="!usernameChecking && usernameStatus === 'taken'" x-cloak class="h-5 w-5 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6m0-6 6 6"/></svg>
+              </div>
+              <p class="hint" aria-live="polite" :class="usernameStatus === 'taken' ? '!text-red-600' : usernameStatus === 'available' ? '!text-cash-600' : ''" x-text="usernameMessage || 'Letters, numbers and underscores, 3 to 30 characters.'"></p>
+              <div x-show="usernameStatus === 'taken' && suggestions.length" x-cloak class="mt-2 flex flex-wrap items-center gap-2">
+                <span class="text-xs text-muted">Try:</span>
+                <template x-for="s in suggestions" :key="s"><button type="button" @click="username = s; onUsernameInput()" class="rounded-full border border-line px-3 py-1 text-xs font-semibold text-brand-700 hover:bg-brand-50" x-text="'@' + s"></button></template>
+              </div>
+            </div>
+            <button type="button" @click="goNext()" :disabled="!canProceedStep1" class="btn btn-primary mt-6 w-full">Continue
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+          </div>
+
+          <!-- STEP 2 -->
+          <div x-show="step === 2" x-cloak class="pop">
+            <h1 class="font-display text-3xl font-extrabold tracking-tight">Where are you?</h1>
+            <p class="mb-6 mt-1 text-muted">We'll send your verification code to this number.</p>
+            <div>
+              <label class="lbl" for="region">Country</label>
+              <select id="region" name="region" x-model="region" @change="onPhoneInput()" class="fld">
+                {% for code, name in regions %}<option value="{{ code }}" {% if code == selected_region %}selected{% endif %}>{{ name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="mt-4">
+              <label class="lbl" for="phone_number">Phone number</label>
+              <div class="flex items-center gap-2 rounded-xl border bg-white px-4 py-3 transition focus-within:ring-4"
+                   :class="phoneStatus === 'invalid' || phoneStatus === 'taken' ? 'border-red-300 focus-within:ring-red-100' : phoneStatus === 'valid' ? 'border-cash-500 focus-within:ring-cash-100' : 'border-line focus-within:border-brand-400 focus-within:ring-brand-100'">
+                <input id="phone_number" type="tel" name="phone_number" x-model="phone" @input="onPhoneInput()" maxlength="30" autocomplete="tel" inputmode="tel" placeholder="e.g. 0801 234 5678"
+                       :aria-invalid="phoneStatus === 'invalid' || phoneStatus === 'taken'" aria-describedby="phone_msg" class="w-full bg-transparent text-[15px] outline-none placeholder:text-muted/60">
+                <svg x-show="phoneChecking" x-cloak class="h-4 w-4 shrink-0 animate-spin text-muted" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                <svg x-show="!phoneChecking && phoneStatus === 'valid'" x-cloak class="h-5 w-5 shrink-0 text-cash-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>
+                <svg x-show="!phoneChecking && (phoneStatus === 'invalid' || phoneStatus === 'taken')" x-cloak class="h-5 w-5 shrink-0 text-red-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6m0-6 6 6"/></svg>
+              </div>
+              <p id="phone_msg" class="hint" aria-live="polite" :class="phoneStatus === 'invalid' || phoneStatus === 'taken' ? '!text-red-600 font-semibold' : phoneStatus === 'valid' ? '!text-cash-600 font-semibold' : ''">
+                <span x-text="phoneMessage || phoneHint"></span>
+                <button type="button" x-show="detectedRegion && $root.querySelector('#region option[value=' + detectedRegion + ']')" x-cloak @click="region = detectedRegion; onPhoneInput()" class="underline" x-text="'Switch country to ' + regionName(detectedRegion)"></button>
+                <a x-show="phoneStatus === 'taken'" x-cloak href="{% url 'login_view' %}" class="underline">Log in instead</a>
+              </p>
+            </div>
+            <div class="mt-4">
+              <label class="lbl" for="referral_code">Referral code <span class="font-normal text-muted">(optional)</span></label>
+              <input id="referral_code" type="text" name="referral_code" x-model="referralCode" maxlength="20" autocomplete="off" autocapitalize="characters" placeholder="e.g. PHR-ABC123" class="fld">
+            </div>
+            <div class="mt-6 flex gap-3">
+              <button type="button" @click="goBack()" class="btn btn-ghost flex-1">Back</button>
+              <button type="button" @click="goNext()" :disabled="!canProceedStep2" class="btn btn-primary flex-[2]">Continue
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+            </div>
+          </div>
+
+          <!-- STEP 3 -->
+          <div x-show="step === 3" x-cloak class="pop">
+            <h1 class="font-display text-3xl font-extrabold tracking-tight">Secure your account</h1>
+            <p class="mb-6 mt-1 text-muted">This password protects your wallet, so make it a good one.</p>
+            <div>
+              <label class="lbl" for="password">Password</label>
+              <div class="relative">
+                <input id="password" :type="showPassword ? 'text' : 'password'" name="password" x-model="password" @input="evaluatePassword()" autocomplete="new-password" class="fld pr-12">
+                <button type="button" @click="showPassword = !showPassword" class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-muted hover:text-ink" :aria-label="showPassword ? 'Hide password' : 'Show password'">
+                  <svg x-show="!showPassword" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg x-show="showPassword" x-cloak class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.2A10 10 0 0 1 12 4c6.5 0 10 8 10 8a17 17 0 0 1-2.2 3.2M6.6 6.6A17 17 0 0 0 2 12s3.5 8 10 8a10 10 0 0 0 5.4-1.6M2 2l20 20"/></svg>
+                </button>
+              </div>
+              <div class="mt-3 flex gap-1.5" aria-hidden="true"><template x-for="i in 4" :key="i"><div class="h-1.5 flex-1 rounded-full transition" :class="i <= passwordScore ? strengthColor : 'bg-line'"></div></template></div>
+              <p class="mt-1.5 text-xs font-semibold" aria-live="polite" :class="passwordScore <= 1 ? 'text-red-600' : passwordScore === 2 ? 'text-amber-600' : 'text-cash-600'" x-text="password ? strengthLabel : ''"></p>
+              <ul class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5">
+                <template x-for="r in rules" :key="r.label">
+                  <li class="flex items-center gap-2 text-xs" :class="r.ok ? 'text-cash-600' : 'text-muted'">
+                    <span class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-white" :class="r.ok ? 'bg-cash-500' : 'bg-line'"><svg x-show="r.ok" class="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+                    <span x-text="r.label"></span>
+                  </li>
+                </template>
+              </ul>
+            </div>
+            <div class="mt-4">
+              <label class="lbl" for="password_confirm">Confirm password</label>
+              <div class="relative">
+                <input id="password_confirm" :type="showConfirm ? 'text' : 'password'" name="password_confirm" x-model="passwordConfirm" autocomplete="new-password" class="fld pr-12" :class="mismatch ? '!border-red-300 focus:!ring-red-100' : ''">
+                <button type="button" @click="showConfirm = !showConfirm" class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-muted hover:text-ink" :aria-label="showConfirm ? 'Hide password' : 'Show password'">
+                  <svg x-show="!showConfirm" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+                  <svg x-show="showConfirm" x-cloak class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.2A10 10 0 0 1 12 4c6.5 0 10 8 10 8a17 17 0 0 1-2.2 3.2M6.6 6.6A17 17 0 0 0 2 12s3.5 8 10 8a10 10 0 0 0 5.4-1.6M2 2l20 20"/></svg>
+                </button>
+              </div>
+              <p x-show="mismatch" x-cloak class="mt-1.5 text-xs font-semibold text-red-600">Passwords don't match yet.</p>
+            </div>
+            <div class="mt-6 flex gap-3">
+              <button type="button" @click="goBack()" class="btn btn-ghost flex-1">Back</button>
+              <button type="button" @click="goNext()" :disabled="!canProceedStep3" class="btn btn-primary flex-[2]">Continue
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
+            </div>
+          </div>
+
+          <!-- STEP 4 -->
+          <div x-show="step === 4" x-cloak class="pop">
+            <h1 class="font-display text-3xl font-extrabold tracking-tight">Review and confirm</h1>
+            <p class="mb-6 mt-1 text-muted">One last look before we send your code.</p>
+            <dl class="divide-y divide-line rounded-2xl border border-line bg-tint/60 text-sm">
+              <template x-for="row in summary" :key="row.label">
+                <div x-show="row.value" class="flex items-center justify-between gap-3 px-4 py-3">
+                  <dt class="text-muted" x-text="row.label"></dt>
+                  <dd class="flex min-w-0 items-center gap-3"><span class="truncate font-semibold" x-text="row.value"></span><button type="button" @click="goTo(row.step)" class="shrink-0 text-xs font-semibold text-brand-600 hover:underline">Edit</button></dd>
+                </div>
+              </template>
+            </dl>
+            <label class="mt-5 flex items-start gap-3">
+              <input type="checkbox" name="terms_accepted" x-model="termsAccepted" class="mt-0.5 h-5 w-5 rounded border-line text-brand-500 focus:ring-brand-200">
+              <span class="text-sm leading-5">I agree to Pheral's <a href="#" class="font-semibold text-brand-600 hover:underline">Terms of Service</a> and <a href="#" class="font-semibold text-brand-600 hover:underline">Privacy Policy</a>.</span>
+            </label>
+            <label class="mt-3 flex items-start gap-3">
+              <input type="checkbox" name="marketing_opt_in" x-model="marketingOptIn" class="mt-0.5 h-5 w-5 rounded border-line text-brand-500 focus:ring-brand-200">
+              <span class="text-sm leading-5 text-muted">Send me product updates and tips (optional).</span>
+            </label>
+            <div class="mt-6 flex gap-3">
+              <button type="button" @click="goBack()" class="btn btn-ghost flex-1">Back</button>
+              <button type="submit" :disabled="!termsAccepted || submitting" class="btn btn-primary flex-[2]" x-text="submitting ? 'Creating your account…' : 'Create account'"></button>
+            </div>
+          </div>
+        </form>
+      </div>
     </main>
+  </div>
+</div>
 
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script>
-        function registerWizard() {
-            return {
-                step: 1,
-                stepLabels: ['Identity', 'Contact', 'Security', 'Review'],
-                firstName: '', lastName: '', username: '',
-                usernameChecking: false, usernameStatus: null, usernameMessage: '',
-                _usernameDebounce: null,
-                region: '{{ selected_region|default:"NG" }}', phone: '{{ phone_raw|default:"" }}', referralCode: '',
-                password: '', passwordConfirm: '', showPassword: false, showConfirm: false,
-                passwordScore: 0, strengthLabel: '', strengthColor: 'bg-line',
-                termsAccepted: false, marketingOptIn: false,
+<script>
+function registerWizard() {
+  return {
+    step: 1, stepLabels: ['You', 'Contact', 'Security', 'Review'], submitting: false,
+    firstName: '', lastName: '', username: '',
+    usernameChecking: false, usernameStatus: null, usernameMessage: '', suggestions: [], _deb: null, _seq: 0,
+    region: '{{ selected_region|default:"NG" }}', phone: '{{ phone_raw|default:"" }}', referralCode: '',
+    password: '', passwordConfirm: '', showPassword: false, showConfirm: false,
+    passwordScore: 0, strengthLabel: '', strengthColor: 'bg-line',
+    termsAccepted: false, marketingOptIn: false,
+    phoneStatus: null, phoneMessage: '', phoneChecking: false, phoneFormatted: '', detectedRegion: '', _pdeb: null, _pseq: 0,
 
-                init() { lucide.createIcons(); },
+    // Rejects the number as soon as it is clearly wrong, then asks the server
+    // whether it is a real number for the chosen country and not already registered.
+    regionName(code) { const o = document.querySelector('#region option[value="' + code + '"]'); return o ? o.textContent.trim() : code; },
+    onPhoneInput() {
+      clearTimeout(this._pdeb);
+      this.phoneStatus = null; this.phoneMessage = ''; this.phoneFormatted = ''; this.phoneChecking = false; this.detectedRegion = '';
+      const raw = this.phone.trim();
+      if (!raw) return;
+      if (/[^\d\s()+\-.]/.test(raw)) { this.phoneStatus = 'invalid'; this.phoneMessage = 'Use digits only. Letters and symbols are not allowed.'; return; }
+      const digits = raw.replace(/\D/g, '');
+      if (digits.length > 15) { this.phoneStatus = 'invalid'; this.phoneMessage = 'That number is too long.'; return; }
+      if (digits.length < 6) return; // still typing
+      this.phoneChecking = true;
+      const seq = ++this._pseq, region = this.region;
+      this._pdeb = setTimeout(async () => {
+        try {
+          const res = await fetch('{% url 'check_phone' %}?region=' + encodeURIComponent(region) + '&phone=' + encodeURIComponent(raw));
+          const d = await res.json();
+          if (seq !== this._pseq) return; // a newer edit superseded this answer
+          if (d.valid && d.available) { this.phoneStatus = 'valid'; this.phoneFormatted = d.formatted || ''; this.phoneMessage = 'Looks good. We\'ll text a code to ' + (d.formatted || 'this number') + '.'; }
+          else if (d.valid) { this.phoneStatus = 'taken'; this.phoneMessage = 'This number is already registered.'; }
+          else {
+            this.phoneStatus = 'invalid';
+            const here = this.regionName(region), there = d.detected_region ? this.regionName(d.detected_region) : '';
+            this.detectedRegion = d.reason === 'wrong_country' ? (d.detected_region || '') : '';
+            this.phoneMessage = d.reason === 'wrong_country'
+                ? 'This number is not a ' + here + ' number' + (there ? ' (it looks like ' + there + ')' : '') + '. Enter a number from ' + here + ', or change the country.'
+              : d.reason === 'too_short' ? 'That number is too short for ' + here + '.'
+              : d.reason === 'too_long' ? 'That number is too long for ' + here + '.'
+              : 'That is not a valid ' + here + ' number. Check the digits.';
+          }
+        } catch (e) { if (seq === this._pseq) { this.phoneStatus = null; this.phoneMessage = "Couldn't check the number right now. Try again."; } }
+        finally { if (seq === this._pseq) this.phoneChecking = false; }
+      }, 450);
+    },
 
-                get canProceedStep1() {
-                    return this.firstName.trim() && this.lastName.trim() && this.usernameStatus === 'available';
-                },
-                get canProceedStep2() {
-                    return this.region && this.phone.trim().length >= 6;
-                },
-                get canProceedStep3() {
-                    return this.passwordScore >= 3 && this.password === this.passwordConfirm;
-                },
+    // Example number for each country, so the hint matches the chosen country.
+    phoneHints: { {% for code, hint in phone_hints.items %}'{{ code }}': '{{ hint|escapejs }}',{% endfor %} },
+    get phoneHint() { return this.phoneHints[this.region] || "Enter it the way you'd dial it locally. We'll match it to the country above."; },
 
-                goNext() { if (this.step < 4) { this.step++; this.$nextTick(() => lucide.createIcons()); } },
-                goBack() { if (this.step > 1) { this.step--; this.$nextTick(() => lucide.createIcons()); } },
+    init() {
+      // Prefill a referral code from a shared link like /register/?ref=PHR-ABC123
+      const ref = new URLSearchParams(location.search).get('ref');
+      if (ref && !this.referralCode) this.referralCode = ref.slice(0, 20);
+    },
 
-                checkUsername() {
-                    clearTimeout(this._usernameDebounce);
-                    this.usernameStatus = null;
-                    if (this.username.length < 3) {
-                        this.usernameMessage = 'At least 3 characters';
-                        return;
-                    }
-                    this.usernameChecking = true;
-                    this._usernameDebounce = setTimeout(async () => {
-                        try {
-                            const res = await fetch('{% url 'check_username' %}?username=' + encodeURIComponent(this.username));
-                            const data = await res.json();
-                            this.usernameStatus = data.available ? 'available' : 'taken';
-                            this.usernameMessage = data.available ? 'Available'
-                                : data.reason === 'invalid_chars' ? 'Only letters, numbers and underscores'
-                                : 'That username is taken';
-                        } catch (e) {
-                            this.usernameStatus = null;
-                            this.usernameMessage = '';
-                        } finally {
-                            this.usernameChecking = false;
-                            this.$nextTick(() => lucide.createIcons());
-                        }
-                    }, 400);
-                },
+    get rules() {
+      const p = this.password;
+      return [
+        { label: '8+ characters', ok: p.length >= 8 }, { label: 'One uppercase letter', ok: /[A-Z]/.test(p) },
+        { label: 'One number', ok: /[0-9]/.test(p) }, { label: 'One symbol', ok: /[^A-Za-z0-9]/.test(p) },
+      ];
+    },
+    get mismatch() { return !!this.passwordConfirm && this.passwordConfirm !== this.password; },
+    get summary() {
+      return [
+        { label: 'Name', value: (this.firstName + ' ' + this.lastName).trim(), step: 1 },
+        { label: 'Username', value: this.username ? '@' + this.username : '', step: 1 },
+        { label: 'Phone', value: this.phoneFormatted || this.phone.trim(), step: 2 },
+        { label: 'Referral', value: this.referralCode.trim(), step: 2 },
+      ];
+    },
 
-                evaluatePassword() {
-                    let score = 0;
-                    if (this.password.length >= 8) score++;
-                    if (/[A-Z]/.test(this.password)) score++;
-                    if (/[0-9]/.test(this.password)) score++;
-                    if (/[^A-Za-z0-9]/.test(this.password)) score++;
-                    this.passwordScore = score;
-                    this.strengthLabel = score <= 1 ? 'Weak' : score === 2 ? 'Okay' : score === 3 ? 'Good' : 'Strong';
-                    this.strengthColor = score <= 1 ? 'bg-red-500' : score === 2 ? 'bg-amber-500' : score === 3 ? 'bg-emerald-400' : 'bg-emerald-500';
-                    this.$nextTick(() => lucide.createIcons());
-                },
-            };
-        }
-    </script>
+    get canProceedStep1() { return this.firstName.trim() && this.lastName.trim() && this.usernameStatus === 'available'; },
+    get canProceedStep2() { return !!this.region && this.phoneStatus === 'valid'; },
+    get canProceedStep3() { return this.passwordScore >= 3 && this.password === this.passwordConfirm; },
+
+    goNext() {
+      const ok = [null, this.canProceedStep1, this.canProceedStep2, this.canProceedStep3][this.step];
+      if (this.step < 4 && ok) this.move(this.step + 1);
+    },
+    goBack() { if (this.step > 1) this.move(this.step - 1); },
+    goTo(n) { if (n < this.step) this.move(n); },
+    move(n) {
+      this.step = n;
+      this.$nextTick(() => { window.scrollTo({ top: 0 }); const f = document.querySelector('[x-show="step === ' + n + '"] input, [x-show="step === ' + n + '"] select'); if (f) f.focus({ preventScroll: true }); });
+    },
+
+    onUsernameInput() {
+      // Keep only what the server accepts.
+      this.username = this.username.toLowerCase().replace(/[^a-z0-9_]/g, '');
+      clearTimeout(this._deb);
+      this.usernameStatus = null; this.suggestions = [];
+      if (this.username.length < 3) { this.usernameMessage = this.username ? 'At least 3 characters.' : ''; this.usernameChecking = false; return; }
+      this.usernameMessage = ''; this.usernameChecking = true;
+      const seq = ++this._seq, name = this.username;
+      this._deb = setTimeout(async () => {
+        try {
+          const res = await fetch('{% url 'check_username' %}?username=' + encodeURIComponent(name));
+          const data = await res.json();
+          if (seq !== this._seq) return; // a newer keystroke superseded this answer
+          this.usernameStatus = data.available ? 'available' : 'taken';
+          this.usernameMessage = data.available ? name + ' is available.' : data.reason === 'invalid_chars' ? 'Only letters, numbers and underscores.' : 'That username is taken.';
+          if (!data.available && data.reason !== 'invalid_chars') {
+            const f = this.firstName.trim().toLowerCase().replace(/[^a-z0-9]/g, ''), l = this.lastName.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+            this.suggestions = [...new Set([f && l ? f + '_' + l : '', name + Math.floor(10 + Math.random() * 90), f ? f + (l[0] || '') + '_' + Math.floor(10 + Math.random() * 90) : ''].filter(s => s.length >= 3 && s !== name))].slice(0, 3);
+          }
+        } catch (e) { if (seq === this._seq) { this.usernameStatus = null; this.usernameMessage = "Couldn't check right now. Try again."; } }
+        finally { if (seq === this._seq) this.usernameChecking = false; }
+      }, 400);
+    },
+
+    evaluatePassword() {
+      const s = this.rules.filter(r => r.ok).length;
+      this.passwordScore = s;
+      this.strengthLabel = ['Weak', 'Weak', 'Okay', 'Good', 'Strong'][s];
+      this.strengthColor = s <= 1 ? 'bg-red-500' : s === 2 ? 'bg-amber-500' : s === 3 ? 'bg-cash-500/70' : 'bg-cash-500';
+    },
+  };
+}
+</script>
 </body>
 </html>

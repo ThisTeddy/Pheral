@@ -134,6 +134,35 @@ def normalize_phone_number(phone, region=DEFAULT_REGION):
     return phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
 
 
+def phone_format_hint(region):
+    """
+    A real example number for this region — e.g. "e.g. 0801 234 5678 (10 digits)"
+    — pulled from phonenumbers' own metadata rather than a hand-maintained
+    table per country, so it can't silently drift out of date. Used both in
+    validation error messages and as always-visible helper text under a
+    phone field. Returns "" if the library has no example for that region.
+    """
+    try:
+        example = phonenumbers.example_number(region)
+    except Exception:
+        example = None
+
+    if not example:
+        return ""
+
+    national = phonenumbers.format_number(example, PhoneNumberFormat.NATIONAL)
+    digit_count = len(str(example.national_number))
+    return f"e.g. {national} ({digit_count} digits)"
+
+
+# Computed once at import time, not per-request: it's the same 12 lookups
+# every time (one per supported region), so there's no reason to re-run
+# phonenumbers' metadata lookup on every page load. register.html/login.html/
+# forgot_password.html use this to show the expected format live, as soon as
+# someone picks a country — not just after they get a validation error.
+PHONE_HINTS_BY_REGION = {code: phone_format_hint(code) for code, _ in SUPPORTED_REGIONS}
+
+
 def region_for_user(user):
     try:
         parsed = phonenumbers.parse(user.phone_number, None)
@@ -576,7 +605,9 @@ def register(request):
         return redirect("chat")
 
     if request.method != "POST":
-        return render(request, "register.html", {"regions": SUPPORTED_REGIONS, "selected_region": DEFAULT_REGION})
+        return render(request, "register.html", {
+            "regions": SUPPORTED_REGIONS, "selected_region": DEFAULT_REGION, "phone_hints": PHONE_HINTS_BY_REGION,
+        })
 
     username = request.POST.get("username", "").strip()
     region = request.POST.get("region", DEFAULT_REGION).strip().upper()
@@ -587,14 +618,21 @@ def register(request):
     last_name = request.POST.get("last_name", "").strip()
     terms_accepted = request.POST.get("terms_accepted") == "on"
 
-    if region not in dict(SUPPORTED_REGIONS):
-        region = DEFAULT_REGION
-
-    context = {"regions": SUPPORTED_REGIONS, "selected_region": region, "phone_raw": phone_raw}
+    context = {
+        "regions": SUPPORTED_REGIONS, "selected_region": region, "phone_raw": phone_raw,
+        "phone_hints": PHONE_HINTS_BY_REGION,
+    }
 
     def fail(message):
         messages.error(request, message)
         return render(request, "register.html", context)
+
+    # Reject outright rather than silently treating it as Nigeria — that silent
+    # fallback was the actual bug: a Botswana (or any unsupported-country)
+    # number would get validated as if it were Nigerian, and either fail in a
+    # confusing way or, worse, pass by coincidence and register wrong.
+    if region not in dict(SUPPORTED_REGIONS):
+        return fail("We don't support that country yet. Please choose a supported country.")
 
     if not username:
         return fail("Username is required.")
@@ -605,7 +643,11 @@ def register(request):
 
     phone_number = normalize_phone_number(phone_raw, region)
     if not phone_number:
-        return fail("Enter a valid phone number for the selected country.")
+        hint = phone_format_hint(region)
+        message = "Incorrect number for the selected country."
+        if hint:
+            message += f" {hint}"
+        return fail(message)
 
     if not first_name or not last_name:
         return fail("First name and last name are required.")
@@ -707,27 +749,43 @@ def forgot_password(request):
         return redirect("chat_list")
 
     if request.method != "POST":
-        return render(request, "forgot_password.html")
+        return render(request, "forgot_password.html", {
+            "regions": SUPPORTED_REGIONS, "selected_region": DEFAULT_REGION, "phone_hints": PHONE_HINTS_BY_REGION,
+        })
 
     phone_raw = request.POST.get("phone_number", "").strip()
     region = request.POST.get("region", DEFAULT_REGION).strip().upper()
+
+    context = {
+        "regions": SUPPORTED_REGIONS, "selected_region": region, "phone_raw": phone_raw,
+        "phone_hints": PHONE_HINTS_BY_REGION,
+    }
+
+    def fail(message):
+        messages.error(request, message)
+        return render(request, "forgot_password.html", context)
+
     if region not in dict(SUPPORTED_REGIONS):
-        region = DEFAULT_REGION
+        return fail("We don't support that country yet. Please choose a supported country.")
 
     if not phone_raw:
-        messages.error(request, "Phone number is required.")
-        return render(request, "forgot_password.html")
+        return fail("Phone number is required.")
 
     phone_number = normalize_phone_number(phone_raw, region)
-    user = User.objects.filter(phone_number=phone_number).first() if phone_number else None
+    if not phone_number:
+        hint = phone_format_hint(region)
+        message = "Incorrect number for the selected country."
+        if hint:
+            message += f" {hint}"
+        return fail(message)
+
+    user = User.objects.filter(phone_number=phone_number).first()
 
     if not user:
-        messages.error(request, "No account was found with that phone number.")
-        return render(request, "forgot_password.html")
+        return fail("No account was found with that phone number.")
 
     if not user.is_active:
-        messages.error(request, "This account is inactive.")
-        return render(request, "forgot_password.html")
+        return fail("This account is inactive.")
 
     issue_phone_otp(user, PhoneOTP.PURPOSE_PASSWORD_RESET)
     request.session["password_reset_user_id"] = user.pk
@@ -833,7 +891,7 @@ def lookup_account(request):
     phone_raw = request.GET.get("phone", "").strip()
     region = request.GET.get("region", DEFAULT_REGION).strip().upper()
     if region not in dict(SUPPORTED_REGIONS):
-        region = DEFAULT_REGION
+        return JsonResponse({"found": False})
 
     phone_number = normalize_phone_number(phone_raw, region)
     if not phone_number:
@@ -855,28 +913,37 @@ def login_view(request):
         return redirect("chat")
 
     if request.method != "POST":
-        return render(request, "login.html", {"regions": SUPPORTED_REGIONS, "selected_region": DEFAULT_REGION})
+        return render(request, "login.html", {
+            "regions": SUPPORTED_REGIONS, "selected_region": DEFAULT_REGION, "phone_hints": PHONE_HINTS_BY_REGION,
+        })
 
     region = request.POST.get("region", DEFAULT_REGION).strip().upper()
-    if region not in dict(SUPPORTED_REGIONS):
-        region = DEFAULT_REGION
-
     phone_raw = request.POST.get("phone_number", "").strip()
     password = request.POST.get("password", "")
     remember_me = request.POST.get("remember_me") == "on"
 
-    context = {"regions": SUPPORTED_REGIONS, "selected_region": region, "phone_raw": phone_raw}
+    context = {
+        "regions": SUPPORTED_REGIONS, "selected_region": region, "phone_raw": phone_raw,
+        "phone_hints": PHONE_HINTS_BY_REGION,
+    }
 
     def fail(message):
         messages.error(request, message)
         return render(request, "login.html", context)
+
+    if region not in dict(SUPPORTED_REGIONS):
+        return fail("We don't support that country yet. Please choose a supported country.")
 
     if not phone_raw:
         return fail("Phone number is required.")
 
     phone_number = normalize_phone_number(phone_raw, region)
     if not phone_number:
-        return fail("Enter a valid phone number.")
+        hint = phone_format_hint(region)
+        message = "Incorrect number for the selected country."
+        if hint:
+            message += f" {hint}"
+        return fail(message)
 
     if not password:
         return fail("Password is required.")
@@ -3841,6 +3908,38 @@ def status_detail(request, status_id):
 
 @login_required
 @require_POST
+def reply_to_status(request, status_id):
+    """
+    Sends a plain direct message to the status owner — the closest equivalent
+    to WhatsApp's reply bar this app's Message model supports (there's no
+    "replied to a status" quote/reference field, so this lands as an ordinary
+    text message in their DM, not a quoted-status bubble).
+    """
+    status_obj = get_object_or_404(
+        Status.objects.select_related("user"), id=status_id, is_active=True, expires_at__gt=timezone.now(),
+    )
+
+    if status_obj.user_id == request.user.id:
+        return JsonResponse({"success": False, "error": "You can't reply to your own status."}, status=400)
+
+    text = request.POST.get("text", "").strip()
+    if not text:
+        return JsonResponse({"success": False, "error": "Write something to send."}, status=400)
+
+    conversation = get_or_create_direct_conversation(request.user, status_obj.user)
+
+    Message.objects.create(
+        conversation=conversation, sender=request.user,
+        message_type=Message.MessageType.TEXT, content=text,
+    )
+    conversation.updated_at = timezone.now()
+    conversation.save(update_fields=["updated_at"])
+
+    return JsonResponse({"success": True})
+
+
+@login_required
+@require_POST
 def delete_status(request, status_id):
     get_object_or_404(Status, id=status_id, user=request.user).delete()
     messages.success(request, "Status deleted.")
@@ -4525,73 +4624,63 @@ self.addEventListener("fetch", event => {
     return response
 
 
-# Replace the existing service_worker() view in views.py with this one.
+# views.py  (adjust the User import / phone field name to match your project)
+import phonenumbers
+from phonenumbers import PhoneNumberFormat as Fmt
+from django.contrib.auth import get_user_model
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET
+
+User = get_user_model()
+
+
+def validate_phone(raw, region):
+    """Single source of truth. Call it from the check endpoint AND from your
+    register POST handler, so a number that doesn't belong to the selected
+    country is rejected even if someone bypasses the JavaScript.
+
+    Returns (e164, reason, detected_region).
+    reason is None when the number is valid for `region`.
+    """
+    region = (region or "").upper()
+    try:
+        num = phonenumbers.parse(raw, region)
+    except phonenumbers.NumberParseException:
+        return None, "invalid", None
+
+    # A valid number for some country, but NOT the selected one
+    # (e.g. +234 8012345678 while Ghana is selected).
+    if phonenumbers.is_valid_number(num) and not phonenumbers.is_valid_number_for_region(num, region):
+        return None, "wrong_country", phonenumbers.region_code_for_number(num)
+
+    if not phonenumbers.is_valid_number_for_region(num, region):
+        why = phonenumbers.is_possible_number_with_reason(num)
+        if why == phonenumbers.ValidationResult.TOO_SHORT:
+            return None, "too_short", None
+        if why == phonenumbers.ValidationResult.TOO_LONG:
+            return None, "too_long", None
+        return None, "invalid", None
+
+    return phonenumbers.format_number(num, Fmt.E164), None, region
+
+
+@require_GET
+def check_phone(request):
+    region = request.GET.get("region", "")
+    raw = request.GET.get("phone", "").strip()
+    e164, reason, detected = validate_phone(raw, region)
+    if reason:
+        return JsonResponse({"valid": False, "reason": reason, "detected_region": detected})
+    pretty = phonenumbers.format_number(phonenumbers.parse(e164), Fmt.INTERNATIONAL)
+    taken = User.objects.filter(phone_number=e164).exists()  # <- your field name
+    return JsonResponse({"valid": True, "available": not taken, "formatted": pretty})
+
+
+# urls.py
+#   path("check-phone/", views.check_phone, name="check_phone"),
 #
-# What changed from the old worker:
-#  * Navigation preload: the browser starts the page request while the worker boots,
-#    instead of waiting for the worker first. This alone removes a chunk of the delay.
-#  * Logged-in pages are NO LONGER cached. The old worker saved every page, including
-#    chats and wallet, into the browser cache, where they stayed after logout.
-#    Activating this version also deletes that old "pheral-v1" cache.
-#  * /static/ files are served from cache instantly and refreshed in the background.
-#  * Offline: shows a short message instead of the browser's error page.
-
-def service_worker(request):
-    javascript = """
-const STATIC_CACHE = "pheral-static-v2";
-
-const OFFLINE_HTML = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Offline</title><body style="font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;text-align:center;color:#1C1730">
-<div><h2>You are offline</h2><p style="color:#8B84A3">Check your connection and try again.</p>
-<button onclick="location.reload()" style="margin-top:12px;padding:10px 20px;border:0;border-radius:999px;background:#7C3AED;color:#fff;font-size:14px">Retry</button></div></body>`;
-
-self.addEventListener("install", () => self.skipWaiting());
-
-self.addEventListener("activate", event => {
-    event.waitUntil((async () => {
-        if (self.registration.navigationPreload) {
-            await self.registration.navigationPreload.enable();
-        }
-        for (const key of await caches.keys()) {
-            if (key !== STATIC_CACHE) await caches.delete(key);   // also purges old cached pages
-        }
-        await self.clients.claim();
-    })());
-});
-
-self.addEventListener("fetch", event => {
-    const request = event.request;
-    if (request.method !== "GET") return;
-
-    const url = new URL(request.url);
-
-    // Static files: cache first, refresh in the background.
-    if (url.origin === self.location.origin && url.pathname.startsWith("/static/")) {
-        event.respondWith((async () => {
-            const cache = await caches.open(STATIC_CACHE);
-            const hit = await cache.match(request);
-            const refresh = fetch(request).then(response => {
-                if (response.ok) cache.put(request, response.clone());
-                return response;
-            }).catch(() => hit);
-            return hit || refresh;
-        })());
-        return;
-    }
-
-    // Pages: use the preloaded response if the browser already started it. Never cache them.
-    if (request.mode === "navigate") {
-        event.respondWith((async () => {
-            try {
-                const preloaded = await event.preloadResponse;
-                return preloaded || await fetch(request);
-            } catch (e) {
-                return new Response(OFFLINE_HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
-            }
-        })());
-    }
-});
-"""
-    response = HttpResponse(javascript, content_type="application/javascript")
-    response["Cache-Control"] = "no-cache"
-    return response
+# In your register POST handler:
+#   e164, reason, _ = validate_phone(request.POST["phone_number"], request.POST["region"])
+#   if reason or User.objects.filter(phone_number=e164).exists():
+#       messages.error(request, "That phone number doesn't match the country you selected.")
+#       -> re-render the form, and save e164 (not the raw text) on success.

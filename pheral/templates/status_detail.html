@@ -1,205 +1,308 @@
 {% extends "base.html" %}
 
 {% block title %}Status · Pheral{% endblock %}
+{% block page_title %}Status{% endblock %}
+
+{% block extra_head %}<style>[x-cloak] { display: none !important; }</style>{% endblock %}
 
 {% block content %}
-<div class="fixed inset-0 z-50 flex flex-col bg-black select-none" x-data="storyViewer()" x-init="init()"
-     @keydown.window="handleKey($event)">
+<!--
+    Full-screen takeover: z-[70] sits above the app's sidebar (z-40), bottom
+    nav (z-40), header (z-30), command overlay (z-50) and install banner
+    (z-60) in base.html, so this covers the entire viewport exactly like
+    WhatsApp's status viewer — no app chrome visible — without needing any
+    changes to base.html itself.
+-->
+<div class="fixed inset-0 z-[70] flex items-center justify-center bg-black"
+     x-data="statusViewer()" x-init="init()" @keydown.window.escape="exit()">
 
-    <div class="flex gap-1 px-3 pt-3">
-        {% for s in user_statuses %}
-            <div class="h-1 flex-1 overflow-hidden rounded-full bg-white/30">
-                <div class="h-full rounded-full bg-white"
-                     style="width: {% if forloop.counter0 < current_index %}100%{% else %}0%{% endif %};"
-                     {% if forloop.counter0 == current_index %}x-ref="activeBar"{% endif %}></div>
-            </div>
-        {% endfor %}
-    </div>
+    <div class="relative h-full w-full max-w-md bg-ink sm:my-4 sm:h-[calc(100%-2rem)] sm:rounded-2xl sm:shadow-2xl">
 
-    <div class="flex items-center gap-3 px-4 py-3">
-        <a href="{% url 'profile_user' username=status.user.username %}" class="shrink-0">
-            {% if status.user.avatar %}
-                <img src="{{ status.user.avatar.url }}" alt="" class="h-9 w-9 rounded-full object-cover ring-1 ring-white/30">
+        <!-- Media -->
+        <div class="absolute inset-0 overflow-hidden sm:rounded-2xl">
+            {% if status.status_type == "image" %}
+                <img src="{{ status.media.url }}" alt="" class="h-full w-full object-contain bg-black">
+            {% elif status.status_type == "video" %}
+                <video x-ref="video" src="{{ status.media.url }}" class="h-full w-full object-contain bg-black"
+                       autoplay playsinline :muted="videoMuted"
+                       @timeupdate="onVideoTime()" @ended="goNext()" @loadedmetadata="onVideoReady()"></video>
             {% else %}
-                <div class="flex h-9 w-9 items-center justify-center rounded-full bg-accent-500 text-white">
-                    <span class="text-sm font-semibold">{{ status.user.username|first|upper }}</span>
+                <div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-accent-700 via-accent-600 to-accent-500 p-8">
+                    <p class="max-w-sm text-center text-[22px] font-semibold leading-snug text-white">{{ status.text }}</p>
                 </div>
             {% endif %}
-        </a>
-        <div class="min-w-0 flex-1">
-            <p class="truncate text-sm font-semibold text-white">
-                {% if is_owner %}Your status{% else %}{{ status.user.display_name|default:status.user.username }}{% endif %}
-            </p>
-            <p class="text-xs text-white/60">
-                {{ status.created_at|timesince }} ago
-                <span x-show="paused" x-cloak class="ml-1 text-white/40">· Paused</span>
-            </p>
+            <!-- Tap zones: left = previous, right = next. A quick tap navigates; a
+                 press-and-hold pauses instead (held/released below). Sit above
+                 the media, below the header/footer. -->
+            <button type="button" class="absolute inset-y-0 left-0 z-10 w-[30%]"
+                    @mousedown="startHold()" @touchstart="startHold()" @mouseup="endHold()" @touchend="endHold()" @mouseleave="cancelHold()"
+                    @click="onTap('prev')" aria-label="Previous status"></button>
+            <button type="button" class="absolute inset-y-0 right-0 z-10 w-[70%]"
+                    @mousedown="startHold()" @touchstart="startHold()" @mouseup="endHold()" @touchend="endHold()" @mouseleave="cancelHold()"
+                    @click="onTap('next')" aria-label="Next status"></button>
         </div>
 
-        {% if is_owner %}
-            <form method="post" action="{% url 'delete_status' status_id=status.id %}" onsubmit="return confirm('Delete this status?');">
-                {% csrf_token %}
-                <button type="submit" class="rounded-full p-2 text-white/80 transition hover:bg-white/10" aria-label="Delete status">
-                    <i data-lucide="trash-2" class="h-5 w-5"></i>
+        <!-- Top gradient + progress bars + header -->
+        <div class="pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-black/60 to-transparent pb-6 pt-[calc(0.5rem+env(safe-area-inset-top))]">
+            <div class="flex gap-1 px-2.5">
+                {% for s in user_statuses %}
+                    <div class="h-[2.5px] flex-1 overflow-hidden rounded-full bg-white/30">
+                        {% if forloop.counter0 < current_index %}
+                            <div class="h-full w-full bg-white"></div>
+                        {% elif forloop.counter0 == current_index %}
+                            <div class="h-full bg-white" x-ref="progressBar" :style="'width:' + progress + '%'"></div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+
+            <div class="pointer-events-auto mt-2.5 flex items-center gap-2.5 px-3">
+                {% if status.user.avatar %}
+                    <img src="{{ status.user.avatar.url }}" alt="" class="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-white/30">
+                {% else %}
+                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[12px] font-semibold text-accent-700">{{ status.user.username|first|upper }}</span>
+                {% endif %}
+                <div class="min-w-0 flex-1">
+                    <p class="truncate text-[13px] font-semibold text-white">{% if is_owner %}My status{% else %}{{ status.user.display_name|default:status.user.username }}{% endif %}</p>
+                    <p class="truncate text-[10.5px] text-white/70">{{ status.created_at|timesince }} ago</p>
+                </div>
+
+                {% if status.status_type == "video" %}
+                    <button type="button" @click.stop="toggleMute()" class="focus-ring shrink-0 rounded-full p-1.5 text-white/90 hover:bg-white/10" aria-label="Toggle sound">
+                        <i data-lucide="volume-2" class="h-4 w-4" x-show="!videoMuted"></i>
+                        <i data-lucide="volume-x" class="h-4 w-4" x-show="videoMuted" x-cloak></i>
+                    </button>
+                {% endif %}
+
+                {% if is_owner %}
+                    <form method="post" action="{% url 'delete_status' status_id=status.id %}" onsubmit="return confirm('Delete this status?');">
+                        {% csrf_token %}
+                        <button type="submit" class="focus-ring shrink-0 rounded-full p-1.5 text-white/90 hover:bg-white/10" aria-label="Delete status">
+                            <i data-lucide="trash-2" class="h-4 w-4"></i>
+                        </button>
+                    </form>
+                {% endif %}
+
+                <button type="button" @click="exit()" class="focus-ring shrink-0 rounded-full p-1.5 text-white/90 hover:bg-white/10" aria-label="Close">
+                    <i data-lucide="x" class="h-5 w-5"></i>
                 </button>
-            </form>
-        {% else %}
-            <button type="button" @click="share()" class="rounded-full p-2 text-white/80 transition hover:bg-white/10" aria-label="Share status">
-                <i data-lucide="share-2" class="h-5 w-5"></i>
-            </button>
-        {% endif %}
-
-        <a href="{% url 'status_list' %}" class="rounded-full p-2 text-white/80 transition hover:bg-white/10" aria-label="Close">
-            <i data-lucide="x" class="h-5 w-5"></i>
-        </a>
-    </div>
-
-    <div class="relative flex flex-1 items-center justify-center overflow-hidden"
-         @mousedown="pause()" @mouseup="resume()" @touchstart="pause()" @touchend="resume()">
-
-        {% if status.status_type == "image" and status.media %}
-            <img src="{{ status.media.url }}" alt="" class="max-h-full max-w-full object-contain">
-        {% elif status.status_type == "video" and status.media %}
-            <video x-ref="videoEl" @ended="goNext()" autoplay playsinline
-                   class="max-h-full max-w-full object-contain" src="{{ status.media.url }}"></video>
-        {% else %}
-            <div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-accent-500 to-accent-700 p-8">
-                <p class="max-w-md whitespace-pre-wrap break-words text-center text-2xl font-semibold text-white">{{ status.text }}</p>
             </div>
-        {% endif %}
-
-        {% if status.text and status.media %}
-            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 pb-6 pt-10">
-                <p class="whitespace-pre-wrap break-words text-sm text-white">{{ status.text }}</p>
-            </div>
-        {% endif %}
-
-        <div x-show="paused" x-cloak x-transition.opacity class="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <span class="flex h-14 w-14 items-center justify-center rounded-full bg-black/40">
-                <i data-lucide="pause" class="h-6 w-6 text-white"></i>
-            </span>
         </div>
 
-        <button type="button" @click="goPrev()" class="absolute inset-y-0 left-0 w-1/3" aria-label="Previous"></button>
-        <button type="button" @click="goNext()" class="absolute inset-y-0 right-0 w-1/3" aria-label="Next"></button>
-    </div>
-
-    <div class="px-4 py-3">
-        {% if is_owner %}
-            <button type="button" @click="showViewers = true" class="flex items-center gap-2 text-sm text-white/80">
-                <i data-lucide="eye" class="h-4 w-4"></i>
-                {{ view_count }} view{{ view_count|pluralize }}
-            </button>
-        {% endif %}
-    </div>
-
-    {% if is_owner %}
-    <div x-show="showViewers" x-cloak x-transition @click.self="showViewers = false" class="fixed inset-0 z-10 flex items-end bg-black/60">
-        <div class="max-h-[70vh] w-full overflow-y-auto rounded-t-3xl bg-white p-4" @click.stop>
-            <div class="mx-auto mb-3 h-1 w-10 rounded-full bg-line"></div>
-            <p class="mb-3 text-sm font-semibold text-ink">Viewed by {{ view_count }}</p>
-            {% if viewers %}
-                <div class="divide-y divide-line">
-                    {% for v in viewers %}
-                        <div class="flex items-center gap-3 py-2.5">
-                            {% if v.viewer.avatar %}
-                                <img src="{{ v.viewer.avatar.url }}" alt="" class="h-9 w-9 rounded-full object-cover">
-                            {% else %}
-                                <div class="flex h-9 w-9 items-center justify-center rounded-full bg-accent-100 text-accent-700">
-                                    <span class="text-sm font-semibold">{{ v.viewer.username|first|upper }}</span>
-                                </div>
-                            {% endif %}
-                            <div class="min-w-0 flex-1">
-                                <p class="truncate text-sm font-medium text-ink">{{ v.viewer.display_name|default:v.viewer.username }}</p>
-                            </div>
-                            <p class="shrink-0 text-xs text-muted">{{ v.viewed_at|timesince }} ago</p>
-                        </div>
-                    {% endfor %}
-                </div>
+        <!-- Bottom: view count (own status) or reply bar (someone else's) -->
+        <div class="absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/60 to-transparent pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-6">
+            {% if is_owner %}
+                <button type="button" @click.stop="viewersOpen = true; pause()" class="pointer-events-auto flex items-center gap-1.5 px-4 text-[12px] font-medium text-white/90">
+                    <i data-lucide="eye" class="h-3.5 w-3.5"></i> {{ view_count }} view{{ view_count|pluralize }}
+                </button>
             {% else %}
-                <p class="py-6 text-center text-sm text-muted">No views yet.</p>
+                <div class="pointer-events-auto flex items-center gap-2 px-3">
+                    <div class="flex flex-1 items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2.5 backdrop-blur">
+                        <input type="text" x-model="replyText" @focus="pause()" @blur="resume()" @keydown.enter.prevent="sendReply()"
+                               placeholder="Reply to {{ status.user.display_name|default:status.user.username|escapejs }}"
+                               autocomplete="off" class="w-full bg-transparent text-[13px] text-white placeholder-white/60 focus:outline-none">
+                    </div>
+                    <button type="button" @click="sendReply()" :disabled="!replyText.trim() || sendingReply"
+                            class="focus-ring flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-500 text-white transition hover:bg-accent-600 disabled:opacity-40">
+                        <i data-lucide="send" class="h-4 w-4"></i>
+                    </button>
+                </div>
+                <p x-show="replySent" x-cloak x-transition class="pointer-events-none mt-2 px-4 text-[11px] text-emerald-300">Sent.</p>
+                <p x-show="replyError" x-cloak class="pointer-events-none mt-2 px-4 text-[11px] text-red-300" x-text="replyError"></p>
             {% endif %}
         </div>
     </div>
+
+    <!-- Viewers sheet (own status only) -->
+    {% if is_owner %}
+        <div x-show="viewersOpen" x-cloak x-transition.opacity.duration.150ms
+             class="fixed inset-0 z-30 flex items-end justify-center bg-black/50"
+             @click.self="viewersOpen = false; resume()">
+            <div class="max-h-[70vh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white pb-[calc(1rem+env(safe-area-inset-bottom))] pt-2">
+                <div class="mx-auto mb-3 h-1 w-10 rounded-full bg-line"></div>
+                <div class="flex items-center justify-between px-5 pb-3">
+                    <p class="flex items-center gap-1.5 text-[13px] font-bold text-ink">
+                        <i data-lucide="eye" class="h-4 w-4 text-accent-500"></i> {{ view_count }} view{{ view_count|pluralize }}
+                    </p>
+                    <button type="button" @click="viewersOpen = false; resume()" class="focus-ring rounded-full p-1.5 text-muted hover:bg-surface" aria-label="Close">
+                        <i data-lucide="x" class="h-4 w-4"></i>
+                    </button>
+                </div>
+                {% if viewers %}
+                    <div class="divide-y divide-line">
+                        {% for view in viewers %}
+                            <div class="flex items-center gap-2.5 px-5 py-2.5">
+                                {% if view.viewer.avatar %}
+                                    <img src="{{ view.viewer.avatar.url }}" alt="" class="h-9 w-9 rounded-full object-cover">
+                                {% else %}
+                                    <span class="flex h-9 w-9 items-center justify-center rounded-full bg-accent-100 text-[12px] font-semibold text-accent-700">{{ view.viewer.username|first|upper }}</span>
+                                {% endif %}
+                                <span class="min-w-0 flex-1">
+                                    <span class="block truncate text-[12.5px] font-semibold text-ink">{{ view.viewer.display_name|default:view.viewer.username }}</span>
+                                    <span class="block truncate text-[10.5px] text-muted">@{{ view.viewer.username }}</span>
+                                </span>
+                                <span class="shrink-0 text-[10px] text-muted">{{ view.viewed_at|timesince }} ago</span>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="px-5 py-6 text-center text-[12px] text-muted">No one has viewed this status yet.</p>
+                {% endif %}
+            </div>
+        </div>
     {% endif %}
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
-    {% if status.status_type == "video" and status.media %}
-    const AUTO_DURATION = null;
-    const FALLBACK_DURATION = 15000;
-    {% else %}
-    const AUTO_DURATION = 5000;
-    const FALLBACK_DURATION = 5000;
-    {% endif %}
-
-    const NEXT_URL = "{% if next_status %}{% url 'status_detail' status_id=next_status.id %}{% elif next_user_status %}{% url 'status_detail' status_id=next_user_status.id %}{% else %}{% url 'status_list' %}{% endif %}";
-    const PREV_URL = "{% if previous_status %}{% url 'status_detail' status_id=previous_status.id %}{% endif %}";
-    const STATUS_URL = window.location.href;
-
-    function storyViewer() {
+    function statusViewer() {
         return {
-            showViewers: false, paused: false,
-            _duration: AUTO_DURATION || FALLBACK_DURATION,
-            _remaining: 0, _startedAt: 0, timer: null,
+            progress: 0,
+            paused: false,
+            viewersOpen: false,
+            videoMuted: true,
+            replyText: '',
+            sendingReply: false,
+            replySent: false,
+            replyError: '',
+
+            _timer: null,
+            _startedAt: 0,
+            _elapsedAtPause: 0,
+            _isVideo: {% if status.status_type == "video" %}true{% else %}false{% endif %},
+            _durationMs: 5000, // text/image dwell time; video overrides this once metadata loads
+
+            prevUrl: {% if previous_status %}'{% url "status_detail" status_id=previous_status.id %}'{% else %}null{% endif %},
+            nextUrl: {% if next_status %}'{% url "status_detail" status_id=next_status.id %}'{% else %}{% if next_user_status %}'{% url "status_detail" status_id=next_user_status.id %}'{% else %}null{% endif %}{% endif %},
+            replyUrl: '{% url "reply_to_status" status_id=status.id %}',
 
             init() {
-                this._remaining = this._duration;
-                this._startedAt = Date.now();
-                this._runBar();
-                this._schedule();
-                document.addEventListener('visibilitychange', () => {
-                    document.hidden ? this.pause() : this.resume();
-                });
+                if (!this._isVideo) this.start();
+                document.addEventListener('alpine:navigated', () => { if (window.lucide) lucide.createIcons(); });
             },
-            _runBar() {
-                const bar = this.$refs.activeBar;
-                if (!bar) return;
-                requestAnimationFrame(() => {
-                    bar.style.transition = 'width ' + this._remaining + 'ms linear';
-                    bar.style.width = '100%';
-                });
+
+            getCookie(name) {
+                const match = document.cookie.match("(^|;)\\s*" + name + "\\s*=\\s*([^;]+)");
+                return match ? match.pop() : "";
             },
-            _schedule() {
-                clearTimeout(this.timer);
-                this.timer = setTimeout(() => this.goNext(), this._remaining);
-                this._startedAt = Date.now();
+
+            start() {
+                this._startedAt = Date.now() - this._elapsedAtPause;
+                this._tick();
             },
+
+            _tick() {
+                if (this._timer) cancelAnimationFrame(this._timer);
+                const step = () => {
+                    if (this.paused) return;
+                    const elapsed = Date.now() - this._startedAt;
+                    this.progress = Math.min(100, (elapsed / this._durationMs) * 100);
+                    if (this.progress >= 100) { this.goNext(); return; }
+                    this._timer = requestAnimationFrame(step);
+                };
+                this._timer = requestAnimationFrame(step);
+            },
+
             pause() {
-                if (this.paused || this.showViewers) return;
+                if (this.paused) return;
                 this.paused = true;
-                clearTimeout(this.timer);
-                this._remaining -= (Date.now() - this._startedAt);
-                const bar = this.$refs.activeBar;
-                if (bar) bar.style.transition = 'none';
-                const video = this.$refs.videoEl;
-                if (video) video.pause();
+                this._elapsedAtPause = Date.now() - this._startedAt;
+                if (this._isVideo && this.$refs.video) this.$refs.video.pause();
+                if (this._timer) cancelAnimationFrame(this._timer);
             },
+
             resume() {
                 if (!this.paused) return;
                 this.paused = false;
-                if (this._remaining <= 0) { this.goNext(); return; }
-                this._runBar();
-                this._schedule();
-                const video = this.$refs.videoEl;
-                if (video) video.play().catch(() => {});
+                if (this._isVideo && this.$refs.video) { this.$refs.video.play(); return; }
+                this.start();
             },
-            handleKey(event) {
-                if (event.key === 'ArrowRight') this.goNext();
-                if (event.key === 'ArrowLeft') this.goPrev();
-                if (event.key === 'Escape') window.location.href = "{% url 'status_list' %}";
-            },
-            async share() {
-                if (navigator.share) {
-                    try { await navigator.share({ url: STATUS_URL }); } catch (e) {}
-                } else {
-                    navigator.clipboard.writeText(STATUS_URL).catch(() => {});
+
+            onVideoReady() {
+                if (this.$refs.video && this.$refs.video.duration) {
+                    this._durationMs = this.$refs.video.duration * 1000;
                 }
             },
-            goNext() { window.location.href = NEXT_URL; },
-            goPrev() { window.location.href = PREV_URL || window.location.href; },
+
+            onVideoTime() {
+                if (!this.$refs.video || !this.$refs.video.duration) return;
+                this.progress = (this.$refs.video.currentTime / this.$refs.video.duration) * 100;
+            },
+
+            toggleMute() {
+                this.videoMuted = !this.videoMuted;
+            },
+
+            // Press-and-hold pauses (crossing ~180ms); a quick tap navigates.
+            // @click fires on release regardless of hold duration, so onTap()
+            // just checks the flag these three set.
+            _holdTimer: null,
+            _heldLongEnough: false,
+
+            startHold() {
+                this._heldLongEnough = false;
+                clearTimeout(this._holdTimer);
+                this._holdTimer = setTimeout(() => {
+                    this._heldLongEnough = true;
+                    this.pause();
+                }, 180);
+            },
+
+            endHold() {
+                clearTimeout(this._holdTimer);
+                if (this._heldLongEnough) this.resume();
+            },
+
+            cancelHold() {
+                clearTimeout(this._holdTimer);
+            },
+
+            onTap(direction) {
+                if (this._heldLongEnough) { this._heldLongEnough = false; return; }
+                if (direction === 'next') this.goNext();
+                else this.goPrev();
+            },
+
+            goNext() {
+                if (this.nextUrl) window.location.href = this.nextUrl;
+                else this.exit();
+            },
+
+            goPrev() {
+                if (this.prevUrl) window.location.href = this.prevUrl;
+                // No previous in this set: stay put, matching WhatsApp (doesn't
+                // jump back to the previous person's last status).
+            },
+
+            exit() {
+                window.location.href = '{% url "status_list" %}';
+            },
+
+            async sendReply() {
+                const text = this.replyText.trim();
+                if (!text || this.sendingReply) return;
+                this.sendingReply = true;
+                this.replyError = '';
+                try {
+                    const res = await fetch(this.replyUrl, {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': this.getCookie('csrftoken'), 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: 'text=' + encodeURIComponent(text),
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        this.replyText = '';
+                        this.replySent = true;
+                        setTimeout(() => { this.replySent = false; }, 2000);
+                    } else {
+                        this.replyError = data.error || 'Could not send.';
+                    }
+                } catch (e) {
+                    this.replyError = 'Could not send. Please try again.';
+                }
+                this.sendingReply = false;
+            },
         };
     }
 </script>

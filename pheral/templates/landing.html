@@ -1,544 +1,285 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="en" class="h-full bg-white scroll-smooth">
+<html lang="en" class="scroll-smooth">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <title>Pheral — Chat. Pay. Hire. All in one place.</title>
-    <meta name="description" content="Pheral is where conversations turn into payments and opportunities — chat, send money across currencies, and hire trusted people, all without leaving the app.">
-
-    <link rel="manifest" href="{% url 'pwa_manifest' %}">
-    <meta name="theme-color" content="#7C3AED">
-    <link rel="apple-touch-icon" href="{% static 'images/pheral-logo.png' %}">
-    <link rel="icon" type="image/png" href="{% static 'images/pheral-logo.png' %}">
-
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['"Plus Jakarta Sans"', 'sans-serif'] },
-                    colors: {
-                        ink: '#1C1730', muted: '#8B84A3', line: '#EAE6F4', surface: '#FAF9FE',
-                        accent: { 50: '#F5F1FE', 100: '#EBE3FD', 200: '#D3C2FA', 400: '#9A6BF0', 500: '#7C3AED', 600: '#6D28D9', 700: '#5B21B6', 900: '#2E1065' },
-                    },
-                },
-            },
-        };
-    </script>
-    <script defer src="https://unpkg.com/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
-    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        [x-cloak] { display: none !important; }
-        html, body { -webkit-tap-highlight-color: transparent; }
-        .focus-ring:focus-visible { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #9A6BF0; border-radius: 9999px; }
-        .grid-fade { background-image: radial-gradient(circle at 1px 1px, #EAE6F4 1px, transparent 0); background-size: 28px 28px; }
-        @keyframes install-pulse {
-            0%, 100% { box-shadow: 0 0 0 0 rgba(124,58,237,0.35); }
-            50% { box-shadow: 0 0 0 8px rgba(124,58,237,0); }
-        }
-        .install-pulse { animation: install-pulse 2s ease-out infinite; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pheral | Chat. Pay. Hire. All in one place.</title>
+<meta name="description" content="Pheral is where conversations turn into payments and opportunities: chat, send money across currencies, and hire people you trust, all without leaving the app.">
+<link rel="manifest" href="{% url 'pwa_manifest' %}">
+<meta name="theme-color" content="#7C3AED">
+<link rel="apple-touch-icon" href="{% static 'images/favicon-48.png' %}">
+<link rel="icon" type="image/png" href="{% static 'images/favicon-48.png' %}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+tailwind.config = { theme: { extend: {
+  fontFamily: { display: ['"Bricolage Grotesque"', 'system-ui', 'sans-serif'], sans: ['Figtree', 'system-ui', 'sans-serif'] },
+  colors: { ink: '#1A1230', muted: '#6B6485', line: '#E9E4F5', tint: '#F7F3FF',
+    brand: { 50: '#F5F1FE', 100: '#EBE3FD', 200: '#D3C2FA', 300: '#B898F6', 400: '#9A6BF0', 500: '#7C3AED', 600: '#6D28D9', 700: '#5B21B6', 900: '#2E1065' },
+    cash: { 100: '#D9F6E4', 600: '#12804A' } },
+} } };
+</script>
+<script defer src="https://unpkg.com/@alpinejs/collapse@3.14.1/dist/cdn.min.js"></script>
+<script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
+<script src="https://unpkg.com/lucide@0.441.0/dist/umd/lucide.min.js"></script>
+<style>
+  [x-cloak]{display:none!important}
+  html,body{-webkit-tap-highlight-color:transparent}
+  body{padding-top:env(safe-area-inset-top,0px)}
+  html{scroll-padding-top:5rem}
+  .rf:focus-visible{outline:2px solid #7C3AED;outline-offset:3px;border-radius:12px}
+  .glow{background:radial-gradient(60% 50% at 70% 30%,#EBE3FD 0,transparent 70%)}
+  .pop{animation:pop .35s cubic-bezier(.2,.8,.2,1)}
+  @keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .caret::after{content:'';display:inline-block;width:2px;height:1em;background:#7C3AED;margin-left:2px;vertical-align:-2px;animation:blink 1s steps(2) infinite}
+  @keyframes blink{50%{opacity:0}}
+  @media (prefers-reduced-motion:reduce){.pop,.caret::after{animation:none}html{scroll-behavior:auto}}
+</style>
 </head>
+<body class="bg-white font-sans text-ink antialiased" x-data="landingApp()" x-init="init()">
 
-<body class="min-h-full bg-white font-sans text-ink antialiased"
-      x-data="landingApp()" x-init="init()"
-      @beforeinstallprompt.window.prevent="captureInstallPrompt($event)">
+<!-- Install sheet -->
+<div x-show="showInstallBanner" x-cloak x-transition.opacity class="fixed inset-x-0 bottom-0 z-50 px-3 md:hidden" style="padding-bottom:calc(env(safe-area-inset-bottom,0px) + .75rem)" role="dialog" aria-label="Install Pheral">
+  <div class="rounded-2xl border border-line bg-white p-3 shadow-2xl shadow-brand-500/20">
+    <div class="flex items-center gap-3">
+      <img src="{% static 'images/favicon-48.png' %}" alt="" class="h-11 w-11 shrink-0 rounded-xl">
+      <div class="min-w-0 flex-1"><p class="text-sm font-semibold">Install Pheral</p><p class="text-xs text-muted" x-text="isIOS ? 'Add it to your Home Screen to open it like an app.' : 'Open Pheral from your home screen. No app store needed.'"></p></div>
+      <button type="button" @click="triggerInstall()" class="rf shrink-0 rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white" x-text="isIOS ? 'Show me how' : 'Install'"></button>
+      <button type="button" @click="dismissInstall()" class="rf shrink-0 rounded-full p-1.5 text-muted" aria-label="Dismiss"><i data-lucide="x" class="h-4 w-4"></i></button>
+    </div>
+    <ol x-show="showIOSSteps" x-collapse x-cloak class="mt-3 space-y-1.5 border-t border-line pt-3 text-xs text-muted">
+      <li>1. Tap the Share button in Safari's toolbar.</li><li>2. Choose <b class="text-ink">Add to Home Screen</b>.</li><li>3. Tap <b class="text-ink">Add</b>.</li>
+    </ol>
+  </div>
+</div>
 
-    <!-- ================================================================
-         INSTALL BANNER — real beforeinstallprompt on Chrome/Android/
-         Edge; a manual "Add to Home Screen" instruction card on iOS
-         Safari, which never fires that event at all. Dismiss is
-         remembered in localStorage for 7 days, not forever, so it can
-         resurface — but never nags every single visit.
-    ================================================================= -->
-    <div x-show="showInstallBanner" x-cloak
-         x-transition:enter="transition ease-out duration-300"
-         x-transition:enter-start="-translate-y-full opacity-0"
-         x-transition:enter-end="translate-y-0 opacity-100"
-         x-transition:leave="transition ease-in duration-200"
-         x-transition:leave-start="translate-y-0 opacity-100"
-         x-transition:leave-end="-translate-y-full opacity-0"
-         class="fixed inset-x-0 top-0 z-50 md:hidden">
-        <div class="mx-3 mt-3 flex items-center gap-3 rounded-2xl border border-accent-200 bg-white p-3 shadow-2xl install-pulse">
-            <img src="{% static 'images/pheral-logo.png' %}" alt="" class="h-11 w-11 shrink-0 rounded-2xl object-cover">
-            <div class="min-w-0 flex-1">
-                <p class="text-[12.5px] font-bold text-ink">Install Pheral</p>
-                <p class="truncate text-[10.5px] text-muted" x-text="isIOS ? 'Add to your Home Screen for the full app experience' : 'One tap — no app store needed'"></p>
-            </div>
-            <button type="button" @click="triggerInstall()"
-                    class="focus-ring shrink-0 rounded-full bg-accent-500 px-3.5 py-2 text-[11.5px] font-semibold text-white transition hover:bg-accent-600">
-                <span x-text="isIOS ? 'How' : 'Install'"></span>
-            </button>
-            <button type="button" @click="dismissInstallBanner()" class="focus-ring shrink-0 rounded-full p-1 text-muted hover:bg-surface" aria-label="Dismiss">
-                <i data-lucide="x" class="h-4 w-4"></i>
-            </button>
-        </div>
+<!-- Nav -->
+<header class="sticky top-0 z-40 border-b border-line bg-white/90 backdrop-blur">
+  <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 md:px-8">
+    <a href="#top" class="rf flex items-center gap-2"><img src="{% static 'images/favicon-48.png' %}" alt="" class="h-8 w-8 rounded-lg"><span class="font-display text-lg font-extrabold tracking-tight">Pheral</span></a>
+    <nav class="hidden items-center gap-7 md:flex" aria-label="Main">
+      <template x-for="l in links" :key="l.id"><a :href="'#' + l.id" x-text="l.label" class="rf text-sm font-medium transition" :class="active === l.id ? 'text-brand-600' : 'text-muted hover:text-ink'"></a></template>
+    </nav>
+    <div class="hidden items-center gap-2 md:flex">
+      <a href="{% url 'login_view' %}" class="rf rounded-full px-4 py-2 text-sm font-semibold hover:bg-tint">Log in</a>
+      <a href="{% url 'register' %}" class="rf rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-brand-500/30 hover:bg-brand-600">Create account</a>
+    </div>
+    <button type="button" @click="nav = !nav" class="rf rounded-full p-2 md:hidden" :aria-expanded="nav" aria-label="Menu"><i data-lucide="menu" class="h-5 w-5" x-show="!nav"></i><i data-lucide="x" class="h-5 w-5" x-show="nav" x-cloak></i></button>
+  </div>
+  <div x-show="nav" x-cloak x-collapse class="border-t border-line bg-white md:hidden"><div class="flex flex-col gap-1 px-5 py-3">
+    <template x-for="l in links" :key="l.id"><a :href="'#' + l.id" @click="nav = false" class="py-2.5 text-sm font-medium" x-text="l.label"></a></template>
+    <a href="{% url 'login_view' %}" class="mt-2 rounded-full border border-line py-2.5 text-center text-sm font-semibold">Log in</a>
+    <a href="{% url 'register' %}" class="rounded-full bg-brand-500 py-2.5 text-center text-sm font-semibold text-white">Create account</a>
+  </div></div>
+</header>
 
-        <!-- iOS instructions panel -->
-        <div x-show="showIOSInstructions" x-cloak x-transition x-collapse class="mx-3 mt-1.5 rounded-2xl border border-line bg-surface p-3.5">
-            <p class="mb-2 text-[11px] font-semibold text-ink">To install on iPhone or iPad:</p>
-            <ol class="space-y-1.5 text-[11px] leading-4 text-muted">
-                <li class="flex items-center gap-2"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-[9px] font-bold text-ink">1</span> Tap the Share icon <i data-lucide="upload" class="inline h-3 w-3 -translate-y-0.5"></i> in Safari's toolbar</li>
-                <li class="flex items-center gap-2"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-[9px] font-bold text-ink">2</span> Scroll down and tap "Add to Home Screen"</li>
-                <li class="flex items-center gap-2"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-[9px] font-bold text-ink">3</span> Tap "Add" to confirm</li>
-            </ol>
-        </div>
+<main>
+<!-- HERO: headline + tabbed live phone -->
+<section id="top" class="glow overflow-hidden">
+  <div class="mx-auto grid max-w-6xl items-center gap-12 px-5 pb-16 pt-14 md:grid-cols-[1.05fr_.95fr] md:px-8 md:pb-24 md:pt-20">
+    <div>
+      <p class="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-brand-700"><span class="h-1.5 w-1.5 rounded-full bg-cash-600"></span>13 currencies across Africa and beyond</p>
+      <h1 class="mt-5 font-display text-[42px] font-extrabold leading-[1.02] tracking-tight md:text-[68px]">Say it, pay it, <span class="text-brand-500">hire for it.</span> In the same chat.</h1>
+      <p class="mt-5 max-w-md text-base leading-7 text-muted">Pheral puts messaging, cross-currency payments, and hiring in one thread, so the conversation and the transaction never get separated.</p>
+      <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+        <a href="{% url 'register' %}" class="rf rounded-full bg-brand-500 px-6 py-3.5 text-center text-sm font-semibold text-white shadow-lg shadow-brand-500/30 hover:bg-brand-600">Create your account</a>
+        <a href="#try" class="rf rounded-full border border-line bg-white px-6 py-3.5 text-center text-sm font-semibold hover:bg-tint">Try it below</a>
+      </div>
+      <p class="mt-4 text-sm text-muted">Free to join. Sign up with just your phone number.</p>
     </div>
 
-    <!-- ============================================================
-         NAV — active section highlighted via scroll-spy, no reload
-    ============================================================= -->
-    <header class="sticky top-0 z-40 border-b border-line bg-white/90 backdrop-blur">
-        <div class="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 md:px-8">
-            <a href="#top" class="focus-ring flex items-center gap-2">
-                <img src="{% static 'images/pheral-logo.png' %}" alt="Pheral" class="h-8 w-8 rounded-xl object-cover">
-                <span class="text-[15px] font-bold tracking-tight">Pheral</span>
-            </a>
-
-            <nav class="hidden items-center gap-7 md:flex">
-                <a href="#features" class="focus-ring text-[13px] font-medium transition" :class="activeSection === 'features' ? 'text-accent-600' : 'text-muted hover:text-ink'">Features</a>
-                <a href="#how-it-works" class="focus-ring text-[13px] font-medium transition" :class="activeSection === 'how-it-works' ? 'text-accent-600' : 'text-muted hover:text-ink'">How it works</a>
-                <a href="#security" class="focus-ring text-[13px] font-medium transition" :class="activeSection === 'security' ? 'text-accent-600' : 'text-muted hover:text-ink'">Security</a>
-                <a href="#faq" class="focus-ring text-[13px] font-medium transition" :class="activeSection === 'faq' ? 'text-accent-600' : 'text-muted hover:text-ink'">FAQ</a>
-            </nav>
-
-            <div class="hidden items-center gap-2.5 md:flex">
-                <a href="{% url 'login_view' %}" class="focus-ring rounded-full px-4 py-2 text-[13px] font-semibold text-ink transition hover:bg-surface">Log in</a>
-                <a href="{% url 'register' %}" class="focus-ring rounded-full bg-accent-500 px-4 py-2 text-[13px] font-semibold text-white transition hover:bg-accent-600">Get started</a>
-            </div>
-
-            <button type="button" @click="mobileNavOpen = !mobileNavOpen" class="focus-ring rounded-full p-2 text-ink md:hidden" aria-label="Menu">
-                <i data-lucide="menu" class="h-5 w-5" x-show="!mobileNavOpen"></i>
-                <i data-lucide="x" class="h-5 w-5" x-show="mobileNavOpen" x-cloak></i>
-            </button>
+    <div class="mx-auto w-full max-w-sm" x-data="{ tab: 'chat' }">
+      <div class="mb-3 flex gap-1 rounded-full border border-line bg-white p-1" role="tablist">
+        <template x-for="t in [['chat','Chat'],['pay','Pay'],['hire','Hire']]" :key="t[0]">
+          <button type="button" role="tab" :aria-selected="tab === t[0]" @click="tab = t[0]" class="rf flex-1 rounded-full py-2 text-sm font-semibold transition" :class="tab === t[0] ? 'bg-brand-500 text-white' : 'text-muted hover:text-ink'" x-text="t[1]"></button>
+        </template>
+      </div>
+      <div class="min-h-[392px] rounded-[2rem] border border-line bg-white p-4 shadow-2xl shadow-brand-500/15">
+        <div class="flex items-center gap-3 border-b border-line pb-3">
+          <span class="flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-700">A</span>
+          <div><p class="text-sm font-semibold">Ama Mensah</p><p class="text-xs text-cash-600">online</p></div>
         </div>
-
-        <div x-show="mobileNavOpen" x-cloak x-transition.origin.top class="border-t border-line bg-white px-5 py-4 md:hidden">
-            <div class="flex flex-col gap-3.5">
-                <a href="#features" @click="mobileNavOpen = false" class="focus-ring text-[13px] font-medium text-ink">Features</a>
-                <a href="#how-it-works" @click="mobileNavOpen = false" class="focus-ring text-[13px] font-medium text-ink">How it works</a>
-                <a href="#security" @click="mobileNavOpen = false" class="focus-ring text-[13px] font-medium text-ink">Security</a>
-                <a href="#faq" @click="mobileNavOpen = false" class="focus-ring text-[13px] font-medium text-ink">FAQ</a>
-                <div class="mt-1 flex flex-col gap-2.5 border-t border-line pt-3.5">
-                    <a href="{% url 'login_view' %}" class="focus-ring rounded-full border border-line py-2.5 text-center text-[13px] font-semibold text-ink">Log in</a>
-                    <a href="{% url 'register' %}" class="focus-ring rounded-full bg-accent-500 py-2.5 text-center text-[13px] font-semibold text-white">Get started</a>
-                </div>
-            </div>
+        <div x-show="tab === 'chat'" class="pop space-y-3 py-4 text-sm">
+          <p class="max-w-[80%] rounded-2xl rounded-bl-md bg-tint px-3.5 py-2.5">Logo is done. Can you pay the balance today?</p>
+          <p class="ml-auto max-w-[80%] rounded-2xl rounded-br-md bg-brand-500 px-3.5 py-2.5 text-white">Looks great! Sending it now.</p>
+          <p class="flex items-center gap-1 text-xs text-muted"><i data-lucide="check-check" class="h-3.5 w-3.5 text-brand-500"></i> Read 2:41 PM</p>
+          <p class="w-fit rounded-full bg-tint px-3 py-1.5 text-xs text-muted">Ama is typing…</p>
         </div>
-    </header>
-
-    <!-- ============================================================
-         HERO
-    ============================================================= -->
-    <section id="top" class="relative overflow-hidden grid-fade">
-        <div class="absolute inset-0 bg-gradient-to-b from-white via-white/60 to-white"></div>
-        <div class="relative mx-auto max-w-4xl px-5 pb-16 pt-14 text-center md:pb-24 md:pt-20">
-            <div class="mx-auto mb-5 flex w-fit items-center gap-1.5 rounded-full border border-line bg-white px-3.5 py-1.5 text-[11px] font-medium text-muted shadow-sm">
-                <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span> Now supporting 13 currencies across Africa and beyond
-            </div>
-
-            <h1 class="mx-auto max-w-2xl text-[34px] font-extrabold leading-[1.1] tracking-tight text-ink md:text-[52px]">
-                One app for how people actually connect, pay, and get work done.
-            </h1>
-            <p class="mx-auto mt-4 max-w-lg text-[15px] leading-6 text-muted md:text-[16px]">
-                Pheral brings messaging, cross-currency payments, and hiring into a single, fast, and secure experience — built for how conversations naturally turn into transactions.
-            </p>
-
-            <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                <a href="{% url 'register' %}" class="focus-ring flex w-full items-center justify-center gap-2 rounded-full bg-accent-500 px-6 py-3.5 text-[14px] font-semibold text-white shadow-lg shadow-accent-500/20 transition hover:bg-accent-600 sm:w-auto">
-                    Create your account <i data-lucide="arrow-right" class="h-4 w-4"></i>
-                </a>
-                <a href="#how-it-works" class="focus-ring flex w-full items-center justify-center gap-2 rounded-full border border-line px-6 py-3.5 text-[14px] font-semibold text-ink transition hover:bg-surface sm:w-auto">
-                    See how it works
-                </a>
-            </div>
-
-            <p class="mt-4 text-[11px] text-muted">No card required to sign up · Verified in minutes</p>
+        <div x-show="tab === 'pay'" x-cloak class="pop space-y-3 py-4 text-sm">
+          <div class="rounded-2xl bg-brand-500 p-4 text-white"><p class="text-xs text-white/75">You send</p><p class="font-display text-3xl font-bold">₦50,000</p><p class="mt-2 border-t border-white/20 pt-2 text-xs text-white/85">Ama receives <b>GH₵ 487.20</b></p></div>
+          <p class="flex w-fit items-center gap-1.5 rounded-full bg-cash-100 px-3 py-1.5 text-xs font-semibold text-cash-600"><i data-lucide="check" class="h-3.5 w-3.5"></i> Delivered. Receipt saved.</p>
+          <p class="text-xs text-muted">Ref PHR-7F4A91C2 · rate shown before you confirm</p>
         </div>
-
-        <div class="relative mx-auto max-w-3xl px-5 pb-16">
-            <div class="overflow-hidden rounded-3xl border border-line bg-white shadow-2xl">
-                <div class="flex items-center gap-1.5 border-b border-line bg-surface px-4 py-2.5">
-                    <span class="h-2.5 w-2.5 rounded-full bg-red-300"></span>
-                    <span class="h-2.5 w-2.5 rounded-full bg-amber-300"></span>
-                    <span class="h-2.5 w-2.5 rounded-full bg-emerald-300"></span>
-                </div>
-                <div class="grid grid-cols-1 gap-px bg-line md:grid-cols-3">
-                    <div class="space-y-2.5 bg-white p-4">
-                        <p class="text-[10px] font-semibold uppercase tracking-wide text-muted">Chats</p>
-                        <div class="flex items-center gap-2 rounded-xl bg-surface p-2">
-                            <span class="h-7 w-7 shrink-0 rounded-full bg-accent-200"></span>
-                            <div class="min-w-0 flex-1"><span class="block h-2 w-16 rounded bg-line"></span><span class="mt-1 block h-1.5 w-24 rounded bg-line/70"></span></div>
-                        </div>
-                        <div class="flex items-center gap-2 rounded-xl p-2">
-                            <span class="h-7 w-7 shrink-0 rounded-full bg-accent-100"></span>
-                            <div class="min-w-0 flex-1"><span class="block h-2 w-20 rounded bg-line"></span><span class="mt-1 block h-1.5 w-16 rounded bg-line/70"></span></div>
-                        </div>
-                    </div>
-                    <div class="space-y-2.5 bg-white p-4">
-                        <p class="text-[10px] font-semibold uppercase tracking-wide text-muted">Wallet</p>
-                        <div class="rounded-2xl bg-gradient-to-br from-accent-600 to-accent-400 p-3 text-white">
-                            <p class="text-[9px] text-white/80">Balance</p>
-                            <p class="text-[17px] font-bold">$2,480.00</p>
-                        </div>
-                        <div class="flex gap-2">
-                            <span class="flex-1 rounded-lg bg-surface py-2 text-center text-[9px] font-semibold text-ink">Send</span>
-                            <span class="flex-1 rounded-lg bg-surface py-2 text-center text-[9px] font-semibold text-ink">Top up</span>
-                        </div>
-                    </div>
-                    <div class="space-y-2.5 bg-white p-4">
-                        <p class="text-[10px] font-semibold uppercase tracking-wide text-muted">Hire</p>
-                        <div class="rounded-xl border border-line p-2.5">
-                            <span class="block h-2 w-24 rounded bg-line"></span>
-                            <span class="mt-2 block h-2 w-14 rounded-full bg-emerald-200"></span>
-                        </div>
-                        <div class="rounded-xl border border-line p-2.5">
-                            <span class="block h-2 w-20 rounded bg-line"></span>
-                            <span class="mt-2 block h-2 w-16 rounded-full bg-accent-200"></span>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <div x-show="tab === 'hire'" x-cloak class="pop space-y-3 py-4 text-sm">
+          <div class="rounded-2xl border border-line p-3.5"><p class="text-xs text-muted">Job request</p><p class="font-semibold">Packaging design</p><p class="mt-1 text-xs text-muted">Budget ₦120,000 · 5 days</p></div>
+          <div class="flex gap-2"><span class="flex-1 rounded-full bg-brand-500 py-2.5 text-center text-xs font-semibold text-white">Send offer</span><span class="flex-1 rounded-full border border-line py-2.5 text-center text-xs font-semibold">Negotiate</span></div>
+          <p class="text-xs text-muted">When the work is agreed, pay in the same thread.</p>
         </div>
-    </section>
+      </div>
+    </div>
+  </div>
+</section>
 
-    <!-- ============================================================
-         TRUST STRIP
-    ============================================================= -->
-    <section class="border-y border-line bg-surface/60 py-6">
-        <div class="mx-auto max-w-5xl px-5">
-            <p class="text-center text-[10px] font-semibold uppercase tracking-widest text-muted">Payments powered by trusted infrastructure</p>
-            <div class="mt-4 flex flex-wrap items-center justify-center gap-x-10 gap-y-3 opacity-70">
-                <span class="text-[13px] font-bold tracking-tight text-ink">Flutterwave</span>
-                <span class="text-[13px] font-bold tracking-tight text-ink">Paystack</span>
-                <span class="text-[13px] font-bold tracking-tight text-ink">256-bit TLS</span>
-                <span class="text-[13px] font-bold tracking-tight text-ink">PCI DSS aligned</span>
-            </div>
-        </div>
-    </section>
+<!-- Currency strip -->
+<section class="border-y border-line bg-tint/60 py-5"><div class="mx-auto flex max-w-5xl flex-wrap items-center justify-center gap-x-5 gap-y-2 px-5 text-sm font-semibold text-brand-700">
+  <span class="text-muted">Supported:</span><template x-for="c in Object.keys(rates)" :key="c"><span x-text="c"></span></template>
+</div></section>
 
-    <!-- ============================================================
-         FEATURES
-    ============================================================= -->
-    <section id="features" class="mx-auto max-w-6xl px-5 py-20 md:px-8">
-        <div class="mx-auto mb-14 max-w-xl text-center">
-            <p class="mb-2 text-[11px] font-semibold uppercase tracking-widest text-accent-600">Built for real relationships</p>
-            <h2 class="text-[28px] font-extrabold tracking-tight text-ink md:text-[34px]">Everything happens in one thread</h2>
-            <p class="mt-3 text-[14px] leading-6 text-muted">No switching apps to send money after a chat, no separate marketplace for hiring someone you already trust.</p>
-        </div>
+<!-- TRY IT: converter + agent -->
+<section id="try" class="mx-auto max-w-6xl px-5 py-20 md:px-8">
+  <h2 class="max-w-2xl font-display text-3xl font-extrabold tracking-tight md:text-5xl">Try it before you sign up.</h2>
+  <p class="mt-3 max-w-lg text-muted">Two things Pheral does in a chat, running right here.</p>
+  <div class="mt-10 grid gap-5 md:grid-cols-2">
+    <!-- Converter -->
+    <div class="rounded-3xl border border-line bg-white p-6 shadow-sm">
+      <div class="flex items-center gap-2"><i data-lucide="repeat" class="h-5 w-5 text-brand-500"></i><h3 class="font-display text-xl font-bold">Cross-currency payment</h3></div>
+      <div class="mt-5 space-y-3">
+        <label class="block rounded-2xl bg-tint p-3.5"><span class="text-xs text-muted">You send</span>
+          <span class="mt-1 flex items-center gap-2"><input type="number" min="0" inputmode="decimal" x-model.number="amount" class="rf w-full min-w-0 bg-transparent font-display text-2xl font-bold outline-none">
+          <select x-model="from" aria-label="Currency you send" class="rf rounded-full border border-line bg-white px-3 py-1.5 text-sm font-semibold"><template x-for="c in Object.keys(rates)" :key="c"><option x-text="c"></option></template></select></span></label>
+        <div class="flex justify-center"><button type="button" @click="[from, to] = [to, from]" class="rf rounded-full border border-line bg-white p-2 text-brand-600 hover:bg-brand-50" aria-label="Swap currencies"><i data-lucide="arrow-up-down" class="h-4 w-4"></i></button></div>
+        <div class="rounded-2xl bg-brand-50 p-3.5"><span class="text-xs text-muted">They receive</span>
+          <span class="mt-1 flex items-center gap-2"><span class="w-full min-w-0 truncate font-display text-2xl font-bold text-brand-700" x-text="converted" aria-live="polite"></span>
+          <select x-model="to" aria-label="Currency they receive" class="rf rounded-full border border-line bg-white px-3 py-1.5 text-sm font-semibold"><template x-for="c in Object.keys(rates)" :key="c"><option x-text="c"></option></template></select></span></div>
+      </div>
+      <p class="mt-4 text-xs text-muted" x-text="'1 ' + from + ' ≈ ' + rate + ' ' + to + '. Illustrative rates only. Pheral shows the live rate before you confirm.'"></p>
+    </div>
+    <!-- Agent -->
+    <div class="rounded-3xl border border-line bg-white p-6 shadow-sm">
+      <div class="flex items-center gap-2"><i data-lucide="bot" class="h-5 w-5 text-brand-500"></i><h3 class="font-display text-xl font-bold">Agent commands</h3></div>
+      <p class="mt-2 text-sm text-muted">Type what you want. You confirm before anything is sent.</p>
+      <div class="mt-4 flex min-h-[3.25rem] items-center rounded-2xl border border-brand-200 bg-white px-4 py-3 text-sm font-medium"><span :class="typing ? 'caret' : ''" x-text="typed || 'Pick an example below'"></span></div>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <template x-for="(c, i) in cmds" :key="i"><button type="button" @click="runCmd(i)" class="rf rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold hover:bg-brand-50" :class="cmdIdx === i ? 'border-brand-400 bg-brand-50 text-brand-700' : ''" x-text="c.label"></button></template>
+      </div>
+      <div x-show="result" x-cloak class="pop mt-4 rounded-2xl bg-tint p-4 text-sm">
+        <p class="text-xs font-semibold text-brand-700" x-text="result && result.title"></p>
+        <p class="mt-1 font-display text-xl font-bold" x-text="result && result.main"></p>
+        <p class="text-xs text-muted" x-text="result && result.sub"></p>
+        <div class="mt-3 flex gap-2"><span class="rounded-full bg-brand-500 px-4 py-1.5 text-xs font-semibold text-white">Confirm</span><span class="rounded-full border border-line bg-white px-4 py-1.5 text-xs font-semibold">Edit</span></div>
+      </div>
+    </div>
+  </div>
+</section>
 
-        <div class="grid grid-cols-1 gap-5 md:grid-cols-3">
-            <div class="rounded-3xl border border-line bg-white p-6 transition hover:shadow-lg">
-                <span class="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-50 text-accent-600"><i data-lucide="message-circle" class="h-5 w-5"></i></span>
-                <h3 class="mb-1.5 text-[15px] font-bold text-ink">Real-time messaging</h3>
-                <p class="text-[13px] leading-5 text-muted">Instant delivery, typing indicators, and read receipts — built on a live connection, not page reloads.</p>
-            </div>
-            <div class="rounded-3xl border border-line bg-white p-6 transition hover:shadow-lg">
-                <span class="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-50 text-accent-600"><i data-lucide="repeat" class="h-5 w-5"></i></span>
-                <h3 class="mb-1.5 text-[15px] font-bold text-ink">Cross-currency payments</h3>
-                <p class="text-[13px] leading-5 text-muted">Send in your currency, they receive in theirs — converted automatically at the point of transfer.</p>
-            </div>
-            <div class="rounded-3xl border border-line bg-white p-6 transition hover:shadow-lg">
-                <span class="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-50 text-accent-600"><i data-lucide="briefcase" class="h-5 w-5"></i></span>
-                <h3 class="mb-1.5 text-[15px] font-bold text-ink">Hire, right from chat</h3>
-                <p class="text-[13px] leading-5 text-muted">Post a job, send a request, negotiate, and pay — without ever leaving the conversation.</p>
-            </div>
-            <div class="rounded-3xl border border-line bg-white p-6 transition hover:shadow-lg">
-                <span class="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-50 text-accent-600"><i data-lucide="users" class="h-5 w-5"></i></span>
-                <h3 class="mb-1.5 text-[15px] font-bold text-ink">Group wallets</h3>
-                <p class="text-[13px] leading-5 text-muted">Pool money with a group, track every contribution, and let admins manage shared withdrawals transparently.</p>
-            </div>
-            <div class="rounded-3xl border border-line bg-white p-6 transition hover:shadow-lg">
-                <span class="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-50 text-accent-600"><i data-lucide="bot" class="h-5 w-5"></i></span>
-                <h3 class="mb-1.5 text-[15px] font-bold text-ink">Agent commands</h3>
-                <p class="text-[13px] leading-5 text-muted">Type a plain-language command to send a payment or a message — Pheral's agent handles the rest.</p>
-            </div>
-            <div class="rounded-3xl border border-line bg-white p-6 transition hover:shadow-lg">
-                <span class="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-50 text-accent-600"><i data-lucide="smartphone" class="h-5 w-5"></i></span>
-                <h3 class="mb-1.5 text-[15px] font-bold text-ink">Airtime & data, instantly</h3>
-                <p class="text-[13px] leading-5 text-muted">Top up any network directly from your wallet balance, delivered in seconds.</p>
-            </div>
-        </div>
-    </section>
+<!-- Features bento -->
+<section id="features" class="bg-tint/60 py-20"><div class="mx-auto max-w-6xl px-5 md:px-8">
+  <h2 class="max-w-2xl font-display text-3xl font-extrabold tracking-tight md:text-5xl">You shouldn't need three apps to pay someone you just talked to.</h2>
+  <div class="mt-12 grid gap-4 md:grid-cols-6">
+    <article class="rounded-3xl bg-brand-500 p-7 text-white md:col-span-4"><i data-lucide="repeat" class="h-6 w-6"></i><h3 class="mt-4 font-display text-2xl font-bold">Send in yours. They get theirs.</h3><p class="mt-2 max-w-md text-white/80">Converted at the moment of transfer. Both of you see exactly what was sent and what arrived.</p></article>
+    <article class="rounded-3xl border border-line bg-white p-7 md:col-span-2"><i data-lucide="message-circle" class="h-6 w-6 text-brand-500"></i><h3 class="mt-4 font-display text-xl font-bold">Live messaging</h3><p class="mt-2 text-sm text-muted">Instant delivery, typing indicators and read receipts.</p></article>
+    <article class="rounded-3xl border border-line bg-white p-7 md:col-span-2"><i data-lucide="briefcase" class="h-6 w-6 text-brand-500"></i><h3 class="mt-4 font-display text-xl font-bold">Hire from the chat</h3><p class="mt-2 text-sm text-muted">Post a job, send a request, agree on a price, and pay.</p></article>
+    <article class="rounded-3xl border border-line bg-white p-7 md:col-span-2"><i data-lucide="users" class="h-6 w-6 text-brand-500"></i><h3 class="mt-4 font-display text-xl font-bold">Group wallets</h3><p class="mt-2 text-sm text-muted">Pool money, track every contribution, manage withdrawals openly.</p></article>
+    <article class="rounded-3xl border border-line bg-white p-7 md:col-span-2"><i data-lucide="smartphone" class="h-6 w-6 text-brand-500"></i><h3 class="mt-4 font-display text-xl font-bold">Airtime and data</h3><p class="mt-2 text-sm text-muted">Top up any network from your wallet in seconds.</p></article>
+  </div>
+</div></section>
 
-    <!-- ============================================================
-         HOW IT WORKS
-    ============================================================= -->
-    <section id="how-it-works" class="bg-surface/50 py-20">
-        <div class="mx-auto max-w-5xl px-5 md:px-8">
-            <div class="mx-auto mb-14 max-w-xl text-center">
-                <p class="mb-2 text-[11px] font-semibold uppercase tracking-widest text-accent-600">Getting started</p>
-                <h2 class="text-[28px] font-extrabold tracking-tight text-ink md:text-[34px]">Three steps, a few minutes</h2>
-            </div>
+<!-- How it works -->
+<section id="how-it-works" class="mx-auto max-w-5xl px-5 py-20 md:px-8">
+  <h2 class="font-display text-3xl font-extrabold tracking-tight md:text-5xl">Set up in a few minutes</h2>
+  <ol class="mt-12 grid gap-8 md:grid-cols-3">
+    <template x-for="(s, i) in steps" :key="i"><li class="relative border-t-2 border-brand-500 pt-5"><span class="font-display text-sm font-bold text-brand-600" x-text="'Step ' + (i + 1)"></span><h3 class="mt-1 font-display text-xl font-bold" x-text="s[0]"></h3><p class="mt-2 text-sm leading-6 text-muted" x-text="s[1]"></p></li></template>
+  </ol>
+</section>
 
-            <div class="grid grid-cols-1 gap-8 md:grid-cols-3">
-                <div>
-                    <span class="mb-4 flex h-9 w-9 items-center justify-center rounded-full bg-ink text-[13px] font-bold text-white">1</span>
-                    <h3 class="mb-1.5 text-[15px] font-bold text-ink">Verify your number</h3>
-                    <p class="text-[13px] leading-5 text-muted">Sign up with your phone number and confirm a one-time code — no paperwork, no waiting period.</p>
-                </div>
-                <div>
-                    <span class="mb-4 flex h-9 w-9 items-center justify-center rounded-full bg-ink text-[13px] font-bold text-white">2</span>
-                    <h3 class="mb-1.5 text-[15px] font-bold text-ink">Fund your wallet</h3>
-                    <p class="text-[13px] leading-5 text-muted">Top up by card, bank transfer, or USSD, in any of the currencies Pheral supports.</p>
-                </div>
-                <div>
-                    <span class="mb-4 flex h-9 w-9 items-center justify-center rounded-full bg-ink text-[13px] font-bold text-white">3</span>
-                    <h3 class="mb-1.5 text-[15px] font-bold text-ink">Chat, pay, hire</h3>
-                    <p class="text-[13px] leading-5 text-muted">Message someone, send a payment, or post a job — all inside the same thread.</p>
-                </div>
-            </div>
-        </div>
-    </section>
+<!-- Security -->
+<section id="security" class="bg-tint/60 py-20"><div class="mx-auto grid max-w-5xl items-start gap-12 px-5 md:grid-cols-2 md:px-8">
+  <div><h2 class="font-display text-3xl font-extrabold tracking-tight md:text-4xl">Your money moves with a paper trail.</h2><p class="mt-4 text-muted">Card payments and top-ups run through Flutterwave and Paystack, so card details don't pass through Pheral's servers.</p></div>
+  <ul class="space-y-3">
+    <li class="flex gap-3 rounded-2xl border border-line bg-white p-4"><i data-lucide="shield-check" class="mt-0.5 h-5 w-5 shrink-0 text-cash-600"></i><p class="text-sm leading-6"><b>Protected transfers.</b> Database-level locking stops the same balance being spent twice.</p></li>
+    <li class="flex gap-3 rounded-2xl border border-line bg-white p-4"><i data-lucide="lock" class="mt-0.5 h-5 w-5 shrink-0 text-cash-600"></i><p class="text-sm leading-6"><b>Encrypted in transit.</b> All traffic runs over TLS.</p></li>
+    <li class="flex gap-3 rounded-2xl border border-line bg-white p-4"><i data-lucide="file-text" class="mt-0.5 h-5 w-5 shrink-0 text-cash-600"></i><p class="text-sm leading-6"><b>Every transaction recorded.</b> A permanent receipt and ledger entry you can look back on.</p></li>
+  </ul>
+</div></section>
 
-    <!-- ============================================================
-         STATS
-    ============================================================= -->
-    <section class="mx-auto max-w-5xl px-5 py-16 md:px-8">
-        <div class="grid grid-cols-2 gap-6 rounded-3xl border border-line bg-white p-8 shadow-sm md:grid-cols-4">
-            <div class="text-center">
-                <p class="text-[26px] font-extrabold text-ink">13+</p>
-                <p class="mt-1 text-[11px] text-muted">Currencies supported</p>
-            </div>
-            <div class="text-center">
-                <p class="text-[26px] font-extrabold text-ink">&lt;1min</p>
-                <p class="mt-1 text-[11px] text-muted">Typical top-up time</p>
-            </div>
-            <div class="text-center">
-                <p class="text-[26px] font-extrabold text-ink">24/7</p>
-                <p class="mt-1 text-[11px] text-muted">Real-time messaging</p>
-            </div>
-            <div class="text-center">
-                <p class="text-[26px] font-extrabold text-ink">0</p>
-                <p class="mt-1 text-[11px] text-muted">Apps you need to switch between</p>
-            </div>
-        </div>
-    </section>
+<!-- FAQ -->
+<section id="faq" class="mx-auto max-w-2xl px-5 py-20 md:px-8">
+  <h2 class="font-display text-3xl font-extrabold tracking-tight md:text-4xl">Questions</h2>
+  <div class="mt-8 divide-y divide-line border-y border-line">
+    <template x-for="(item, i) in faqs" :key="i"><div>
+      <button type="button" @click="open = open === i ? -1 : i" :aria-expanded="open === i" class="rf flex w-full items-center justify-between gap-4 py-4 text-left"><span class="font-semibold" x-text="item[0]"></span><i data-lucide="plus" class="h-4 w-4 shrink-0 text-brand-500 transition" :class="open === i ? 'rotate-45' : ''"></i></button>
+      <p x-show="open === i" x-collapse x-cloak class="pb-4 text-sm leading-6 text-muted" x-text="item[1]"></p>
+    </div></template>
+  </div>
+</section>
 
-    <!-- ============================================================
-         SECURITY
-    ============================================================= -->
-    <section id="security" class="mx-auto max-w-5xl px-5 py-20 md:px-8">
-        <div class="grid grid-cols-1 items-center gap-10 md:grid-cols-2">
-            <div>
-                <p class="mb-2 text-[11px] font-semibold uppercase tracking-widest text-accent-600">Security</p>
-                <h2 class="mb-4 text-[26px] font-extrabold tracking-tight text-ink md:text-[30px]">Built with money-safety as the default, not an afterthought</h2>
-                <div class="space-y-4">
-                    <div class="flex items-start gap-3">
-                        <span class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><i data-lucide="shield-check" class="h-3.5 w-3.5"></i></span>
-                        <p class="text-[13px] leading-5 text-ink"><span class="font-semibold">Race-condition safe transfers.</span> Every wallet movement is protected by database-level locking — no double-spends, ever.</p>
-                    </div>
-                    <div class="flex items-start gap-3">
-                        <span class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><i data-lucide="lock" class="h-3.5 w-3.5"></i></span>
-                        <p class="text-[13px] leading-5 text-ink"><span class="font-semibold">Encrypted in transit.</span> All traffic runs over TLS; card details never touch Pheral's servers directly.</p>
-                    </div>
-                    <div class="flex items-start gap-3">
-                        <span class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><i data-lucide="file-text" class="h-3.5 w-3.5"></i></span>
-                        <p class="text-[13px] leading-5 text-ink"><span class="font-semibold">Full ledger history.</span> Every transaction has a permanent, auditable trail — nothing moves without a record.</p>
-                    </div>
-                </div>
-            </div>
-            <div class="rounded-3xl border border-line bg-surface p-6">
-                <div class="flex items-center gap-2.5 rounded-2xl bg-white p-3.5 shadow-sm">
-                    <span class="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><i data-lucide="check" class="h-4 w-4"></i></span>
-                    <div><p class="text-[12px] font-semibold text-ink">Payment verified</p><p class="text-[10px] text-muted">Wallet balance updated instantly</p></div>
-                </div>
-                <div class="mt-3 flex items-center gap-2.5 rounded-2xl bg-white p-3.5 shadow-sm">
-                    <span class="flex h-9 w-9 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="receipt" class="h-4 w-4"></i></span>
-                    <div><p class="text-[12px] font-semibold text-ink">Receipt generated</p><p class="text-[10px] text-muted">Ref: PHR-7F4A91C2</p></div>
-                </div>
-                <div class="mt-3 flex items-center gap-2.5 rounded-2xl bg-white p-3.5 shadow-sm">
-                    <span class="flex h-9 w-9 items-center justify-center rounded-full bg-sky-50 text-sky-600"><i data-lucide="bell" class="h-4 w-4"></i></span>
-                    <div><p class="text-[12px] font-semibold text-ink">Recipient notified</p><p class="text-[10px] text-muted">Delivered in under a second</p></div>
-                </div>
-            </div>
-        </div>
-    </section>
+<!-- CTA -->
+<section class="px-5 pb-20"><div class="mx-auto max-w-5xl rounded-[2rem] bg-brand-500 px-6 py-16 text-center text-white md:py-20">
+  <h2 class="mx-auto max-w-xl font-display text-3xl font-extrabold tracking-tight md:text-5xl">Start your first conversation on Pheral.</h2>
+  <a href="{% url 'register' %}" class="rf mt-8 inline-block rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-brand-700 hover:bg-brand-50">Create your account</a>
+</div></section>
+</main>
 
-    <!-- ============================================================
-         FAQ
-    ============================================================= -->
-    <section id="faq" class="bg-surface/50 py-20">
-        <div class="mx-auto max-w-2xl px-5 md:px-8" x-data="{ open: 0 }">
-            <div class="mb-10 text-center">
-                <p class="mb-2 text-[11px] font-semibold uppercase tracking-widest text-accent-600">Questions</p>
-                <h2 class="text-[28px] font-extrabold tracking-tight text-ink md:text-[34px]">Frequently asked</h2>
-            </div>
+<footer class="border-t border-line py-12"><div class="mx-auto max-w-6xl px-5 md:px-8">
+  <div class="grid grid-cols-2 gap-8 md:grid-cols-5">
+    <div class="col-span-2"><a href="#top" class="rf flex items-center gap-2"><img src="{% static 'images/favicon-48.png' %}" alt="" class="h-8 w-8 rounded-lg"><span class="font-display text-lg font-extrabold">Pheral</span></a><p class="mt-3 max-w-xs text-sm text-muted">Chat, pay, and hire in one app.</p></div>
+    <div><p class="mb-3 text-sm font-semibold">Product</p><div class="flex flex-col gap-2 text-sm text-muted"><a href="#features" class="hover:text-brand-600">Features</a><a href="#security" class="hover:text-brand-600">Security</a><a href="#faq" class="hover:text-brand-600">FAQ</a></div></div>
+    <div><p class="mb-3 text-sm font-semibold">Account</p><div class="flex flex-col gap-2 text-sm text-muted"><a href="{% url 'register' %}" class="hover:text-brand-600">Sign up</a><a href="{% url 'login_view' %}" class="hover:text-brand-600">Log in</a><a href="{% url 'forgot_password' %}" class="hover:text-brand-600">Reset password</a></div></div>
+    <div><p class="mb-3 text-sm font-semibold">Legal</p><div class="flex flex-col gap-2 text-sm text-muted"><a href="#" class="hover:text-brand-600">Terms of Service</a><a href="#" class="hover:text-brand-600">Privacy Policy</a></div></div>
+  </div>
+  <div class="mt-10 flex flex-col justify-between gap-2 border-t border-line pt-6 text-xs text-muted md:flex-row"><p>&copy; {% now "Y" %} Pheral. All rights reserved.</p><p>Payments are processed by regulated third-party providers.</p></div>
+</div></footer>
 
-            <div class="space-y-2.5">
-                <template x-for="(item, index) in [
-                    { q: 'Is Pheral free to use?', a: 'Creating an account and messaging are free. Standard processing fees may apply to card top-ups and withdrawals, shown clearly before you confirm any transaction.' },
-                    { q: 'Which currencies does Pheral support?', a: 'Pheral currently supports NGN, GHS, KES, ZAR, UGX, TZS, RWF, EGP, USD, GBP, EUR, CAD, and AUD, with more being added over time.' },
-                    { q: 'How do cross-currency payments work?', a: 'When you pay someone who holds a different currency, Pheral converts the amount automatically at the current rate, and you both see exactly what was sent and received.' },
-                    { q: 'Is my money safe?', a: 'All wallet transfers use database-level locking to prevent double-spending, every transaction is logged permanently, and payments are processed through licensed, regulated payment partners.' },
-                    { q: 'Can I use Pheral outside Nigeria?', a: 'Yes — Pheral supports multiple countries and currencies, though certain features like specific withdrawal rails may vary by region.' },
-                ]" :key="index">
-                    <div class="overflow-hidden rounded-2xl border border-line bg-white">
-                        <button type="button" @click="open = open === index ? -1 : index" class="focus-ring flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left">
-                            <span class="text-[13px] font-semibold text-ink" x-text="item.q"></span>
-                            <i data-lucide="chevron-down" class="h-4 w-4 shrink-0 text-muted transition" :class="open === index ? 'rotate-180' : ''"></i>
-                        </button>
-                        <div x-show="open === index" x-collapse x-cloak class="px-4 pb-3.5 text-[12.5px] leading-5 text-muted" x-text="item.a"></div>
-                    </div>
-                </template>
-            </div>
-        </div>
-    </section>
+<script>
+const KEY = 'pheral_install_dismissed_at';
+const store = { get() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }, set() { try { localStorage.setItem(KEY, Date.now().toString()); } catch (e) {} } };
 
-    <!-- ============================================================
-         FINAL CTA
-    ============================================================= -->
-    <section class="relative overflow-hidden bg-ink py-20">
-        <div class="absolute inset-0 bg-gradient-to-br from-accent-700/40 via-transparent to-transparent"></div>
-        <div class="relative mx-auto max-w-2xl px-5 text-center">
-            <h2 class="text-[28px] font-extrabold tracking-tight text-white md:text-[34px]">Ready to bring it all into one place?</h2>
-            <p class="mx-auto mt-3 max-w-md text-[14px] leading-6 text-white/70">Join Pheral and stop switching between apps to talk, pay, and hire.</p>
-            <a href="{% url 'register' %}" class="focus-ring mt-7 inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-[14px] font-semibold text-ink transition hover:bg-accent-50">
-                Create your account <i data-lucide="arrow-right" class="h-4 w-4"></i>
-            </a>
-        </div>
-    </section>
+function landingApp() {
+  return {
+    nav: false, active: 'top', open: 0,
+    links: [{ id: 'try', label: 'Try it' }, { id: 'features', label: 'Features' }, { id: 'how-it-works', label: 'How it works' }, { id: 'security', label: 'Security' }, { id: 'faq', label: 'FAQ' }],
+    steps: [['Verify your number', 'Sign up with your phone number and enter a one-time code. No paperwork.'], ['Fund your wallet', 'Top up by card, bank transfer, or USSD in any supported currency.'], ['Start the conversation', 'Message someone, send money, or post a job from the same thread.']],
+    faqs: [
+      ['Is Pheral free to use?', 'Creating an account and messaging are free. Card top-ups and withdrawals may carry processing fees, and you see them before you confirm.'],
+      ['Which currencies are supported?', 'NGN, GHS, KES, ZAR, UGX, TZS, RWF, EGP, USD, GBP, EUR, CAD and AUD, with more on the way.'],
+      ['How do cross-currency payments work?', 'When you pay someone who holds a different currency, Pheral converts at the current rate. You both see what was sent and what was received.'],
+      ['Is my money safe?', 'Transfers are locked at the database level to prevent double-spending, every transaction is logged, and payments run through regulated payment partners.'],
+      ['Can I use Pheral outside Nigeria?', 'Yes. Pheral works across multiple countries and currencies, though some withdrawal options vary by region.'],
+    ],
+    // Illustrative units per 1 USD, for the demo only.
+    rates: { NGN: 1550, GHS: 15.5, KES: 129, ZAR: 18, UGX: 3700, TZS: 2700, RWF: 1400, EGP: 49, USD: 1, GBP: 0.77, EUR: 0.92, CAD: 1.37, AUD: 1.5 },
+    amount: 50000, from: 'NGN', to: 'GHS',
+    get rate() { const r = this.rates[this.to] / this.rates[this.from]; return +r.toPrecision(4); },
+    get converted() { const v = (Number(this.amount) || 0) * this.rates[this.to] / this.rates[this.from]; return v.toLocaleString(undefined, { maximumFractionDigits: 2 }); },
 
-    <!-- ============================================================
-         FOOTER
-    ============================================================= -->
-    <footer class="border-t border-line bg-white py-12">
-        <div class="mx-auto max-w-6xl px-5 md:px-8">
-            <div class="grid grid-cols-2 gap-8 md:grid-cols-5">
-                <div class="col-span-2">
-                    <a href="#top" class="focus-ring flex items-center gap-2">
-                        <img src="{% static 'images/pheral-logo.png' %}" alt="Pheral" class="h-8 w-8 rounded-xl object-cover">
-                        <span class="text-[15px] font-bold tracking-tight">Pheral</span>
-                    </a>
-                    <p class="mt-3 max-w-xs text-[12px] leading-5 text-muted">Chat, pay, and hire — all in one app, built for how people actually connect.</p>
-                </div>
-                <div>
-                    <p class="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted">Product</p>
-                    <div class="flex flex-col gap-2 text-[12.5px] text-ink">
-                        <a href="#features" class="focus-ring hover:text-accent-600">Features</a>
-                        <a href="#security" class="focus-ring hover:text-accent-600">Security</a>
-                        <a href="#faq" class="focus-ring hover:text-accent-600">FAQ</a>
-                    </div>
-                </div>
-                <div>
-                    <p class="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted">Account</p>
-                    <div class="flex flex-col gap-2 text-[12.5px] text-ink">
-                        <a href="{% url 'register' %}" class="focus-ring hover:text-accent-600">Sign up</a>
-                        <a href="{% url 'login_view' %}" class="focus-ring hover:text-accent-600">Log in</a>
-                        <a href="{% url 'forgot_password' %}" class="focus-ring hover:text-accent-600">Reset password</a>
-                    </div>
-                </div>
-                <div>
-                    <p class="mb-3 text-[10px] font-semibold uppercase tracking-widest text-muted">Legal</p>
-                    <div class="flex flex-col gap-2 text-[12.5px] text-ink">
-                        <a href="#" class="focus-ring hover:text-accent-600">Terms of Service</a>
-                        <a href="#" class="focus-ring hover:text-accent-600">Privacy Policy</a>
-                    </div>
-                </div>
-            </div>
-            <div class="mt-10 flex flex-col items-center justify-between gap-3 border-t border-line pt-6 md:flex-row">
-                <p class="text-[11px] text-muted">&copy; {% now "Y" %} Pheral. All rights reserved.</p>
-                <p class="text-[10px] text-muted">Payments processed by regulated third-party providers.</p>
-            </div>
-        </div>
-    </footer>
+    cmds: [
+      { label: 'Send money', text: 'Send ₦20,000 to Tunde for the print run', result: { title: 'Payment ready', main: '₦20,000 → Tunde', sub: 'Note: print run · arrives in seconds' } },
+      { label: 'Buy airtime', text: 'Buy ₦1,000 airtime for 0803 123 4567', result: { title: 'Airtime ready', main: '₦1,000 airtime', sub: 'To 0803 123 4567 · from your wallet' } },
+      { label: 'Message', text: 'Tell Ama I will pay by 5pm', result: { title: 'Message ready', main: '“I will pay by 5pm”', sub: 'To Ama Mensah' } },
+    ],
+    typed: '', typing: false, cmdIdx: -1, result: null, _t: null,
+    runCmd(i) {
+      clearInterval(this._t); this.cmdIdx = i; this.result = null; this.typed = ''; this.typing = true;
+      const text = this.cmds[i].text; let n = 0;
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) { this.typed = text; this.typing = false; this.result = this.cmds[i].result; return; }
+      this._t = setInterval(() => {
+        this.typed = text.slice(0, ++n);
+        if (n >= text.length) { clearInterval(this._t); this.typing = false; this.result = this.cmds[i].result; }
+      }, 28);
+    },
 
-    <script>
-        function landingApp() {
-            return {
-                mobileNavOpen: false,
-                activeSection: 'top',
-                showInstallBanner: false,
-                showIOSInstructions: false,
-                isIOS: false,
-                _deferredPrompt: null,
-                _observer: null,
-
-                init() {
-                    lucide.createIcons();
-                    this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-                    this.setupScrollSpy();
-                    this.maybeShowInstallBanner();
-
-                    // If the app is already installed/running standalone,
-                    // never show the banner at all.
-                    if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
-                        this.showInstallBanner = false;
-                    }
-                },
-
-                setupScrollSpy() {
-                    const sections = ['top', 'features', 'how-it-works', 'security', 'faq'];
-                    this._observer = new IntersectionObserver((entries) => {
-                        entries.forEach((entry) => {
-                            if (entry.isIntersecting) this.activeSection = entry.target.id;
-                        });
-                    }, { rootMargin: '-40% 0px -55% 0px' });
-
-                    sections.forEach((id) => {
-                        const el = document.getElementById(id);
-                        if (el) this._observer.observe(el);
-                    });
-                },
-
-                maybeShowInstallBanner() {
-                    const dismissedAt = localStorage.getItem('pheral_install_dismissed_at');
-                    if (dismissedAt) {
-                        const daysSince = (Date.now() - parseInt(dismissedAt, 10)) / (1000 * 60 * 60 * 24);
-                        if (daysSince < 7) return; // respect a recent dismissal
-                    }
-
-                    if (this.isIOS) {
-                        // Safari never fires beforeinstallprompt — show our
-                        // own banner after a short delay so it doesn't feel
-                        // like it's blocking the first paint.
-                        setTimeout(() => { this.showInstallBanner = true; }, 2500);
-                    }
-                    // Non-iOS: banner only appears once captureInstallPrompt
-                    // actually fires — see below. No fake banner shown if
-                    // the browser never offers a real install.
-                },
-
-                captureInstallPrompt(event) {
-                    this._deferredPrompt = event;
-                    const dismissedAt = localStorage.getItem('pheral_install_dismissed_at');
-                    if (dismissedAt) {
-                        const daysSince = (Date.now() - parseInt(dismissedAt, 10)) / (1000 * 60 * 60 * 24);
-                        if (daysSince < 7) return;
-                    }
-                    this.showInstallBanner = true;
-                },
-
-                async triggerInstall() {
-                    if (this.isIOS) {
-                        this.showIOSInstructions = !this.showIOSInstructions;
-                        return;
-                    }
-                    if (!this._deferredPrompt) return;
-                    this._deferredPrompt.prompt();
-                    const { outcome } = await this._deferredPrompt.userChoice;
-                    this._deferredPrompt = null;
-                    this.showInstallBanner = false;
-                    if (outcome === 'accepted') {
-                        localStorage.setItem('pheral_install_dismissed_at', Date.now().toString());
-                    }
-                },
-
-                dismissInstallBanner() {
-                    this.showInstallBanner = false;
-                    this.showIOSInstructions = false;
-                    localStorage.setItem('pheral_install_dismissed_at', Date.now().toString());
-                },
-            };
-        }
-
-        document.addEventListener('alpine:init', () => lucide.createIcons());
-    </script>
+    showInstallBanner: false, showIOSSteps: false, isIOS: false, deferred: null,
+    init() {
+      lucide.createIcons(); this.$nextTick(() => lucide.createIcons());
+      this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+      const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) this.active = e.target.id; }), { rootMargin: '-40% 0px -55% 0px' });
+      ['top', ...this.links.map(l => l.id)].forEach(id => { const el = document.getElementById(id); if (el) io.observe(el); });
+      if (matchMedia('(display-mode: standalone)').matches || navigator.standalone === true) return;
+      window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); this.deferred = e; if (this.canPrompt()) this.showInstallBanner = true; });
+      if (this.isIOS && this.canPrompt()) setTimeout(() => { this.showInstallBanner = true; }, 2500);
+    },
+    canPrompt() { const t = store.get(); return !t || (Date.now() - parseInt(t, 10)) / 864e5 >= 7; },
+    async triggerInstall() {
+      if (this.isIOS) { this.showIOSSteps = !this.showIOSSteps; return; }
+      if (!this.deferred) return;
+      this.deferred.prompt(); await this.deferred.userChoice; this.deferred = null; this.showInstallBanner = false; store.set();
+    },
+    dismissInstall() { this.showInstallBanner = false; this.showIOSSteps = false; store.set(); },
+  };
+}
+</script>
 </body>
 </html>

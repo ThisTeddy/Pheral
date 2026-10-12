@@ -92,6 +92,7 @@ urlpatterns = [
     path("status/create/", views.create_status, name="create_status"),
     path("status/<int:status_id>/", views.status_detail, name="status_detail"),
     path("status/<int:status_id>/delete/", views.delete_status, name="delete_status"),
+    path("status/<int:status_id>/reply/", views.reply_to_status, name="reply_to_status"),
 
     # Feed
     path("feed/", views.feed, name="feed"),
@@ -136,4 +137,6 @@ urlpatterns = [
 
     # Flutterwave webhook (csrf-exempt, signature-checked)
     path("flutterwave/webhook/", views.flutterwave_webhook, name="flutterwave_webhook"),
+    path("check-phone/", views.check_phone, name="check_phone"),
+
 ]

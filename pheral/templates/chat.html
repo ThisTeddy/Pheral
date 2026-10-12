@@ -5,298 +5,416 @@
 
 {% block extra_head %}
 <style>
-    /* Chat owns the full viewport below lg — its own header replaces
-       base.html's, and the bottom tab bar has no room here. From lg
-       up, base.html's header + rail stay put and chat just fills
-       the remaining space cleanly. */
-    body.chat-open nav.fixed.bottom-0 { display: none !important; }
+    /* Chat owns the whole viewport: base header + mobile tab bar are hidden here. */
+    body.chat-open nav.fixed.bottom-0,
     body.chat-open header.sticky { display: none !important; }
-    body.chat-open main { padding-bottom: 0 !important; }
-
-    @media (min-width: 1024px) {
-        body.chat-open header.sticky { display: block !important; }
-        body.chat-open main { padding-bottom: 0 !important; }
-    }
-
+    body.chat-open main { padding-bottom: 0 !important; min-height: 0 !important; }
     .chat-shell { height: 100dvh; }
-    @media (min-width: 1024px) {
-        .chat-shell { height: calc(100dvh - 60px); }
-    }
-    [x-cloak] { display: none !important; }
 
-    /* Sticky profile header — stays pinned above the message list
-       regardless of scroll position, on both the mobile header and
-       the desktop sub-header. */
-    .chat-header-sticky {
-        position: sticky;
-        top: 0;
-        z-index: 20;
-        background: #fff;
-        padding-top: max(0.625rem, env(safe-area-inset-top, 0px));
+    .chat-wallpaper {
+        background-color: #F1ECFA;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='none' stroke='%237C3AED' stroke-opacity='.07' stroke-width='1.5' stroke-linecap='round'%3E%3Ccircle cx='14' cy='16' r='4'/%3E%3Cpath d='M52 12v8M48 16h8'/%3E%3Cpath d='M20 54l6 6M26 54l-6 6'/%3E%3Cpath d='M58 52q4-6 8 0t8 0'/%3E%3C/g%3E%3C/svg%3E");
     }
+
+    /* Bubbles + tails */
+    .bubble-out { background: #E8DCFC; }
+    .bubble-in  { background: #FFFFFF; }
+    .bubble.tail.bubble-out { border-top-right-radius: 0; }
+    .bubble.tail.bubble-in  { border-top-left-radius: 0; }
+    .bubble.tail.bubble-out::after {
+        content: ""; position: absolute; top: 0; right: -7px; width: 8px; height: 12px;
+        background: inherit; clip-path: polygon(0 0, 100% 0, 0 100%);
+    }
+    .bubble.tail.bubble-in::before {
+        content: ""; position: absolute; top: 0; left: -7px; width: 8px; height: 12px;
+        background: inherit; clip-path: polygon(0 0, 100% 0, 100% 100%);
+    }
+
+    .bubble-chevron {
+        position: absolute; top: 2px; right: 4px; display: none; height: 20px; width: 20px;
+        align-items: center; justify-content: center; border-radius: 9999px;
+        background: inherit; color: rgba(28, 23, 48, .45);
+    }
+    @media (min-width: 1024px) { .bubble:hover .bubble-chevron { display: flex; } }
+
+    .quote { cursor: pointer; }
+    .tick-wrap { display: inline-flex; color: rgba(28, 23, 48, .45); }
+    .tick-wrap.is-read { color: #34B7F1; }
+    .img-overlay .tick-wrap { color: rgba(255,255,255,.9); }
+    .img-overlay .tick-wrap.is-read { color: #7DD3FC; }
+
+    .msg-row.swiping { transition: none; }
 </style>
 {% endblock %}
 
 {% block content %}
+{% now "Y-m-d" as today_str %}
 
-<div x-data="pheralChat()" x-init="init()" class="mx-auto flex max-w-3xl flex-col chat-shell lg:border-x lg:border-line">
+<div x-data="pheralChat()" x-init="init()"
+     data-presence="{% if other_online %}online{% elif other_presence.last_seen_at %}last seen {% if other_presence.last_seen_at|date:'Y-m-d' == today_str %}today at {{ other_presence.last_seen_at|date:'g:i A' }}{% else %}{{ other_presence.last_seen_at|date:'j M' }}{% endif %}{% endif %}"
+     class="chat-shell flex flex-col bg-white">
 
-    <!-- HEADER (mobile only — desktop relies on base.html's header
-         showing the conversation name via page_title) -->
-    <div class="chat-header-sticky flex items-center gap-2.5 border-b border-line px-3.5 py-2.5 lg:hidden">
-        <a href="{% url 'chat_list' %}" class="focus-ring rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink" aria-label="Back to chats">
-            <i data-lucide="chevron-left" class="h-[18px] w-[18px]"></i>
-        </a>
+    <!-- ============================================================ HEADER -->
+    <div class="border-b border-line bg-white">
+        <div class="mx-auto flex max-w-3xl items-center gap-2 px-2 py-2 lg:px-4">
 
-        {% if other_user %}
-            <a href="{% url 'profile_user' other_user.username %}" class="focus-ring flex min-w-0 flex-1 items-center gap-2.5">
-                {% if other_user.avatar %}
-                    <img src="{{ other_user.avatar.url }}" alt="" class="h-9 w-9 shrink-0 rounded-full object-cover">
-                {% else %}
-                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-100 text-accent-700">
-                        <span class="text-[12px] font-semibold">{{ other_user.first_name|default:other_user.username|first|upper }}</span>
+            <a href="{% url 'chat_list' %}" class="focus-ring rounded-full p-2 text-ink transition hover:bg-surface lg:hidden" aria-label="Back to chats">
+                <i data-lucide="arrow-left" class="h-5 w-5"></i>
+            </a>
+
+            {% if other_user %}
+                <a href="{% url 'profile_user' other_user.username %}" class="focus-ring flex min-w-0 flex-1 items-center gap-3">
+                    {% if other_user.avatar %}
+                        <img src="{{ other_user.avatar.url }}" alt="" class="h-10 w-10 shrink-0 rounded-full object-cover">
+                    {% else %}
+                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[14px] font-semibold text-accent-700">
+                            {{ other_user.first_name|default:other_user.username|first|upper }}
+                        </div>
+                    {% endif %}
+                    <div class="min-w-0">
+                        <p class="truncate text-[15px] font-semibold leading-5 text-ink">{{ other_user.display_name|default:other_user.username }}</p>
+                        <p class="truncate text-[11.5px] leading-4" :class="typing ? 'font-medium text-accent-600' : 'text-muted'"
+                           x-text="typing ? 'typing…' : presenceText"></p>
                     </div>
-                {% endif %}
-                <div class="min-w-0">
-                    <p class="truncate text-[13px] font-semibold text-ink">{{ other_user.display_name|default:other_user.username }}</p>
-                    <p class="text-[10px]" :class="typing ? 'font-medium text-accent-600' : 'text-muted'"
-                       x-text="typing ? 'typing…' : '{% if other_user_presence.is_online %}Online{% elif other_user_presence.last_seen_at %}Last seen {{ other_user_presence.last_seen_at|timesince }} ago{% else %}Offline{% endif %}'"></p>
-                </div>
-            </a>
+                </a>
 
-            <a href="{% url 'pay_user' other_user.username %}"
-               class="focus-ring flex items-center gap-1.5 rounded-full bg-accent-500 px-3 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-600"
-               aria-label="Pay {{ other_user.username }}">
-                <i data-lucide="banknote" class="h-3.5 w-3.5"></i>
-                <span class="hidden sm:inline">Pay</span>
-            </a>
-        {% else %}
-            <p class="flex-1 text-[13px] font-semibold text-ink">Unknown conversation</p>
-        {% endif %}
+                <a href="{% url 'pay_user' other_user.username %}"
+                   class="focus-ring flex items-center gap-1.5 rounded-full bg-accent-500 px-3.5 py-2 text-[12px] font-semibold text-white transition hover:bg-accent-600">
+                    <i data-lucide="banknote" class="h-4 w-4"></i> <span class="hidden sm:inline">Pay</span>
+                </a>
+
+                <div class="relative" @click.outside="menuOpen = false">
+                    <button type="button" @click="menuOpen = !menuOpen" class="focus-ring rounded-full p-2 text-ink transition hover:bg-surface" aria-label="Menu">
+                        <i data-lucide="more-vertical" class="h-5 w-5"></i>
+                    </button>
+                    <div x-show="menuOpen" x-cloak x-transition class="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-popover">
+                        <a href="{% url 'profile_user' other_user.username %}" class="flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-ink hover:bg-surface">
+                            <i data-lucide="user" class="h-4 w-4"></i> View profile
+                        </a>
+                        <a href="{% url 'pay_user' other_user.username %}" class="flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-ink hover:bg-surface">
+                            <i data-lucide="banknote" class="h-4 w-4"></i> Send money
+                        </a>
+                    </div>
+                </div>
+            {% else %}
+                <p class="flex-1 text-[15px] font-semibold text-ink">Unknown conversation</p>
+            {% endif %}
+        </div>
     </div>
 
-    <!-- DESKTOP SUB-HEADER — presence + Pay button, since the name
-         itself now lives in base.html's page_title bar -->
-    {% if other_user %}
-        <div class="chat-header-sticky hidden items-center justify-between border-b border-line px-5 py-2.5 lg:flex">
-            <p class="text-[11px]" :class="typing ? 'font-medium text-accent-600' : 'text-muted'"
-               x-text="typing ? 'typing…' : '{% if other_user_presence.is_online %}Online{% elif other_user_presence.last_seen_at %}Last seen {{ other_user_presence.last_seen_at|timesince }} ago{% else %}Offline{% endif %}'"></p>
-            <a href="{% url 'pay_user' other_user.username %}"
-               class="focus-ring flex items-center gap-1.5 rounded-full bg-accent-500 px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-600"
-               aria-label="Pay {{ other_user.username }}">
-                <i data-lucide="banknote" class="h-3.5 w-3.5"></i> Pay
-            </a>
-        </div>
-    {% endif %}
-
-    <!-- MESSAGES -->
+    <!-- ============================================================ MESSAGES -->
     <div class="relative flex-1 overflow-hidden">
-        <div class="h-full space-y-1.5 overflow-y-auto px-3.5 py-3 lg:px-6" id="message-scroll" x-ref="scroll" @scroll="onScroll">
+        <div x-ref="scroll" class="chat-wallpaper relative h-full overflow-y-auto py-3"
+             @scroll="onScroll()"
+             @click="onAreaClick($event)"
+             @contextmenu="onContextMenu($event)"
+             @touchstart.passive="onTouchStart($event)"
+             @touchmove.passive="onTouchMove($event)"
+             @touchend="onTouchEnd($event)">
 
-            {% now "Y-m-d" as today_str %}
-            {% for message in chat_messages %}
+            <div x-ref="column" class="mx-auto max-w-3xl">
 
-                {% ifchanged message.created_at|date:"Y-m-d" %}
-                    <div class="my-3 flex items-center justify-center">
-                        <span class="rounded-full bg-surface px-2.5 py-1 text-[10px] font-medium text-muted">
-                            {% if message.created_at|date:"Y-m-d" == today_str %}Today{% else %}{{ message.created_at|date:"d M Y" }}{% endif %}
-                        </span>
-                    </div>
-                {% endifchanged %}
+                {% for message in chat_messages %}
 
-                {% if message.id == first_unread_id %}
-                    <div class="my-3 flex items-center gap-2">
-                        <span class="h-px flex-1 bg-red-200"></span>
-                        <span class="shrink-0 rounded-full bg-red-50 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wide text-red-500">New</span>
-                        <span class="h-px flex-1 bg-red-200"></span>
-                    </div>
-                {% endif %}
+                    {% ifchanged message.created_at|date:"Y-m-d" %}
+                        <div class="my-3 flex justify-center">
+                            <span class="rounded-lg bg-white/90 px-3 py-1 text-[11.5px] font-medium text-ink/60 shadow-sm">
+                                {% if message.created_at|date:"Y-m-d" == today_str %}Today{% else %}{{ message.created_at|date:"j F Y" }}{% endif %}
+                            </span>
+                        </div>
+                    {% endifchanged %}
 
-                {% if message.message_type == "system" %}
-                    <div class="flex justify-center py-1.5">
-                        <span class="rounded-full bg-surface px-2.5 py-1 text-[10px] text-muted">{{ message.content }}</span>
-                    </div>
+                    {% if message.id == first_unread_id %}
+                        <div id="unread-divider" class="my-3 flex justify-center">
+                            <span class="rounded-lg bg-white/90 px-3 py-1 text-[11.5px] font-semibold uppercase tracking-wide text-accent-600 shadow-sm">
+                                {{ unread_count }} unread message{{ unread_count|pluralize }}
+                            </span>
+                        </div>
+                    {% endif %}
 
-                {% else %}
-                    <div id="msg-{{ message.id }}" data-message-id="{{ message.id }}" data-sender-id="{{ message.sender_id }}"
-                         class="group flex items-end gap-1.5 {% if message.sender_id == current_user.id %}justify-end{% endif %}">
+                    {% if message.message_type == "system" %}
+                        <div class="my-2 flex justify-center px-6">
+                            <span class="rounded-lg bg-[#FFF5C4]/90 px-3 py-1.5 text-center text-[11.5px] text-ink/70 shadow-sm">{{ message.content }}</span>
+                        </div>
 
-                        <div class="relative max-w-[78%] rounded-2xl px-3 py-2 text-[12.5px] leading-snug lg:max-w-[65%]
-                                    {% if message.sender_id == current_user.id %}rounded-br-md bg-accent-500 text-white
-                                    {% else %}rounded-bl-md bg-surface text-ink{% endif %}">
+                    {% else %}
+                        <div id="msg-{{ message.id }}"
+                             class="msg-row flex px-3 transition-transform duration-150 {% if message.sender_id == current_user.id %}justify-end{% else %}justify-start{% endif %} {% ifchanged message.sender_id %}mt-2{% else %}mt-0.5{% endifchanged %}"
+                             data-message-id="{{ message.id }}"
+                             data-sender-id="{{ message.sender_id|default_if_none:'' }}"
+                             data-mine="{% if message.sender_id == current_user.id %}1{% else %}0{% endif %}"
+                             data-type="{{ message.message_type }}"
+                             data-text="{{ message.content }}"
+                             data-sender-name="{% if message.sender_id == current_user.id %}You{% else %}{{ other_user.first_name|default:other_user.username }}{% endif %}">
 
-                            {% if message.reply_to %}
-                                <button type="button" @click="scrollToMessage('{{ message.reply_to.id }}')"
-                                        class="focus-ring mb-1 block w-full rounded-md border-l-2 px-1.5 py-1 text-left text-[10px]
-                                               {% if message.sender_id == current_user.id %}border-white/50 bg-white/10 text-white/80
-                                               {% else %}border-accent-400 bg-accent-50 text-accent-700{% endif %}">
-                                    <p class="font-semibold">
-                                        {% if message.reply_to.sender_id == current_user.id %}You{% else %}{{ message.reply_to.sender.first_name|default:message.reply_to.sender.username }}{% endif %}
-                                    </p>
-                                    <p class="truncate opacity-80">{{ message.reply_to.content|default:"Attachment"|truncatechars:60 }}</p>
+                            <div class="bubble relative max-w-[82%] rounded-lg px-2 pb-1.5 pt-1.5 text-[14px] leading-[1.35] text-ink shadow-sm lg:max-w-[65%]
+                                        {% if message.sender_id == current_user.id %}bubble-out{% else %}bubble-in{% endif %} {% ifchanged message.sender_id %}tail{% endifchanged %}">
+
+                                <button type="button" class="bubble-chevron" aria-label="Message options">
+                                    <i data-lucide="chevron-down" class="h-4 w-4"></i>
                                 </button>
-                            {% endif %}
 
-                            {% if message.message_type == "image" and message.attachment %}
-                                <button type="button" @click="openLightbox('{{ message.attachment.url }}')" class="focus-ring block">
-                                    <img src="{{ message.attachment.url }}" alt="" class="mb-1 max-h-72 rounded-xl object-cover">
-                                </button>
-                                {% if message.content %}<p>{{ message.content }}</p>{% endif %}
-
-                            {% elif message.message_type == "video" and message.attachment %}
-                                <video src="{{ message.attachment.url }}" controls class="mb-1 max-h-72 rounded-xl"></video>
-
-                            {% elif message.message_type == "voice" and message.attachment %}
-                                <div class="flex min-w-[190px] items-center gap-2">
-                                    <i data-lucide="mic" class="h-3.5 w-3.5 shrink-0 {% if message.sender_id == current_user.id %}text-white/80{% else %}text-accent-500{% endif %}"></i>
-                                    <audio src="{{ message.attachment.url }}" controls class="h-7 flex-1"></audio>
-                                </div>
-
-                            {% elif message.message_type == "file" and message.attachment %}
-                                <a href="{{ message.attachment.url }}" target="_blank" rel="noopener" class="focus-ring flex items-center gap-2">
-                                    <span class="flex h-7 w-7 items-center justify-center rounded-lg {% if message.sender_id == current_user.id %}bg-white/15{% else %}bg-accent-100{% endif %}">
-                                        <i data-lucide="file-text" class="h-3.5 w-3.5"></i>
-                                    </span>
-                                    <span class="truncate text-[11px] underline underline-offset-2">{{ message.attachment.name|cut:"message_files/" }}</span>
-                                </a>
-
-                            {% elif message.message_type == "payment" %}
-                                <div class="flex min-w-[160px] items-center gap-2">
-                                    <span class="flex h-7 w-7 items-center justify-center rounded-full {% if message.sender_id == current_user.id %}bg-white/15{% else %}bg-accent-100{% endif %}">
-                                        <i data-lucide="banknote" class="h-3.5 w-3.5"></i>
-                                    </span>
-                                    <div>
-                                        <p class="font-semibold">{{ message.content }}</p>
-                                        {% if message.receipt %}
-                                            <a href="{% url 'receipt_detail' message.receipt.reference %}" class="text-[10px] underline opacity-80">View receipt</a>
-                                        {% endif %}
+                                {# ---- quoted reply ---- #}
+                                {% if message.reply_to %}
+                                    <div class="quote mb-1 overflow-hidden rounded-md border-l-4 border-accent-500 bg-black/5 px-2 py-1" data-reply-id="{{ message.reply_to.id }}">
+                                        <p class="text-[12px] font-semibold text-accent-600">
+                                            {% if message.reply_to.sender_id == current_user.id %}You{% else %}{{ message.reply_to.sender.first_name|default:message.reply_to.sender.username|default:"Unknown" }}{% endif %}
+                                        </p>
+                                        <p class="truncate text-[12.5px] text-ink/70">
+                                            {% if message.reply_to.message_type == "image" %}📷 Photo
+                                            {% elif message.reply_to.message_type == "video" %}🎥 Video
+                                            {% elif message.reply_to.message_type == "voice" %}🎤 Voice message
+                                            {% elif message.reply_to.message_type == "file" %}📄 Document
+                                            {% elif message.reply_to.message_type == "payment" %}💸 Payment
+                                            {% elif message.reply_to.message_type == "hire" %}💼 Hire request
+                                            {% else %}{{ message.reply_to.content|truncatechars:80 }}{% endif %}
+                                        </p>
                                     </div>
-                                </div>
+                                {% endif %}
 
-                            {% elif message.message_type == "hire" %}
-                                <div class="flex items-center gap-1.5">
-                                    <i data-lucide="briefcase" class="h-3.5 w-3.5 shrink-0"></i>
-                                    <p class="font-medium">{{ message.content }}</p>
-                                </div>
+                                {# ---- attachments ---- #}
+                                {% if message.attachment %}
+                                    {% if message.message_type == "image" %}
+                                        <button type="button" data-lightbox="{{ message.attachment.url }}" class="block w-full overflow-hidden rounded-md">
+                                            <img src="{{ message.attachment.url }}" alt="" loading="lazy" class="max-h-80 w-full object-cover">
+                                        </button>
 
-                            {% elif message.message_type == "agent" %}
-                                <p class="mb-0.5 text-[9px] font-semibold uppercase tracking-wide opacity-60">Agent</p>
-                                <p>{{ message.content }}</p>
+                                    {% elif message.message_type == "video" %}
+                                        <video src="{{ message.attachment.url }}" controls playsinline preload="metadata" class="max-h-80 w-full rounded-md bg-black"></video>
 
-                            {% else %}
-                                <p class="whitespace-pre-wrap">{{ message.content }}</p>
-                            {% endif %}
+                                    {% elif message.message_type == "voice" %}
+                                        <div x-data="voicePlayer('{{ message.attachment.url }}')" class="flex w-[236px] items-center gap-2.5 pr-1">
+                                            <button type="button" @click="toggle()" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-500 text-white">
+                                                <svg x-show="!playing" viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                                <svg x-show="playing" x-cloak viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>
+                                            </button>
+                                            <div class="min-w-0 flex-1">
+                                                <div class="flex h-7 cursor-pointer items-center gap-[2px]" @click="seek($event)">
+                                                    <template x-for="(h, i) in bars" :key="i">
+                                                        <span class="w-[3px] shrink-0 rounded-full" :style="'height:' + h + '%'"
+                                                              :class="(i / bars.length) < progress ? 'bg-accent-500' : 'bg-ink/25'"></span>
+                                                    </template>
+                                                </div>
+                                                <p class="text-[10.5px] text-ink/50" x-text="label"></p>
+                                            </div>
+                                        </div>
 
-                            <div class="mt-0.5 flex items-center justify-end gap-1">
-                                <span class="text-[9px] {% if message.sender_id == current_user.id %}text-white/60{% else %}text-muted{% endif %}">
-                                    {{ message.created_at|date:"g:i A" }}
-                                </span>
-                                {% if message.sender_id == current_user.id %}
-                                    {% if message.id in read_by_others %}
-                                        <i data-lucide="check-check" class="read-check h-3 w-3 text-accent-200"></i>
-                                    {% else %}
-                                        <i data-lucide="check" class="read-check h-3 w-3 text-white/60"></i>
+                                    {% elif message.message_type == "file" %}
+                                        <a href="{{ message.attachment.url }}" target="_blank" rel="noopener" class="flex items-center gap-2.5 rounded-md bg-black/5 p-2">
+                                            <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-500 text-white"><i data-lucide="file-text" class="h-5 w-5"></i></span>
+                                            <span class="min-w-0 flex-1">
+                                                <span class="block truncate text-[13px] font-medium">{{ message.attachment.public_id|cut:"message_files/"|default:"Document" }}</span>
+                                                <span class="block text-[11px] text-ink/50">Tap to open</span>
+                                            </span>
+                                            <i data-lucide="download" class="h-4 w-4 shrink-0 text-ink/50"></i>
+                                        </a>
                                     {% endif %}
+                                {% endif %}
+
+                                {# ---- cards: payment / hire / agent ---- #}
+                                {% if message.message_type == "payment" %}
+                                    <div class="flex min-w-[190px] items-center gap-2.5 rounded-md bg-black/5 p-2">
+                                        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-500 text-white"><i data-lucide="banknote" class="h-4.5 w-4.5"></i></span>
+                                        <div class="min-w-0">
+                                            <p class="text-[13.5px] font-semibold">{{ message.content }}</p>
+                                            {% if message.receipt %}
+                                                <a href="{% url 'receipt_detail' message.receipt.reference %}" class="text-[11.5px] font-medium text-accent-600 underline">View receipt</a>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                {% elif message.message_type == "hire" %}
+                                    <div class="flex min-w-[190px] items-center gap-2.5 rounded-md bg-black/5 p-2">
+                                        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink text-white"><i data-lucide="briefcase" class="h-4 w-4"></i></span>
+                                        <p class="text-[13.5px] font-medium">{{ message.content }}</p>
+                                    </div>
+                                {% elif message.message_type == "agent" %}
+                                    <p class="mb-0.5 flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wide text-accent-600">
+                                        <i data-lucide="bot" class="h-3 w-3"></i> Agent
+                                    </p>
+                                {% endif %}
+
+                                {# ---- text / caption (time floats bottom-right via spacer) ---- #}
+                                {% if message.content and message.message_type != "payment" and message.message_type != "hire" %}
+                                    <p class="{% if message.attachment and message.message_type == 'image' or message.message_type == 'video' %}mt-1 {% endif %}whitespace-pre-wrap break-words">{{ message.content }}<span class="inline-block {% if message.sender_id == current_user.id %}w-[64px]{% else %}w-[44px]{% endif %}"></span></p>
+                                {% endif %}
+
+                                {% if message.message_type == "voice" or message.message_type == "file" or message.message_type == "payment" or message.message_type == "hire" %}<div class="h-3.5"></div>{% endif %}
+                                {% if message.message_type == "video" and not message.content %}<div class="h-3.5"></div>{% endif %}
+
+                                {# ---- time + ticks ---- #}
+                                {% if message.message_type == "image" and message.attachment and not message.content %}
+                                    <span class="img-overlay absolute bottom-2.5 right-3.5 flex items-center gap-0.5 rounded-full bg-black/45 px-1.5 py-0.5 text-[10px] text-white">
+                                        {{ message.created_at|date:"g:i A" }}
+                                        {% if message.sender_id == current_user.id %}<span class="tick-wrap {% if message.id in read_by_others %}is-read{% endif %}" data-state="{% if message.id in read_by_others %}read{% else %}sent{% endif %}"></span>{% endif %}
+                                    </span>
+                                {% else %}
+                                    <span class="absolute bottom-1 right-2 flex items-center gap-0.5 text-[10.5px] text-ink/50">
+                                        {{ message.created_at|date:"g:i A" }}
+                                        {% if message.sender_id == current_user.id %}<span class="tick-wrap {% if message.id in read_by_others %}is-read{% endif %}" data-state="{% if message.id in read_by_others %}read{% else %}sent{% endif %}"></span>{% endif %}
+                                    </span>
                                 {% endif %}
                             </div>
                         </div>
+                    {% endif %}
 
-                        <button type="button"
-                                @click="startReply('{{ message.id }}', '{% if message.sender_id == current_user.id %}You{% else %}{{ message.sender.first_name|default:message.sender.username|escapejs }}{% endif %}', '{{ message.content|default:"Attachment"|truncatechars:60|escapejs }}')"
-                                class="focus-ring mb-1 hidden h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted opacity-0 transition hover:bg-surface hover:text-ink group-hover:opacity-100 lg:flex"
-                                aria-label="Reply">
-                            <i data-lucide="reply" class="h-3 w-3"></i>
-                        </button>
+                {% empty %}
+                    <div class="flex justify-center px-6 py-20">
+                        <span class="rounded-lg bg-white/90 px-4 py-2 text-center text-[12.5px] text-ink/60 shadow-sm">
+                            No messages yet. Say hi 👋
+                        </span>
                     </div>
-                {% endif %}
-
-            {% empty %}
-                <div class="flex h-full flex-col items-center justify-center gap-1.5 py-20 text-center">
-                    <div class="flex h-12 w-12 items-center justify-center rounded-full bg-accent-50">
-                        <i data-lucide="message-circle" class="h-5 w-5 text-accent-500"></i>
-                    </div>
-                    <p class="text-[12px] font-semibold text-ink">No messages yet</p>
-                    <p class="text-[11px] text-muted">Say hello to get things started.</p>
-                </div>
-            {% endfor %}
+                {% endfor %}
+            </div>
         </div>
 
-        <!-- Jump to latest -->
-        <button type="button" x-show="showJumpButton" x-cloak x-transition @click="scrollToBottom(true)"
-                class="focus-ring absolute bottom-3 right-3 flex h-9 w-9 items-center justify-center rounded-full bg-white text-accent-600 shadow-card ring-1 ring-line transition hover:bg-surface"
-                aria-label="Jump to latest">
-            <i data-lucide="arrow-down" class="h-4 w-4"></i>
+        <!-- Jump to latest (with unseen count) -->
+        <button type="button" x-show="showJump" x-cloak x-transition @click="scrollToBottom(true)"
+                class="focus-ring absolute bottom-3 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-white text-ink/70 shadow-md ring-1 ring-line" aria-label="Jump to latest">
+            <i data-lucide="chevron-down" class="h-5 w-5"></i>
+            <span x-show="unseenCount > 0" x-cloak x-text="unseenCount"
+                  class="absolute -top-2 left-1/2 flex h-5 min-w-[20px] -translate-x-1/2 items-center justify-center rounded-full bg-accent-500 px-1 text-[10px] font-bold text-white"></span>
         </button>
     </div>
 
-    <!-- COMPOSER -->
-    <div class="border-t border-line bg-white px-3.5 py-2.5 lg:px-6">
+    <!-- ============================================================ COMPOSER -->
+    <div class="border-t border-line bg-[#F4F0FB]" style="padding-bottom: env(safe-area-inset-bottom);">
+        <div class="mx-auto max-w-3xl px-2 py-2 lg:px-4">
 
-        <div x-show="replyId" x-cloak class="mb-1.5 flex items-center gap-2 rounded-lg bg-surface px-2.5 py-1.5">
-            <span class="h-full w-0.5 shrink-0 self-stretch rounded-full bg-accent-400"></span>
-            <div class="min-w-0 flex-1">
-                <p class="text-[10px] font-semibold text-accent-600" x-text="'Replying to ' + replySender"></p>
-                <p class="truncate text-[10px] text-muted" x-text="replyPreview"></p>
+            <!-- Reply preview -->
+            <div x-show="replyId" x-cloak x-transition class="mb-2 flex items-stretch gap-2 overflow-hidden rounded-xl bg-white">
+                <span class="w-1 shrink-0 bg-accent-500"></span>
+                <div class="min-w-0 flex-1 py-1.5">
+                    <p class="text-[12px] font-semibold text-accent-600" x-text="replyName"></p>
+                    <p class="truncate text-[12.5px] text-ink/70" x-text="replyPreview"></p>
+                </div>
+                <button type="button" @click="cancelReply()" class="focus-ring self-start p-2 text-muted hover:text-ink" aria-label="Cancel reply">
+                    <i data-lucide="x" class="h-4 w-4"></i>
+                </button>
             </div>
-            <button type="button" @click="cancelReply()" class="focus-ring shrink-0 rounded-full p-1 text-muted hover:bg-white hover:text-ink" aria-label="Cancel reply">
-                <i data-lucide="x" class="h-3.5 w-3.5"></i>
-            </button>
+
+            <!-- Attachment preview -->
+            <div x-show="attachmentName" x-cloak x-transition class="mb-2 flex items-center gap-3 rounded-xl bg-white p-2">
+                <template x-if="attachmentIsImage">
+                    <img :src="attachmentPreview" alt="" class="h-14 w-14 shrink-0 rounded-lg object-cover">
+                </template>
+                <template x-if="!attachmentIsImage">
+                    <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-accent-50 text-accent-600"><i data-lucide="file-text" class="h-6 w-6"></i></span>
+                </template>
+                <p class="min-w-0 flex-1 truncate text-[13px] text-ink" x-text="attachmentName"></p>
+                <button type="button" @click="clearAttachment()" class="focus-ring p-2 text-muted hover:text-ink" aria-label="Remove attachment">
+                    <i data-lucide="x" class="h-4 w-4"></i>
+                </button>
+            </div>
+
+            <!-- Recording bar -->
+            <div x-show="recording" x-cloak class="flex items-center gap-3 rounded-3xl bg-white px-3 py-2 shadow-sm">
+                <button type="button" @click="cancelRecording()" class="focus-ring p-1.5 text-red-500" aria-label="Discard recording">
+                    <i data-lucide="trash-2" class="h-5 w-5"></i>
+                </button>
+                <span class="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500"></span>
+                <span class="flex-1 text-[14px] tabular-nums text-ink" x-text="recordingTime"></span>
+                <span class="hidden text-[12px] text-muted sm:inline">Recording…</span>
+                <button type="button" @click="stopRecording()" class="focus-ring flex h-11 w-11 items-center justify-center rounded-full bg-accent-500 text-white" aria-label="Send voice note">
+                    <i data-lucide="send" class="h-5 w-5"></i>
+                </button>
+            </div>
+
+            <!-- Normal composer -->
+            <form method="post" action="{% url 'chat' conversation.id %}" enctype="multipart/form-data"
+                  x-ref="form" x-show="!recording" @submit.prevent="onFormSubmit()" class="flex items-end gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="reply_to" x-model="replyId">
+                <input type="file" name="attachment" x-ref="attachmentInput" class="hidden" @change="onAttachmentChange($event)">
+                <input type="file" name="voice_note" x-ref="voiceInput" class="hidden">
+
+                <div class="relative flex min-w-0 flex-1 items-end gap-1 rounded-3xl bg-white px-1.5 py-1 shadow-sm">
+
+                    <!-- Emoji -->
+                    <div class="relative" @click.outside="emojiOpen = false">
+                        <button type="button" @click="emojiOpen = !emojiOpen; attachOpen = false" class="focus-ring flex h-9 w-9 items-center justify-center rounded-full text-ink/55 transition hover:text-ink" aria-label="Emoji">
+                            <i data-lucide="smile" class="h-[22px] w-[22px]"></i>
+                        </button>
+                        <div x-show="emojiOpen" x-cloak x-transition class="absolute bottom-full left-0 z-30 mb-2 w-[18.5rem] rounded-2xl border border-line bg-white p-2 shadow-popover">
+                            <div class="grid grid-cols-8 gap-0.5">
+                                <template x-for="e in emojis" :key="e">
+                                    <button type="button" @click="insertEmoji(e)" class="rounded-lg p-1 text-[20px] leading-none hover:bg-surface" x-text="e"></button>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+
+                    <textarea name="content" x-ref="textarea" x-model="content" rows="1" placeholder="Message"
+                              @input="resizeTextarea(); notifyTyping()"
+                              @keydown.enter="onEnter($event)"
+                              class="max-h-32 min-h-[36px] flex-1 resize-none bg-transparent px-1 py-2 text-[15px] leading-5 text-ink placeholder-muted focus:outline-none"></textarea>
+
+                    <!-- Attach -->
+                    <div class="relative" @click.outside="attachOpen = false">
+                        <button type="button" @click="attachOpen = !attachOpen; emojiOpen = false" class="focus-ring flex h-9 w-9 items-center justify-center rounded-full text-ink/55 transition hover:text-ink" aria-label="Attach">
+                            <i data-lucide="paperclip" class="h-[22px] w-[22px] -rotate-45"></i>
+                        </button>
+                        <div x-show="attachOpen" x-cloak x-transition class="absolute bottom-full right-0 z-30 mb-2 w-60 rounded-2xl border border-line bg-white p-3 shadow-popover">
+                            <div class="grid grid-cols-3 gap-3 text-center">
+                                <button type="button" @click="pickFile('image/*,video/*')" class="focus-ring flex flex-col items-center gap-1.5">
+                                    <span class="flex h-12 w-12 items-center justify-center rounded-full bg-fuchsia-500 text-white"><i data-lucide="image" class="h-5 w-5"></i></span>
+                                    <span class="text-[11px] text-ink/70">Photos</span>
+                                </button>
+                                <button type="button" @click="pickFile('.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip')" class="focus-ring flex flex-col items-center gap-1.5">
+                                    <span class="flex h-12 w-12 items-center justify-center rounded-full bg-indigo-500 text-white"><i data-lucide="file-text" class="h-5 w-5"></i></span>
+                                    <span class="text-[11px] text-ink/70">Document</span>
+                                </button>
+                                {% if other_user %}
+                                    <a href="{% url 'pay_user' other_user.username %}" class="focus-ring flex flex-col items-center gap-1.5">
+                                        <span class="flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-white"><i data-lucide="banknote" class="h-5 w-5"></i></span>
+                                        <span class="text-[11px] text-ink/70">Pay</span>
+                                    </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Send / mic morph -->
+                <button type="submit" x-show="hasContent" x-cloak
+                        class="focus-ring flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-500 text-white shadow-sm transition active:scale-95" aria-label="Send">
+                    <i data-lucide="send" class="h-5 w-5"></i>
+                </button>
+                <button type="button" x-show="!hasContent" @click="startRecording()"
+                        class="focus-ring flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent-500 text-white shadow-sm transition active:scale-95" aria-label="Record voice note">
+                    <i data-lucide="mic" class="h-5 w-5"></i>
+                </button>
+            </form>
         </div>
-
-        <div x-show="attachmentName" x-cloak class="mb-1.5 flex items-center gap-2 rounded-lg bg-surface px-2.5 py-1.5">
-            <i data-lucide="paperclip" class="h-3.5 w-3.5 shrink-0 text-muted"></i>
-            <p class="min-w-0 flex-1 truncate text-[10px] text-ink" x-text="attachmentName"></p>
-            <button type="button" @click="clearAttachment()" class="focus-ring shrink-0 rounded-full p-1 text-muted hover:bg-white hover:text-ink" aria-label="Remove attachment">
-                <i data-lucide="x" class="h-3.5 w-3.5"></i>
-            </button>
-        </div>
-
-        <div x-show="recording" x-cloak class="mb-1.5 flex items-center gap-2.5 rounded-lg bg-red-50 px-2.5 py-2">
-            <span class="h-2 w-2 animate-pulse rounded-full bg-red-500"></span>
-            <span class="flex-1 text-[11px] font-medium text-red-700" x-text="'Recording ' + recordingTime"></span>
-            <button type="button" @click="cancelRecording()" class="focus-ring text-[11px] font-semibold text-muted">Cancel</button>
-            <button type="button" @click="stopRecording()" class="focus-ring flex h-8 w-8 items-center justify-center rounded-full bg-accent-500 text-white" aria-label="Send voice note">
-                <i data-lucide="send" class="h-3.5 w-3.5"></i>
-            </button>
-        </div>
-
-        <!-- method="post" was missing here: without it, a browser-driven
-             form.submit() (used for attachment/voice) defaults to GET,
-             which silently drops the file body and the Django view
-             never sees a POST. -->
-        <form method="post" @submit.prevent="onFormSubmit()" enctype="multipart/form-data" x-ref="form" x-show="!recording" class="flex items-end gap-1">
-            {% csrf_token %}
-            <input type="hidden" name="reply_to" x-model="replyId">
-            <input type="file" name="attachment" x-ref="attachmentInput" class="hidden" accept="image/*,video/*,.pdf,.doc,.docx,.zip" @change="onAttachmentChange">
-            <input type="file" name="voice_note" x-ref="voiceInput" class="hidden">
-
-            <button type="button" @click="$refs.attachmentInput.click()" class="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-surface hover:text-ink" aria-label="Attach a file">
-                <i data-lucide="paperclip" class="h-4.5 w-4.5"></i>
-            </button>
-
-            <textarea name="content" x-ref="textarea" x-model="content" @input="autoGrow(); notifyTyping()"
-                      @keydown.enter.prevent="if (!$event.shiftKey) $refs.form.requestSubmit()"
-                      rows="1" placeholder="Message"
-                      class="max-h-28 flex-1 resize-none rounded-2xl bg-surface px-3.5 py-2 text-[12px] text-ink placeholder-muted focus:outline-none"></textarea>
-
-            <button type="button" @click="startRecording()" class="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-surface hover:text-ink" aria-label="Record a voice note">
-                <i data-lucide="mic" class="h-4.5 w-4.5"></i>
-            </button>
-
-            <button type="submit" class="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-500 text-white transition hover:bg-accent-600" aria-label="Send message">
-                <i data-lucide="send" class="h-4 w-4"></i>
-            </button>
-        </form>
     </div>
-</div>
 
-<!-- Lightbox -->
-<div x-show="lightboxUrl" x-cloak x-transition.opacity @click="closeLightbox()"
-     class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
-    <img :src="lightboxUrl" alt="" class="max-h-full max-w-full rounded-lg object-contain" @click.stop>
-    <button type="button" @click="closeLightbox()" class="focus-ring absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20" aria-label="Close">
-        <i data-lucide="x" class="h-5 w-5"></i>
-    </button>
+    <!-- ============================================================ MESSAGE ACTIONS -->
+    <div x-show="actions.open" x-cloak x-transition.opacity @click.self="actions.open = false" @keydown.escape.window="actions.open = false"
+         class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 lg:items-center">
+        <div class="w-full max-w-xs overflow-hidden rounded-t-2xl bg-white shadow-popover lg:rounded-2xl">
+            <p class="truncate px-4 pb-1 pt-3 text-[12px] text-muted" x-text="actions.preview"></p>
+            <button type="button" @click="replyFromActions()" class="flex w-full items-center gap-3 px-4 py-3 text-left text-[14px] text-ink hover:bg-surface">
+                <i data-lucide="reply" class="h-[18px] w-[18px]"></i> Reply
+            </button>
+            <button type="button" x-show="actions.text" @click="copyFromActions()" class="flex w-full items-center gap-3 px-4 py-3 text-left text-[14px] text-ink hover:bg-surface">
+                <i data-lucide="copy" class="h-[18px] w-[18px]"></i> Copy
+            </button>
+            <button type="button" x-show="actions.mine" @click="deleteFromActions()" class="flex w-full items-center gap-3 px-4 py-3 text-left text-[14px] text-red-600 hover:bg-red-50">
+                <i data-lucide="trash-2" class="h-[18px] w-[18px]"></i> Delete
+            </button>
+            <button type="button" @click="actions.open = false" class="w-full border-t border-line px-4 py-3 text-center text-[13px] font-medium text-muted hover:bg-surface lg:hidden">Cancel</button>
+        </div>
+    </div>
+
+    <form id="delete-message-form" method="post" class="hidden">{% csrf_token %}</form>
+
+    <!-- ============================================================ LIGHTBOX -->
+    <div x-show="lightboxUrl" x-cloak x-transition.opacity @click="lightboxUrl = null" @keydown.escape.window="lightboxUrl = null"
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+        <img :src="lightboxUrl" alt="" class="max-h-full max-w-full rounded-lg object-contain" @click.stop>
+        <button type="button" @click="lightboxUrl = null" class="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20" aria-label="Close">
+            <i data-lucide="x" class="h-5 w-5"></i>
+        </button>
+    </div>
 </div>
 {% endblock %}
 
@@ -304,293 +422,430 @@
 <script>
     document.body.classList.add("chat-open");
 
-    function pheralChat() {
+    window.PHERAL_CHAT = {
+        currentUserId: {{ current_user.id }},
+        wsPath: "/ws/chat/{{ conversation.id }}/",
+        typingUrl: "{% url 'chat_typing' conversation.id %}",
+        heartbeatUrl: "{% url 'presence_heartbeat' %}",
+        deleteUrl: "{% url 'delete_message' 0 %}",
+    };
+
+    const TICK_SINGLE = '<svg viewBox="0 0 18 12" class="h-[11px] w-[16px]" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5l3 3L14 2.5"/></svg>';
+    const TICK_DOUBLE = '<svg viewBox="0 0 18 12" class="h-[11px] w-[16px]" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1 6.5l3 3L10.5 2.5M6.5 8.7l.8.8L14 2.5"/></svg>';
+
+    function renderTicks(root) {
+        (root || document).querySelectorAll('.tick-wrap').forEach(function (el) {
+            el.innerHTML = el.dataset.state === 'read' ? TICK_DOUBLE : TICK_SINGLE;
+            el.classList.toggle('is-read', el.dataset.state === 'read');
+        });
+    }
+
+    /* ---- voice note player (one per voice message) ---- */
+    function voicePlayer(url) {
         return {
-            content: "", replyId: "", replySender: "", replyPreview: "",
-            attachmentName: "", typing: false, recording: false, recordingTime: "0:00",
-            showJumpButton: false, lightboxUrl: null,
-            socket: null, socketReady: false,
-            currentUserId: {{ current_user.id }},
-            currentUsername: "{{ current_user.username|escapejs }}",
+            audio: null, playing: false, progress: 0, duration: 0, current: 0, bars: [],
+            init() {
+                let seed = Array.from(url).reduce(function (a, c) { return a + c.charCodeAt(0); }, 7);
+                this.bars = Array.from({ length: 30 }, function () {
+                    seed = (seed * 9301 + 49297) % 233280;
+                    return 22 + (seed / 233280) * 78;
+                });
+                this.audio = new Audio(url);
+                this.audio.preload = 'metadata';
+                this.audio.addEventListener('loadedmetadata', () => { if (isFinite(this.audio.duration)) this.duration = this.audio.duration; });
+                this.audio.addEventListener('timeupdate', () => {
+                    this.current = this.audio.currentTime;
+                    const d = isFinite(this.audio.duration) ? this.audio.duration : this.duration;
+                    this.progress = d ? this.audio.currentTime / d : 0;
+                });
+                this.audio.addEventListener('ended', () => { this.playing = false; this.progress = 0; this.current = 0; });
+                this.audio.addEventListener('pause', () => { this.playing = false; });
+                this.audio.addEventListener('play', () => { this.playing = true; });
+            },
+            get label() {
+                const t = this.playing || this.current ? this.current : this.duration;
+                const s = Math.floor(t || 0);
+                return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+            },
+            toggle() {
+                if (this.playing) { this.audio.pause(); return; }
+                if (window.__pheralAudio && window.__pheralAudio !== this.audio) window.__pheralAudio.pause();
+                window.__pheralAudio = this.audio;
+                this.audio.play().catch(function () {});
+            },
+            seek(e) {
+                const d = isFinite(this.audio.duration) ? this.audio.duration : this.duration;
+                if (!d) return;
+                const rect = e.currentTarget.getBoundingClientRect();
+                this.audio.currentTime = ((e.clientX - rect.left) / rect.width) * d;
+            },
+        };
+    }
 
-            // Guards against the same message rendering twice.
-            seenMessageIds: new Set(),
+    function pheralChat() {
+        const cfg = window.PHERAL_CHAT;
 
-            _mediaRecorder: null, _recordedChunks: [], _recordingStartedAt: 0,
-            _recordingTimer: null, _discardRecording: false,
-            _typingTimeout: null, _observer: null,
-            _reconnectTimer: null,
+        return {
+            content: '', replyId: '', replyName: '', replyPreview: '',
+            attachmentName: '', attachmentPreview: '', attachmentIsImage: false,
+            typing: false, presenceText: '',
+            recording: false, recordingTime: '0:00',
+            showJump: false, unseenCount: 0, lightboxUrl: null,
+            emojiOpen: false, attachOpen: false, menuOpen: false,
+            actions: { open: false, id: '', mine: false, type: '', text: '', preview: '' },
+            socket: null, socketReady: false, reconnectDelay: 1000,
+            isTouch: false, pendingReads: [],
+            emojis: ['😀','😂','🥹','😍','😘','😎','🤔','😭','😅','🙏','👍','👎','👏','🙌','🔥','❤️','💜','🎉','💯','✨','😢','😮','🤝','💪','🥳','😴','🤩','😬','👀','✅','❌','💰','💸','🏦','📱','🎁','🙈','😇','😜','🤗'],
+
+            _touch: { x: 0, y: 0, dx: 0, row: null, timer: null },
+            _typingSent: false, _typingTimer: null,
+            _rec: null, _chunks: [], _discard: false, _recTimer: null, _recStart: 0,
+
+            get hasContent() { return this.content.trim().length > 0 || !!this.attachmentName; },
 
             init() {
-                this.scrollToBottom(false);
+                this.presenceText = this.$el.dataset.presence || '';
+                this.isTouch = window.matchMedia('(pointer: coarse)').matches;
+                renderTicks();
+                if (window.lucide) lucide.createIcons();
+
+                const divider = document.getElementById('unread-divider');
+                if (divider) divider.scrollIntoView({ block: 'center' });
+                else this.scrollToBottom(false);
+
                 this.connectSocket();
-                this.observeUnreadMessages();
 
-                window.addEventListener("beforeunload", () => this.closeSocket());
+                // Fallback typing poll, only used while the socket is down
+                setInterval(() => {
+                    if (this.socketReady) return;
+                    fetch(cfg.typingUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                        .then(r => r.json()).then(d => { this.typing = !!d.typing; }).catch(() => {});
+                }, 3000);
+
+                // Keeps me "online" for the other person while this chat is open
+                const beat = () => fetch(cfg.heartbeatUrl, { method: 'POST', headers: { 'X-CSRFToken': this.csrf() } }).catch(() => {});
+                beat();
+                setInterval(beat, 60000);
+
+                document.addEventListener('visibilitychange', () => { if (!document.hidden) this.flushReads(); });
             },
 
-            closeSocket() {
-                clearTimeout(this._reconnectTimer);
+            csrf() { return this.$refs.form.querySelector('[name=csrfmiddlewaretoken]').value; },
 
-                if (!this.socket) return;
-
-                // IMPORTANT: these were originally wired up with
-                // addEventListener(), and assigning `.onclose = null`
-                // does NOT detach a listener added that way — the old
-                // handler would still fire and schedule its own
-                // reconnect after we thought we'd shut it down. Using
-                // the .onX property form (below, in connectSocket) is
-                // what makes clearing it here actually work.
-                this.socket.onopen = null;
-                this.socket.onclose = null;
-                this.socket.onmessage = null;
-
-                if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
-                    this.socket.close();
-                }
-                this.socket = null;
-                this.socketReady = false;
-            },
-
+            /* ------------------------------------------------ socket */
             connectSocket() {
-                // Never open a second socket while one is still live.
-                this.closeSocket();
+                const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                let sock;
+                try { sock = new WebSocket(proto + '//' + location.host + cfg.wsPath); } catch (e) { return; }
+                this.socket = sock;
 
-                const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-                const url = protocol + "//" + window.location.host + "/ws/chat/{{ conversation.id }}/";
-                const socket = new WebSocket(url);
-                this.socket = socket;
-
-                socket.onopen = () => {
-                    if (this.socket !== socket) return; // superseded before it finished connecting
-                    this.socketReady = true;
-                };
-
-                socket.onclose = () => {
-                    if (this.socket !== socket) return; // an intentional close already replaced this one
+                sock.addEventListener('open', () => { this.socketReady = true; this.reconnectDelay = 1000; this.flushReads(); });
+                sock.addEventListener('close', (ev) => {
                     this.socketReady = false;
-                    this._reconnectTimer = setTimeout(() => this.connectSocket(), 2000);
-                };
-
-                socket.onmessage = (event) => {
-                    if (this.socket !== socket) return;
-                    const data = JSON.parse(event.data);
-                    if (data.type === "chat_message_event") this.appendMessage(data);
-                    else if (data.type === "typing_event") this.handleTypingEvent(data);
-                    else if (data.type === "read_receipt_event") this.handleReadReceiptEvent(data);
-                };
+                    if (ev.code >= 4000) return; // rejected (not logged in / not a participant)
+                    setTimeout(() => this.connectSocket(), this.reconnectDelay);
+                    this.reconnectDelay = Math.min(this.reconnectDelay * 2, 15000);
+                });
+                sock.addEventListener('message', (ev) => {
+                    let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
+                    if (d.type === 'chat_message_event') this.onIncoming(d);
+                    else if (d.type === 'typing_event') this.typing = !!d.typing;
+                    else if (d.type === 'read_receipt_event') this.onReadReceipt(d);
+                });
             },
+            sendSocket(payload) { if (this.socketReady) this.socket.send(JSON.stringify(payload)); },
 
-            sendSocket(payload) {
-                if (this.socketReady) this.socket.send(JSON.stringify(payload));
-            },
-
+            /* ------------------------------------------------ scrolling */
+            nearBottom() { const el = this.$refs.scroll; return el.scrollHeight - el.scrollTop - el.clientHeight < 140; },
             onScroll() {
                 const el = this.$refs.scroll;
-                this.showJumpButton = el.scrollHeight - el.scrollTop - el.clientHeight > 400;
+                this.showJump = el.scrollHeight - el.scrollTop - el.clientHeight > 320;
+                if (this.nearBottom()) { this.unseenCount = 0; this.flushReads(); }
             },
             scrollToBottom(smooth) {
                 this.$nextTick(() => {
                     const el = this.$refs.scroll;
-                    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+                    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+                    this.unseenCount = 0;
                 });
             },
             scrollToMessage(id) {
                 const el = document.getElementById('msg-' + id);
                 if (!el) return;
                 el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                el.classList.add('bg-accent-50/60');
-                setTimeout(() => el.classList.remove('bg-accent-50/60'), 900);
-            },
-            openLightbox(url) { this.lightboxUrl = url; },
-            closeLightbox() { this.lightboxUrl = null; },
-            autoGrow() {
-                const el = this.$refs.textarea;
-                el.style.height = "auto";
-                el.style.height = Math.min(el.scrollHeight, 112) + "px";
-            },
-            startReply(id, sender, preview) {
-                this.replyId = id; this.replySender = sender; this.replyPreview = preview;
-                this.$refs.textarea.focus();
-            },
-            cancelReply() { this.replyId = ""; this.replySender = ""; this.replyPreview = ""; },
-            onAttachmentChange(event) {
-                const file = event.target.files && event.target.files[0];
-                this.attachmentName = file ? file.name : "";
-            },
-            clearAttachment() { this.$refs.attachmentInput.value = ""; this.attachmentName = ""; },
-
-            // ----------------------------------------------------
-            // TYPING — live over the socket instead of polling.
-            // ----------------------------------------------------
-            notifyTyping() {
-                this.sendSocket({ type: "typing", typing: true });
-                clearTimeout(this._typingTimeout);
-                this._typingTimeout = setTimeout(() => {
-                    this.sendSocket({ type: "typing", typing: false });
-                }, 2000);
-            },
-            handleTypingEvent(data) {
-                this.typing = !!data.typing;
+                const bubble = el.querySelector('.bubble');
+                if (bubble) {
+                    bubble.style.transition = 'box-shadow .3s';
+                    bubble.style.boxShadow = '0 0 0 3px rgba(124,58,237,.35)';
+                    setTimeout(() => { bubble.style.boxShadow = ''; }, 900);
+                }
             },
 
-            // ----------------------------------------------------
-            // READ RECEIPTS — sent live as messages scroll into
-            // view, via IntersectionObserver; applied live when
-            // the other person's client confirms they read one.
-            // ----------------------------------------------------
-            observeUnreadMessages() {
-                this._observer = new IntersectionObserver((entries) => {
-                    entries.forEach((entry) => {
-                        if (!entry.isIntersecting) return;
-                        const messageId = entry.target.dataset.messageId;
-                        const senderId = parseInt(entry.target.dataset.senderId, 10);
-                        if (senderId === this.currentUserId) return;
-                        this.sendSocket({ type: "read_receipt", message_id: parseInt(messageId, 10) });
-                        this._observer.unobserve(entry.target);
-                    });
-                }, { root: this.$refs.scroll, threshold: 0.6 });
+            /* ------------------------------------------------ incoming live messages */
+            onIncoming(d) {
+                const mine = d.sender_id === cfg.currentUserId;
+                const stick = mine || this.nearBottom();
+                this.appendMessage(d, mine);
 
-                this.$refs.scroll.querySelectorAll("[data-message-id]").forEach((el) => {
-                    if (el.dataset.senderId != this.currentUserId) {
-                        this._observer.observe(el);
+                if (mine) { this.scrollToBottom(true); return; }
+                this.pendingReads.push(d.id);
+                if (stick) { this.scrollToBottom(true); this.flushReads(); }
+                else this.unseenCount += 1;
+            },
+            flushReads() {
+                if (!this.socketReady || document.hidden || !this.nearBottom() || !this.pendingReads.length) return;
+                this.pendingReads.forEach((id) => this.sendSocket({ type: 'read_receipt', message_id: id }));
+                this.pendingReads = [];
+            },
+            onReadReceipt(d) {
+                // Reading message N means everything of mine up to N has been read
+                this.$refs.column.querySelectorAll('.msg-row[data-mine="1"]').forEach(function (row) {
+                    if (parseInt(row.dataset.messageId, 10) <= d.message_id) {
+                        row.querySelectorAll('.tick-wrap').forEach(function (t) { t.dataset.state = 'read'; });
                     }
                 });
+                renderTicks(this.$refs.column);
             },
-            handleReadReceiptEvent(data) {
-                const el = document.getElementById("msg-" + data.message_id);
-                if (!el) return;
-                const check = el.querySelector(".read-check");
-                if (check) {
-                    check.setAttribute("data-lucide", "check-check");
-                    check.classList.remove("text-white/60");
-                    check.classList.add("text-accent-200");
-                    if (window.lucide) lucide.createIcons();
+            appendMessage(d, mine) {
+                const rows = this.$refs.column.querySelectorAll('.msg-row');
+                const last = rows[rows.length - 1];
+                const grouped = last && last.dataset.senderId === String(d.sender_id);
+
+                const row = document.createElement('div');
+                row.id = 'msg-' + d.id;
+                row.className = 'msg-row flex px-3 transition-transform duration-150 ' + (mine ? 'justify-end ' : 'justify-start ') + (grouped ? 'mt-0.5' : 'mt-2');
+                row.dataset.messageId = d.id;
+                row.dataset.senderId = d.sender_id;
+                row.dataset.mine = mine ? '1' : '0';
+                row.dataset.type = 'text';
+                row.dataset.text = d.content;
+                row.dataset.senderName = mine ? 'You' : (d.sender_first_name || d.sender_username || '');
+
+                const bubble = document.createElement('div');
+                bubble.className = 'bubble relative max-w-[82%] rounded-lg px-2 pb-1.5 pt-1.5 text-[14px] leading-[1.35] text-ink shadow-sm lg:max-w-[65%] ' + (mine ? 'bubble-out' : 'bubble-in') + (grouped ? '' : ' tail');
+                bubble.innerHTML =
+                    '<button type="button" class="bubble-chevron" aria-label="Message options"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>' +
+                    (d.reply_to_id ? '<div class="quote mb-1 overflow-hidden rounded-md border-l-4 border-accent-500 bg-black/5 px-2 py-1" data-reply-id="' + d.reply_to_id + '"><p class="q-name text-[12px] font-semibold text-accent-600"></p><p class="q-text truncate text-[12.5px] text-ink/70"></p></div>' : '') +
+                    '<p class="msg-text whitespace-pre-wrap break-words"></p>' +
+                    '<span class="absolute bottom-1 right-2 flex items-center gap-0.5 text-[10.5px] text-ink/50"><span class="msg-time"></span>' + (mine ? '<span class="tick-wrap" data-state="sent"></span>' : '') + '</span>';
+
+                if (d.reply_to_id) {
+                    bubble.querySelector('.q-name').textContent = d.reply_to_sender === undefined || d.reply_to_sender === null ? '' : d.reply_to_sender;
+                    bubble.querySelector('.q-text').textContent = d.reply_to_preview || '';
                 }
+                const p = bubble.querySelector('.msg-text');
+                p.appendChild(document.createTextNode(d.content));
+                const spacer = document.createElement('span');
+                spacer.className = 'inline-block ' + (mine ? 'w-[64px]' : 'w-[44px]');
+                p.appendChild(spacer);
+                bubble.querySelector('.msg-time').textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+                row.appendChild(bubble);
+                this.$refs.column.appendChild(row);
+                renderTicks(row);
             },
 
-            // ----------------------------------------------------
-            // SEND — text goes over the socket; anything with a
-            // file attached falls back to a real HTTP POST.
-            // ----------------------------------------------------
+            /* ------------------------------------------------ composer */
+            resizeTextarea() {
+                const el = this.$refs.textarea;
+                el.style.height = 'auto';
+                el.style.height = Math.min(el.scrollHeight, 128) + 'px';
+            },
+            onEnter(e) {
+                // Desktop: Enter sends, Shift+Enter = newline. Phones: Enter = newline.
+                if (e.shiftKey || this.isTouch) return;
+                e.preventDefault();
+                this.onFormSubmit();
+            },
+            insertEmoji(emoji) {
+                const ta = this.$refs.textarea;
+                const s = ta.selectionStart, en = ta.selectionEnd;
+                this.content = this.content.slice(0, s) + emoji + this.content.slice(en);
+                this.$nextTick(() => { ta.focus(); const pos = s + emoji.length; ta.setSelectionRange(pos, pos); this.resizeTextarea(); });
+            },
+            nativeSubmit() { HTMLFormElement.prototype.submit.call(this.$refs.form); },
             onFormSubmit() {
-                const attachmentInput = this.$refs.attachmentInput;
-                const voiceInput = this.$refs.voiceInput;
-                const hasFile = (attachmentInput.files && attachmentInput.files.length) || (voiceInput.files && voiceInput.files.length);
+                const hasFile = this.$refs.attachmentInput.files && this.$refs.attachmentInput.files.length;
+                const text = this.content.trim();
+                if (!text && !hasFile) return;
 
-                if (hasFile) {
-                    this.$refs.form.setAttribute("action", "{% url 'chat' conversation.id %}");
-                    HTMLFormElement.prototype.submit.call(this.$refs.form);
-                    return;
-                }
+                // Files (and any send while the socket is down) use a normal form POST.
+                if (hasFile || !this.socketReady) { this.nativeSubmit(); return; }
 
-                if (!this.content.trim()) return;
-
-                this.sendSocket({ type: "chat_message", content: this.content, reply_to: this.replyId || null });
-
-                this.content = "";
+                this.sendSocket({ type: 'chat_message', content: text, reply_to: this.replyId || null });
+                this.content = '';
                 this.cancelReply();
-                this.$refs.textarea.style.height = "auto";
+                this.$nextTick(() => this.resizeTextarea());
+                this.stopTyping();
             },
 
-            appendMessage(data) {
-                if (this.seenMessageIds.has(data.id)) return;
-                this.seenMessageIds.add(data.id);
-
-                const isMine = data.sender_id === this.currentUserId;
-                const wrapper = document.createElement("div");
-                wrapper.id = "msg-" + data.id;
-                wrapper.dataset.messageId = data.id;
-                wrapper.dataset.senderId = data.sender_id;
-                wrapper.className = "group flex items-end gap-1.5" + (isMine ? " justify-end" : "");
-
-                let replyHtml = "";
-                if (data.reply_to_id) {
-                    replyHtml = `
-                        <div class="mb-1 block w-full rounded-md border-l-2 px-1.5 py-1 text-left text-[10px] ${isMine ? "border-white/50 bg-white/10 text-white/80" : "border-accent-400 bg-accent-50 text-accent-700"}">
-                            <p class="font-semibold"></p>
-                            <p class="truncate opacity-80"></p>
-                        </div>`;
-                }
-
-                const checkHtml = isMine
-                    ? `<i data-lucide="check" class="read-check h-3 w-3 text-white/60"></i>`
-                    : "";
-
-                wrapper.innerHTML = `
-                    <div class="relative max-w-[78%] lg:max-w-[65%] rounded-2xl px-3 py-2 text-[12.5px] leading-snug ${isMine ? "rounded-br-md bg-accent-500 text-white" : "rounded-bl-md bg-surface text-ink"}">
-                        ${replyHtml}
-                        <p class="whitespace-pre-wrap"></p>
-                        <div class="mt-0.5 flex items-center justify-end gap-1">
-                            <span class="text-[9px] ${isMine ? "text-white/60" : "text-muted"}"></span>
-                            ${checkHtml}
-                        </div>
-                    </div>`;
-
-                if (data.reply_to_id) {
-                    wrapper.querySelector(".mb-1 p.font-semibold").textContent =
-                        data.reply_to_sender === this.currentUsername ? "You" : (data.reply_to_sender || "");
-                    wrapper.querySelector(".mb-1 p.truncate").textContent = data.reply_to_preview || "";
-                }
-                wrapper.querySelector("p.whitespace-pre-wrap").textContent = data.content;
-                wrapper.querySelector("span.text-\\[9px\\]").textContent = data.created_at;
-
-                this.$refs.scroll.appendChild(wrapper);
-                this.scrollToBottom(true);
-                if (window.lucide) lucide.createIcons();
-
-                if (!isMine) {
-                    this._observer.observe(wrapper);
-                }
+            /* typing */
+            notifyTyping() {
+                if (!this._typingSent) { this._typingSent = true; this.sendTyping(true); }
+                clearTimeout(this._typingTimer);
+                this._typingTimer = setTimeout(() => this.stopTyping(), 2000);
+            },
+            stopTyping() { clearTimeout(this._typingTimer); if (this._typingSent) { this._typingSent = false; this.sendTyping(false); } },
+            sendTyping(v) {
+                if (this.socketReady) { this.sendSocket({ type: 'typing', typing: v }); return; }
+                fetch(cfg.typingUrl, {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': this.csrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: 'typing=' + (v ? '1' : '0'),
+                }).catch(() => {});
             },
 
-            formatTimer(totalSeconds) {
-                const m = Math.floor(totalSeconds / 60), s = totalSeconds % 60;
-                return m + ":" + String(s).padStart(2, "0");
+            /* attachments */
+            pickFile(accept) {
+                this.attachOpen = false;
+                this.$refs.attachmentInput.accept = accept;
+                this.$refs.attachmentInput.click();
             },
+            onAttachmentChange(e) {
+                const f = e.target.files && e.target.files[0];
+                if (!f) { this.clearAttachment(); return; }
+                this.attachmentName = f.name;
+                this.attachmentIsImage = f.type.startsWith('image/');
+                this.attachmentPreview = this.attachmentIsImage ? URL.createObjectURL(f) : '';
+            },
+            clearAttachment() {
+                this.$refs.attachmentInput.value = '';
+                this.attachmentName = ''; this.attachmentPreview = ''; this.attachmentIsImage = false;
+            },
+
+            /* voice notes */
+            fmt(total) { return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0'); },
             async startRecording() {
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.MediaRecorder) {
                     alert("Voice notes aren't supported in this browser."); return;
                 }
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    this._recordedChunks = []; this._discardRecording = false;
-                    this._mediaRecorder = new MediaRecorder(stream);
-                    this._mediaRecorder.addEventListener("dataavailable", (e) => { if (e.data.size > 0) this._recordedChunks.push(e.data); });
-                    this._mediaRecorder.addEventListener("stop", () => {
-                        stream.getTracks().forEach(t => t.stop());
-                        clearInterval(this._recordingTimer);
-                        this.recording = false; this.recordingTime = "0:00";
-                        if (this._discardRecording || this._recordedChunks.length === 0) return;
-                        const blob = new Blob(this._recordedChunks, { type: "audio/webm" });
-                        const file = new File([blob], "voice-note.webm", { type: "audio/webm" });
-                        const dataTransfer = new DataTransfer();
-                        dataTransfer.items.add(file);
-                        this.$refs.voiceInput.files = dataTransfer.files;
-                        this.$refs.form.setAttribute("action", "{% url 'chat' conversation.id %}");
-                        HTMLFormElement.prototype.submit.call(this.$refs.form);
+                    this._chunks = []; this._discard = false;
+                    const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find(function (t) { return MediaRecorder.isTypeSupported(t); }) || '';
+                    this._rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+
+                    this._rec.addEventListener('dataavailable', (e) => { if (e.data.size > 0) this._chunks.push(e.data); });
+                    this._rec.addEventListener('stop', () => {
+                        stream.getTracks().forEach(function (t) { t.stop(); });
+                        clearInterval(this._recTimer);
+                        this.recording = false; this.recordingTime = '0:00';
+                        if (this._discard || !this._chunks.length) return;
+
+                        const type = (this._rec.mimeType || 'audio/webm').split(';')[0];
+                        const ext = type.indexOf('mp4') > -1 ? 'm4a' : 'webm';
+                        const file = new File([new Blob(this._chunks, { type: type })], 'voice-note.' + ext, { type: type });
+                        const dt = new DataTransfer(); dt.items.add(file);
+                        this.$refs.voiceInput.files = dt.files;
+                        this.nativeSubmit();
                     });
-                    this._mediaRecorder.start();
-                    this.recording = true; this._recordingStartedAt = Date.now();
-                    this._recordingTimer = setInterval(() => {
-                        this.recordingTime = this.formatTimer(Math.floor((Date.now() - this._recordingStartedAt) / 1000));
-                    }, 1000);
-                } catch (error) {
-                    alert("Microphone access is needed to record a voice note.");
+
+                    this._rec.start();
+                    this.recording = true; this._recStart = Date.now();
+                    this._recTimer = setInterval(() => { this.recordingTime = this.fmt(Math.floor((Date.now() - this._recStart) / 1000)); }, 250);
+                    this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+                } catch (err) {
+                    alert('Microphone access is needed to record a voice note.');
                 }
             },
-            stopRecording() {
-                this._discardRecording = false;
-                if (this._mediaRecorder && this._mediaRecorder.state !== "inactive") this._mediaRecorder.stop();
+            stopRecording() { this._discard = false; if (this._rec && this._rec.state !== 'inactive') this._rec.stop(); },
+            cancelRecording() { this._discard = true; if (this._rec && this._rec.state !== 'inactive') this._rec.stop(); },
+
+            /* ------------------------------------------------ replies + actions */
+            previewFor(type, text) {
+                return { image: '📷 Photo', video: '🎥 Video', voice: '🎤 Voice message', file: '📄 Document', payment: '💸 Payment', hire: '💼 Hire request' }[type] || (text || '').slice(0, 80);
             },
-            cancelRecording() {
-                this._discardRecording = true;
-                if (this._mediaRecorder && this._mediaRecorder.state !== "inactive") this._mediaRecorder.stop();
+            startReply(row) {
+                this.replyId = row.dataset.messageId;
+                this.replyName = row.dataset.senderName || '';
+                this.replyPreview = this.previewFor(row.dataset.type, row.dataset.text);
+                this.$refs.textarea.focus();
+            },
+            cancelReply() { this.replyId = ''; this.replyName = ''; this.replyPreview = ''; },
+
+            openActions(row) {
+                this.actions = {
+                    open: true, id: row.dataset.messageId, mine: row.dataset.mine === '1',
+                    type: row.dataset.type, text: row.dataset.text || '',
+                    preview: this.previewFor(row.dataset.type, row.dataset.text),
+                };
+                this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
+            },
+            replyFromActions() {
+                const row = document.getElementById('msg-' + this.actions.id);
+                this.actions.open = false;
+                if (row) this.startReply(row);
+            },
+            copyFromActions() {
+                const text = this.actions.text;
+                this.actions.open = false;
+                if (navigator.clipboard) navigator.clipboard.writeText(text).catch(function () {});
+            },
+            deleteFromActions() {
+                const id = this.actions.id;
+                this.actions.open = false;
+                if (!confirm('Delete this message?')) return;
+                const form = document.getElementById('delete-message-form');
+                form.action = cfg.deleteUrl.replace('/0/', '/' + id + '/');
+                form.submit();
+            },
+
+            /* click delegation: quotes, chevrons, images (works for live-appended rows too) */
+            onAreaClick(e) {
+                const lightbox = e.target.closest('[data-lightbox]');
+                if (lightbox) { this.lightboxUrl = lightbox.dataset.lightbox; return; }
+
+                const quote = e.target.closest('.quote');
+                if (quote) { this.scrollToMessage(quote.dataset.replyId); return; }
+
+                const chevron = e.target.closest('.bubble-chevron');
+                if (chevron) { this.openActions(chevron.closest('.msg-row')); }
+            },
+            onContextMenu(e) {
+                const row = e.target.closest('.msg-row');
+                if (!row) return;
+                e.preventDefault();
+                this.openActions(row);
+            },
+
+            /* long-press = actions, swipe right = reply (like WhatsApp) */
+            onTouchStart(e) {
+                const row = e.target.closest('.msg-row');
+                if (!row || e.touches.length !== 1) return;
+                const t = this._touch;
+                t.row = row; t.x = e.touches[0].clientX; t.y = e.touches[0].clientY; t.dx = 0;
+                clearTimeout(t.timer);
+                t.timer = setTimeout(() => {
+                    if (navigator.vibrate) navigator.vibrate(15);
+                    this.openActions(row);
+                    t.row = null;
+                }, 480);
+            },
+            onTouchMove(e) {
+                const t = this._touch;
+                if (!t.row) return;
+                const dx = e.touches[0].clientX - t.x;
+                const dy = e.touches[0].clientY - t.y;
+                if (Math.abs(dy) > 12 || dx < -10) { clearTimeout(t.timer); t.row.style.transform = ''; t.row = null; return; }
+                if (dx > 10) {
+                    clearTimeout(t.timer);
+                    t.dx = dx;
+                    t.row.classList.add('swiping');
+                    t.row.style.transform = 'translateX(' + Math.min(dx, 72) + 'px)';
+                }
+            },
+            onTouchEnd() {
+                const t = this._touch;
+                clearTimeout(t.timer);
+                if (!t.row) return;
+                t.row.classList.remove('swiping');
+                t.row.style.transform = '';
+                if (t.dx > 60) this.startReply(t.row);
+                t.row = null; t.dx = 0;
             },
         };
     }
 
-    document.addEventListener("alpine:initialized", () => lucide.createIcons());
-    lucide.createIcons();
+    document.addEventListener('alpine:initialized', function () { if (window.lucide) lucide.createIcons(); });
 </script>
 {% endblock %}
