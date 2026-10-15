@@ -1,305 +1,549 @@
-{% load static %}
-<!DOCTYPE html>
+{% load static %}{% firstof request.resolver_match.url_name "" as nav_name %}<!DOCTYPE html>
 <html lang="en" class="h-full bg-white">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<meta name="format-detection" content="telephone=no">
+<meta name="csrf-token" content="{{ csrf_token }}">
 <title>{% block title %}Pheral{% endblock %}</title>
 
 <link rel="manifest" href="{% url 'pwa_manifest' %}">
-<meta name="theme-color" content="#7C3AED">
-<link rel="apple-touch-icon" href="{% static 'images/favicon-48.png' %}">
-<link rel="icon" type="image/png" href="{% static 'images/favicon-48.png' %}">
+<meta name="theme-color" content="#FFFFFF">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Pheral">
+<link rel="apple-touch-icon" href="{% static 'images/pheral-logo.png' %}">
+<link rel="icon" type="image/png" href="{% static 'images/favicon-48.png' %}">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 <script src="https://cdn.tailwindcss.com/3.4.17"></script>
 <script>
-tailwind.config = { theme: { extend: {
-  fontFamily: { display: ['"Bricolage Grotesque"', 'system-ui', 'sans-serif'], sans: ['Figtree', 'system-ui', 'sans-serif'] },
-  colors: {
-    ink: '#1A1230', muted: '#6B6485', line: '#E9E4F5', tint: '#F7F3FF', surface: '#F7F3FF',
-    brand: { 50: '#F5F1FE', 100: '#EBE3FD', 200: '#D3C2FA', 300: '#B898F6', 400: '#9A6BF0', 500: '#7C3AED', 600: '#6D28D9', 700: '#5B21B6', 900: '#2E1065' },
-    accent: { 50: '#F5F1FE', 100: '#EBE3FD', 200: '#D3C2FA', 400: '#9A6BF0', 500: '#7C3AED', 600: '#6D28D9', 700: '#5B21B6' },
-    cash: { 100: '#D9F6E4', 600: '#12804A' },
-  },
-  boxShadow: {
-    nav: '0 -1px 0 0 rgba(26,18,48,0.06)',
-    rail: '1px 0 0 0 rgba(26,18,48,0.06)',
-    popover: '0 16px 40px -12px rgba(124,58,237,0.25), 0 2px 8px -2px rgba(26,18,48,0.08)',
-    card: '0 1px 2px 0 rgba(26,18,48,0.04)',
-  },
-} } };
+(function () {
+  var brand = { 50:'#F5F1FE', 100:'#EBE3FD', 200:'#D3C2FA', 300:'#B898F6', 400:'#9A6BF0', 500:'#7C3AED', 600:'#6D28D9', 700:'#5B21B6', 900:'#2E1065' };
+  tailwind.config = { theme: { extend: {
+    fontFamily: {
+      display: ['"Bricolage Grotesque"', 'system-ui', 'sans-serif'],
+      sans: ['Figtree', 'ui-sans-serif', 'system-ui', '-apple-system', '"Segoe UI"', 'sans-serif']
+    },
+    colors: {
+      ink:'#1A1230', muted:'#6B6485', line:'#E9E4F5', tint:'#F7F3FF', surface:'#F7F3FF',
+      brand: brand, accent: brand,
+      cash: { 100:'#D9F6E4', 600:'#12804A' }
+    },
+    boxShadow: {
+      nav:'0 -1px 0 0 rgba(26,18,48,0.06)',
+      card:'0 1px 2px 0 rgba(26,18,48,0.04)',
+      popover:'0 12px 32px -8px rgba(26,18,48,0.18), 0 2px 8px -2px rgba(26,18,48,0.08)',
+      sheet:'0 -8px 32px -8px rgba(26,18,48,0.20)'
+    }
+  } } };
+})();
 </script>
+<script defer src="https://unpkg.com/@alpinejs/collapse@3.14.1/dist/cdn.min.js"></script>
 <script defer src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js"></script>
-<script src="https://unpkg.com/lucide@0.441.0/dist/umd/lucide.min.js"></script>
 
 <style>
-  [x-cloak]{display:none!important}
-  html,body{-webkit-tap-highlight-color:transparent}
-  body{font-size:14px}
-  img{display:block}
-  ::-webkit-scrollbar{width:5px;height:5px}
-  ::-webkit-scrollbar-thumb{background:#E9E4F5;border-radius:999px}
-  .rf{outline:none}
-  .rf:focus-visible{outline:2px solid #7C3AED;outline-offset:2px;border-radius:12px}
-  .focus-ring{outline:none}
-  .focus-ring:focus-visible{outline:2px solid #7C3AED;outline-offset:2px;border-radius:12px}
-  .pop{animation:pop .3s cubic-bezier(.2,.8,.2,1)}
-  @keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-  @media (prefers-reduced-motion:reduce){.pop{animation:none}}
+  :root {
+    --tabbar-h: 56px;
+    --tabbar-total: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px));
+    --ease-ios: cubic-bezier(.2, .8, .2, 1);
+  }
+  [x-cloak] { display: none !important; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-padding-top: 72px; }
+  html, body { -webkit-tap-highlight-color: transparent; }
+  body { font-size: 14px; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  img { display: block; }
+  ::selection { background: #EBE3FD; }
+  i[data-lucide] { display: inline-block; }
+
+  /* The landing page's ambient glow, reused behind every page */
+  .glow { background: radial-gradient(60% 50% at 70% 30%, #EBE3FD 0, transparent 70%); }
+
+  /* Touch behaviour */
+  a, button, [role="button"], input, select, textarea, label, summary { touch-action: manipulation; }
+  button, [role="button"], .tab-item, .rail-item { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  button, [role="button"], .tap { transition: scale .14s var(--ease-ios), background-color .15s, color .15s, opacity .15s; }
+  @media (hover: none) {
+    button:active:not(:disabled), [role="button"]:active, .tap:active { scale: .97; }
+    .tab-item:active { scale: .9; }
+  }
+
+  /* Focus: keyboard only. .rf is the landing's ring; .focus-ring keeps older templates working */
+  :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid #7C3AED; outline-offset: 2px; }
+  .rf, .focus-ring { outline: none; }
+  .rf:focus-visible, .focus-ring:focus-visible { outline: 2px solid #7C3AED; outline-offset: 3px; border-radius: 12px; }
+
+  /* iOS zooms the page when a focused input is under 16px. Bump only the small ones, only on touch. */
+  @media (max-width: 1023px) and (hover: none) {
+    :is(input, textarea, select):is(
+      [class*="text-[10px]"], [class*="text-[11px]"], [class*="text-[12px]"], [class*="text-[12.5px]"],
+      [class*="text-[13px]"], [class*="text-[13.5px]"], [class*="text-[14px]"], [class*="text-[14.5px]"],
+      [class*="text-[15px]"], [class*="text-xs"], [class*="text-sm"]
+    ) { font-size: 16px !important; }
+  }
+
+  @media (display-mode: standalone) { html, body { overscroll-behavior-y: none; } }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-thumb { background: #DDD6EE; border-radius: 999px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  @media (hover: none) { ::-webkit-scrollbar { display: none; } }
+  .scrollbar-none { scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+
+  .glass { background: rgba(255,255,255,.86); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { .glass { background: rgba(255,255,255,.98); } }
+
+  /* Mobile tab bar */
+  .tab-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 10.5px; font-weight: 600; color: #6B6485; transition: color .15s; }
+  .tab-item.is-active { color: #6D28D9; }
+  .tab-item svg { transition: stroke-width .15s; }
+  .tab-item.is-active svg { stroke-width: 2.4; }
+  .tab-badge { position: absolute; right: -10px; top: -5px; display: flex; min-width: 16px; height: 16px; align-items: center; justify-content: center; padding: 0 4px; border-radius: 9999px; background: #7C3AED; color: #fff; font-size: 10px; font-weight: 700; line-height: 1; box-shadow: 0 0 0 2px #fff; }
+
+  /* Desktop rail */
+  .rail-item { position: relative; display: flex; align-items: center; justify-content: center; gap: 12px; border-radius: 9999px; padding: 10px 14px; font-size: 13.5px; font-weight: 600; color: #6B6485; transition: background-color .15s, color .15s; }
+  .rail-item:hover { background: #F7F3FF; color: #1A1230; }
+  .rail-item.is-active { background: #F5F1FE; color: #5B21B6; }
+  .rail-label { display: none; }
+  @media (min-width: 1280px) { .rail-item { justify-content: flex-start; } .rail-label { display: inline; } }
+  @media (min-width: 1024px) and (max-width: 1279px) {
+    .rail-item[data-tip]:hover::after, .rail-item[data-tip]:focus-visible::after {
+      content: attr(data-tip); position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
+      white-space: nowrap; background: #1A1230; color: #fff; font-size: 11px; font-weight: 600;
+      padding: 5px 9px; border-radius: 9999px; pointer-events: none; z-index: 60;
+    }
+  }
+
+  /* Older floating buttons use bottom-20; keep them clear of the tab bar + home indicator */
+  @media (max-width: 1023px) { .fixed.bottom-20 { bottom: calc(var(--tabbar-total) + 16px); } }
+
+  /* Immersive pages (chat) hide the shell */
+  body.chat-open .app-header, body.chat-open .app-tabbar { display: none !important; }
+
+  /* Page-to-page crossfade; bars stay put */
+  @view-transition { navigation: auto; }
+  ::view-transition-old(root) { animation: vt-out .14s ease both; }
+  ::view-transition-new(root) { animation: vt-in .22s var(--ease-ios) both; }
+  @keyframes vt-out { to { opacity: 0; } }
+  @keyframes vt-in { from { opacity: 0; transform: translateY(6px); } }
+  .vt-header { view-transition-name: app-header; }
+  .vt-tabbar { view-transition-name: app-tabbar; }
+  .vt-rail { view-transition-name: app-rail; }
+  ::view-transition-group(app-header), ::view-transition-group(app-tabbar), ::view-transition-group(app-rail) { animation-duration: 0s; }
+  ::view-transition-old(app-header), ::view-transition-new(app-header),
+  ::view-transition-old(app-tabbar), ::view-transition-new(app-tabbar),
+  ::view-transition-old(app-rail), ::view-transition-new(app-rail) { animation: none; mix-blend-mode: normal; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, ::before, ::after { transition-duration: .01ms !important; animation-duration: .01ms !important; scroll-behavior: auto !important; }
+    ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+  }
+  @media print { .app-rail, .app-tabbar, .app-header { display: none !important; } .shell { padding-left: 0 !important; } }
 </style>
 {% block extra_head %}{% endblock %}
 </head>
 
-<body class="min-h-full bg-white font-sans text-ink antialiased"
-      x-data="pheralShell()" x-init="init()"
-      @keydown.window="if ((event.metaKey || event.ctrlKey) && event.key === 'k') { event.preventDefault(); commandOpen = true; }"
-      @keydown.window.escape="commandOpen = false; moreOpen = false">
+<body class="{% block body_class %}{% endblock %} bg-white font-sans text-ink antialiased"
+      x-data="pheralShell()" x-init="init()" @keydown.window="onKey($event)">
+{% with k=","|add:nav_name|add:"," n_chat=",chat_list,chat,chat_user,start_chat,group_list,group_create,group_chat,group_add_member,group_profile,status_list,create_status,status_detail,contacts,search," n_hire=",hire,create_hire_job,hire_job_detail,send_hire_request," n_feed=",feed,create_post," n_wallet=",wallet,top_up,top_up_callback,pay_user,global_pay,currency_converter,receipt_detail,bank_accounts,add_bank_account,resolve_bank_account,withdraw,transfer,airtime_purchase,data_purchase,airtime_data,cards_and_accounts,virtual_account," n_agent=",agent,agent_command," n_me=",profile,profile_user,profile_edit," %}
 
-{% with nav_name=request.resolver_match.url_name %}
+{% include "splash.html" ignore missing %}
+
+<a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[90] focus:rounded-full focus:bg-ink focus:px-4 focus:py-2 focus:text-xs focus:text-white">Skip to content</a>
 
 {% if request.user.is_authenticated %}
-
-<!-- ================= DESKTOP RAIL (lg+) ================= -->
-<aside class="fixed inset-y-0 left-0 z-40 hidden w-[72px] flex-col border-r border-line bg-white py-4 shadow-rail lg:flex xl:w-56 xl:px-3">
-  <a href="{% url 'chat_list' %}" class="rf mb-5 flex items-center gap-2.5 px-3.5 xl:px-2" aria-label="Pheral home">
-    <img src="{% static 'images/favicon-48.png' %}" alt="" class="h-8 w-8 shrink-0 rounded-lg">
+<!-- ============================================================ DESKTOP RAIL -->
+<aside class="app-rail vt-rail fixed inset-y-0 left-0 z-40 hidden w-[76px] flex-col border-r border-line bg-white py-5 lg:flex xl:w-60 xl:px-3" aria-label="Primary">
+  <a href="{% url 'chat_list' %}" class="rf tap mb-5 flex items-center gap-2.5 px-3 xl:px-2" aria-label="Pheral">
+    <img src="{% static 'images/favicon-48.png' %}" alt="" width="36" height="36" class="h-9 w-9 shrink-0 rounded-xl">
     <span class="hidden font-display text-lg font-extrabold tracking-tight xl:inline">Pheral</span>
   </a>
 
-  <button type="button" @click="commandOpen = true" class="rf mx-3 mb-4 flex items-center gap-2 rounded-full bg-tint px-3 py-2 text-muted transition hover:bg-brand-50 xl:mx-0">
-    <i data-lucide="search" class="h-4 w-4 shrink-0"></i>
-    <span class="hidden flex-1 text-left text-[12.5px] xl:inline">Search</span>
-    <kbd class="hidden rounded-md border border-line bg-white px-1.5 text-[10px] font-medium xl:inline">⌘K</kbd>
+  <button type="button" @click="openCmd()" class="rf mx-3 mb-4 flex items-center justify-center gap-2 rounded-full border border-line bg-white px-3 py-2.5 text-muted transition hover:bg-tint xl:mx-1 xl:justify-start" aria-label="Search and quick actions">
+    <i data-lucide="search" class="h-4 w-4"></i>
+    <span class="hidden flex-1 text-left text-[13px] xl:inline">Search or jump to…</span>
+    <kbd class="hidden rounded-md border border-line bg-tint px-1.5 py-0.5 text-[10px] font-semibold text-muted xl:inline">⌘K</kbd>
   </button>
 
-  <nav class="flex flex-1 flex-col gap-0.5 overflow-y-auto px-3 xl:px-0" aria-label="Main">
-    {% with on="bg-brand-50 text-brand-600" off="text-muted hover:bg-tint hover:text-ink" %}
-    <a href="{% url 'chat_list' %}" class="rf flex items-center gap-3 rounded-full px-3 py-2 transition {% if nav_name in 'chat_list,chat,chat_user,start_chat' %}{{ on }}{% else %}{{ off }}{% endif %}">
-      <i data-lucide="message-circle" class="h-[18px] w-[18px] shrink-0"></i><span class="hidden text-[13px] font-semibold xl:inline">Chats</span></a>
-    <a href="{% url 'group_list' %}" class="rf flex items-center gap-3 rounded-full px-3 py-2 transition {% if nav_name in 'group_list,group_create,group_chat,group_add_member,group_profile' %}{{ on }}{% else %}{{ off }}{% endif %}">
-      <i data-lucide="users" class="h-[18px] w-[18px] shrink-0"></i><span class="hidden text-[13px] font-semibold xl:inline">Groups</span></a>
-    <a href="{% url 'status_list' %}" class="rf flex items-center gap-3 rounded-full px-3 py-2 transition {% if nav_name in 'status_list,create_status,status_detail' %}{{ on }}{% else %}{{ off }}{% endif %}">
-      <i data-lucide="circle-dashed" class="h-[18px] w-[18px] shrink-0"></i><span class="hidden text-[13px] font-semibold xl:inline">Status</span></a>
-    <a href="{% url 'contacts' %}" class="rf flex items-center gap-3 rounded-full px-3 py-2 transition {% if nav_name in 'contacts,add_contact,search' %}{{ on }}{% else %}{{ off }}{% endif %}">
-      <i data-lucide="address-book" class="h-[18px] w-[18px] shrink-0"></i><span class="hidden text-[13px] font-semibold xl:inline">Contacts</span></a>
-
-    <div class="my-1.5 border-t border-line"></div>
-
-    <a href="{% url 'hire' %}" class="rf flex items-center gap-3 rounded-full px-3 py-2 transition {% if nav_name in 'hire,create_hire_job,hire_job_detail,send_hire_request' %}{{ on }}{% else %}{{ off }}{% endif %}">
-      <i data-lucide="briefcase" class="h-[18px] w-[18px] shrink-0"></i><span class="hidden text-[13px] font-semibold xl:inline">Hire</span></a>
-    <a href="{% url 'feed' %}" class="rf flex items-center gap-3 rounded-full px-3 py-2 transition {% if nav_name in 'feed,create_post' %}{{ on }}{% else %}{{ off }}{% endif %}">
-      <i data-lucide="newspaper" class="h-[18px] w-[18px] shrink-0"></i><span class="hidden text-[13px] font-semibold xl:inline">Feed</span></a>
-    <a href="{% url 'wallet' %}" class="rf flex items-center gap-3 rounded-full px-3 py-2 transition {% if nav_name in 'wallet,top_up,withdraw,transfer,cards_and_accounts,pay_user,global_pay,currency_converter,receipt_detail,bank_accounts,airtime_purchase,data_purchase' %}{{ on }}{% else %}{{ off }}{% endif %}">
-      <i data-lucide="wallet" class="h-[18px] w-[18px] shrink-0"></i><span class="hidden text-[13px] font-semibold xl:inline">Wallet</span></a>
-    <a href="{% url 'agent' %}" class="rf flex items-center gap-3 rounded-full px-3 py-2 transition {% if nav_name in 'agent,agent_command' %}{{ on }}{% else %}{{ off }}{% endif %}">
-      <i data-lucide="bot" class="h-[18px] w-[18px] shrink-0"></i><span class="hidden text-[13px] font-semibold xl:inline">Agent</span></a>
-    {% endwith %}
+  <nav class="flex flex-1 flex-col gap-1 px-3 xl:px-0">
+    <a href="{% url 'chat_list' %}" class="rail-item rf tap {% if k in n_chat %}is-active{% endif %}" data-tip="Chats" {% if k in n_chat %}aria-current="page"{% endif %}>
+      <span class="relative"><i data-lucide="message-circle" class="h-5 w-5"></i>{% if unread_chats %}<span class="tab-badge">{% if unread_chats > 99 %}99+{% else %}{{ unread_chats }}{% endif %}</span>{% endif %}</span>
+      <span class="rail-label">Chats</span>
+    </a>
+    <a href="{% url 'hire' %}" class="rail-item rf tap {% if k in n_hire %}is-active{% endif %}" data-tip="Hire" {% if k in n_hire %}aria-current="page"{% endif %}>
+      <i data-lucide="briefcase" class="h-5 w-5"></i><span class="rail-label">Hire</span>
+    </a>
+    <a href="{% url 'feed' %}" class="rail-item rf tap {% if k in n_feed %}is-active{% endif %}" data-tip="Feed" {% if k in n_feed %}aria-current="page"{% endif %}>
+      <i data-lucide="newspaper" class="h-5 w-5"></i><span class="rail-label">Feed</span>
+    </a>
+    <a href="{% url 'wallet' %}" class="rail-item rf tap {% if k in n_wallet %}is-active{% endif %}" data-tip="Wallet" {% if k in n_wallet %}aria-current="page"{% endif %}>
+      <i data-lucide="wallet" class="h-5 w-5"></i><span class="rail-label">Wallet</span>
+    </a>
+    <a href="{% url 'agent' %}" class="rail-item rf tap {% if k in n_agent %}is-active{% endif %}" data-tip="Agent" {% if k in n_agent %}aria-current="page"{% endif %}>
+      <i data-lucide="bot" class="h-5 w-5"></i><span class="rail-label">Agent</span>
+    </a>
   </nav>
 
-  <div class="relative px-3 xl:px-0" x-data="{ open: false }" @click.outside="open = false">
-    <button type="button" @click="open = !open" class="rf flex w-full items-center gap-2.5 rounded-full p-1.5 transition hover:bg-tint" aria-label="Profile menu" :aria-expanded="open">
+  <div class="relative px-3 xl:px-0" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
+    <button type="button" @click="open = !open" :aria-expanded="open" aria-haspopup="menu"
+            class="rf tap flex w-full items-center justify-center gap-2.5 rounded-full p-2 transition hover:bg-tint xl:justify-start" aria-label="Account menu">
       {% if request.user.avatar %}
-        <img src="{{ request.user.avatar.url }}" alt="" class="h-8 w-8 shrink-0 rounded-full object-cover">
+        <img src="{{ request.user.avatar.url }}" alt="" width="34" height="34" class="h-[34px] w-[34px] shrink-0 rounded-full object-cover ring-1 ring-line">
       {% else %}
-        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-[12px] font-bold text-brand-700">{{ request.user.username|first|upper }}</span>
+        <span class="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-brand-100 text-[13px] font-bold text-brand-700">{{ request.user.username|first|upper }}</span>
       {% endif %}
       <span class="hidden min-w-0 flex-1 text-left xl:block">
-        <span class="block truncate text-[12.5px] font-semibold">{{ request.user.display_name|default:request.user.username }}</span>
-        <span class="block truncate text-[10.5px] text-muted">@{{ request.user.username }}</span>
+        <span class="block truncate text-[13px] font-semibold leading-4">{{ request.user.display_name|default:request.user.username }}</span>
+        <span class="block truncate text-[11px] text-muted">@{{ request.user.username }}</span>
       </span>
+      <i data-lucide="chevrons-up-down" class="hidden h-4 w-4 shrink-0 text-muted xl:block"></i>
     </button>
-    <div x-show="open" x-cloak x-transition class="absolute bottom-[calc(100%+6px)] left-3 z-50 w-52 overflow-hidden rounded-2xl border border-line bg-white py-1 shadow-popover xl:left-0">
-      <a href="{% url 'profile' %}" class="rf flex items-center gap-2.5 px-3.5 py-2 text-[12.5px] hover:bg-tint"><i data-lucide="user" class="h-4 w-4"></i> View profile</a>
-      <a href="{% url 'profile_edit' %}" class="rf flex items-center gap-2.5 px-3.5 py-2 text-[12.5px] hover:bg-tint"><i data-lucide="settings" class="h-4 w-4"></i> Edit profile</a>
-      <a href="{% url 'notifications' %}" class="rf flex items-center gap-2.5 px-3.5 py-2 text-[12.5px] hover:bg-tint">
-        <i data-lucide="bell" class="h-4 w-4"></i> Notifications
-        {% if unread_notifications %}<span class="ml-auto rounded-full bg-brand-500 px-1.5 text-[10px] font-bold text-white">{{ unread_notifications }}</span>{% endif %}
+    <div x-show="open" x-cloak x-transition.origin.bottom.left.duration.150ms role="menu"
+         class="absolute bottom-[calc(100%+6px)] left-3 z-50 w-56 overflow-hidden rounded-3xl border border-line bg-white py-1.5 shadow-popover xl:left-0 xl:right-0 xl:w-auto">
+      <a role="menuitem" href="{% url 'profile' %}" class="flex items-center gap-3 px-4 py-2.5 text-[13px] font-semibold hover:bg-tint"><i data-lucide="user" class="h-4 w-4 text-muted"></i> View profile</a>
+      <a role="menuitem" href="{% url 'profile_edit' %}" class="flex items-center gap-3 px-4 py-2.5 text-[13px] font-semibold hover:bg-tint"><i data-lucide="settings" class="h-4 w-4 text-muted"></i> Edit profile</a>
+      <a role="menuitem" href="{% url 'notifications' %}" class="flex items-center gap-3 px-4 py-2.5 text-[13px] font-semibold hover:bg-tint">
+        <i data-lucide="bell" class="h-4 w-4 text-muted"></i> Notifications
+        {% if unread_notifications %}<span class="ml-auto rounded-full bg-brand-500 px-1.5 text-[10px] font-bold leading-4 text-white">{{ unread_notifications }}</span>{% endif %}
       </a>
+      {% url 'logout' as logout_url %}{% if logout_url %}
       <div class="my-1 border-t border-line"></div>
-      <a href="{% url 'logout' %}" class="rf flex items-center gap-2.5 px-3.5 py-2 text-[12.5px] text-red-600 hover:bg-red-50"><i data-lucide="log-out" class="h-4 w-4"></i> Log out</a>
+      <a role="menuitem" href="{{ logout_url }}" class="flex items-center gap-3 px-4 py-2.5 text-[13px] font-semibold text-red-600 hover:bg-red-50"><i data-lucide="log-out" class="h-4 w-4"></i> Log out</a>
+      {% endif %}
     </div>
   </div>
 </aside>
+{% endif %}
 
-<!-- ================= TOP BAR (single, slim) ================= -->
-<header class="sticky top-0 z-30 border-b border-line bg-white/90 backdrop-blur lg:pl-[72px] xl:pl-56" style="padding-top:env(safe-area-inset-top,0px)">
-  <div class="mx-auto flex h-12 max-w-6xl items-center justify-between px-4 lg:h-14 lg:px-7">
-    <a href="{% url 'chat_list' %}" class="rf flex items-center gap-2 lg:hidden">
-      <img src="{% static 'images/favicon-48.png' %}" alt="" class="h-7 w-7 rounded-lg">
-      <span class="font-display text-base font-extrabold tracking-tight">Pheral</span>
-    </a>
-    <h1 class="hidden font-display text-lg font-bold tracking-tight lg:block">{% block page_title %}{% endblock %}</h1>
+<div class="shell relative isolate flex min-h-[100dvh] flex-col {% if request.user.is_authenticated %}lg:pl-[76px] xl:pl-60{% endif %}">
 
-    <div class="ml-auto flex items-center gap-0.5">
-      <button type="button" @click="commandOpen = true" class="rf rounded-full p-2 text-muted transition hover:bg-tint hover:text-ink" aria-label="Search"><i data-lucide="search" class="h-[18px] w-[18px]"></i></button>
-      <a href="{% url 'notifications' %}" class="rf relative rounded-full p-2 text-muted transition hover:bg-tint hover:text-ink" aria-label="Notifications">
-        <i data-lucide="bell" class="h-[18px] w-[18px]"></i>
-        {% if unread_notifications %}
-          <span class="absolute right-0.5 top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-brand-500 px-1 text-[9px] font-bold text-white ring-2 ring-white">{% if unread_notifications > 9 %}9+{% else %}{{ unread_notifications }}{% endif %}</span>
-        {% endif %}
-      </a>
+  {% block ambient %}<div class="glow pointer-events-none absolute inset-x-0 top-0 -z-10 h-[420px]" aria-hidden="true"></div>{% endblock %}
+
+  {% if request.user.is_authenticated %}
+  <!-- ============================================================ HEADER -->
+  <header class="app-header vt-header glass sticky top-0 z-30 border-b transition-colors duration-200"
+          :class="scrolled ? 'border-line' : 'border-transparent'" style="padding-top: env(safe-area-inset-top, 0px);">
+    <div class="mx-auto flex h-14 max-w-6xl items-center gap-2 px-4 lg:h-16 lg:px-7">
+
+      <!-- Wordmark at the top of the page; the title takes over once you scroll (iOS large-title behaviour) -->
+      <div class="relative h-8 min-w-0 flex-1">
+        <a href="{% url 'chat_list' %}" class="rf tap absolute inset-y-0 left-0 flex items-center gap-2 transition duration-200 lg:hidden"
+           :class="scrolled ? 'pointer-events-none -translate-y-1.5 opacity-0' : 'opacity-100'">
+          <img src="{% static 'images/favicon-48.png' %}" alt="" width="32" height="32" class="h-8 w-8 rounded-lg">
+          <span class="font-display text-lg font-extrabold tracking-tight">Pheral</span>
+        </a>
+        <h1 class="absolute inset-y-0 left-0 right-0 block truncate font-display text-[19px] font-bold leading-8 tracking-tight transition duration-200 lg:static lg:translate-y-0 lg:text-xl lg:opacity-100"
+            :class="scrolled ? 'opacity-100' : 'translate-y-1.5 opacity-0'">{% block page_title %}{% endblock %}</h1>
+      </div>
+
+      <div class="flex shrink-0 items-center">
+        <a href="{% url 'agent' %}" class="rf tap flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-tint lg:hidden {% if k in n_agent %}text-brand-600{% else %}text-muted{% endif %}" aria-label="Agent">
+          <i data-lucide="bot" class="h-[21px] w-[21px]"></i>
+        </a>
+        <button type="button" @click="openCmd()" class="rf tap flex h-11 w-11 items-center justify-center rounded-full text-muted transition hover:bg-tint hover:text-ink lg:h-10 lg:w-10" aria-label="Search">
+          <i data-lucide="search" class="h-[21px] w-[21px]"></i>
+        </button>
+        <a href="{% url 'notifications' %}" class="rf tap relative flex h-11 w-11 items-center justify-center rounded-full transition hover:bg-tint lg:h-10 lg:w-10 {% if nav_name == 'notifications' %}text-brand-600{% else %}text-muted hover:text-ink{% endif %}" aria-label="Notifications{% if unread_notifications %}, {{ unread_notifications }} unread{% endif %}">
+          <i data-lucide="bell" class="h-[21px] w-[21px]"></i>
+          {% if unread_notifications %}<span class="tab-badge" style="right:5px;top:6px">{% if unread_notifications > 9 %}9+{% else %}{{ unread_notifications }}{% endif %}</span>{% endif %}
+        </a>
+      </div>
     </div>
+
+    <div x-show="!online" x-cloak x-collapse class="bg-amber-50 px-4 py-1.5 text-center text-[12px] font-semibold text-amber-800" role="status">
+      You're offline. Some things won't load until you reconnect.
+    </div>
+  </header>
+  {% endif %}
+
+  <!-- ============================================================ MESSAGES -->
+  {% if messages %}
+  <div class="mx-auto w-full max-w-6xl space-y-2 px-4 pt-3 lg:px-7" role="region" aria-label="Messages">
+    {% for message in messages %}
+    <div x-data="{ open: true }"
+         x-init="{% if message.level_tag != 'error' and message.level_tag != 'warning' %}setTimeout(() => open = false, 6000){% endif %}"
+         x-show="open" x-transition.opacity.duration.200ms
+         role="{% if message.level_tag == 'error' %}alert{% else %}status{% endif %}"
+         class="flex items-start gap-2.5 rounded-2xl border px-4 py-3 text-[13px] leading-5
+                {% if message.level_tag == 'error' %}border-red-100 bg-red-50 text-red-800
+                {% elif message.level_tag == 'warning' %}border-amber-100 bg-amber-50 text-amber-800
+                {% elif message.level_tag == 'success' %}border-cash-100 bg-cash-100/60 text-cash-600
+                {% else %}border-brand-100 bg-brand-50 text-brand-700{% endif %}">
+      <i data-lucide="{% if message.level_tag == 'error' %}alert-circle{% elif message.level_tag == 'warning' %}alert-triangle{% elif message.level_tag == 'success' %}check-circle-2{% else %}info{% endif %}" class="mt-0.5 h-4 w-4 shrink-0"></i>
+      <p class="min-w-0 flex-1 font-medium">{{ message }}</p>
+      <button type="button" @click="open = false" class="-m-1 shrink-0 rounded-full p-1 opacity-60 hover:opacity-100" aria-label="Dismiss"><i data-lucide="x" class="h-4 w-4"></i></button>
+    </div>
+    {% endfor %}
   </div>
-</header>
+  {% endif %}
 
-{% endif %}
-
-<!-- ================= FLASH MESSAGES ================= -->
-{% if messages %}
-<div class="mx-auto max-w-6xl space-y-1.5 px-4 pt-3 lg:px-7 {% if request.user.is_authenticated %}lg:pl-[calc(1.75rem+72px)] xl:pl-[calc(1.75rem+224px)]{% endif %}">
-  {% for message in messages %}
-    <div role="status" class="flex items-start gap-2 rounded-2xl border px-3.5 py-2.5 text-xs font-medium
-      {% if message.tags == 'error' %}border-red-100 bg-red-50 text-red-700
-      {% elif message.tags == 'success' %}border-cash-100 bg-cash-100/60 text-cash-600
-      {% elif message.tags == 'warning' %}border-amber-100 bg-amber-50 text-amber-700
-      {% else %}border-line bg-tint text-ink{% endif %}">{{ message }}</div>
-  {% endfor %}
+  <!-- ============================================================ CONTENT -->
+  <main id="main" tabindex="-1" class="flex-1 focus:outline-none {% if request.user.is_authenticated %}pb-[calc(var(--tabbar-total)+1rem)] lg:pb-8{% endif %}">
+    {% block content %}{% endblock %}
+  </main>
 </div>
-{% endif %}
-
-<!-- ================= PAGE CONTENT ================= -->
-<main class="{% if request.user.is_authenticated %}pb-[calc(58px+env(safe-area-inset-bottom,0px))] lg:pb-8 lg:pl-[72px] xl:pl-56{% endif %}">
-  {% block content %}{% endblock %}
-</main>
 
 {% if request.user.is_authenticated %}
-
-<!-- ================= MOBILE BOTTOM NAV (5 tabs) ================= -->
-<nav class="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 shadow-nav backdrop-blur lg:hidden" style="padding-bottom:env(safe-area-inset-bottom,0px)" aria-label="Main">
-  <div class="grid h-[58px] grid-cols-5">
-    {% with on="text-brand-600" off="text-muted" %}
-    <a href="{% url 'chat_list' %}" class="rf flex flex-col items-center justify-center gap-0.5 {% if nav_name in 'chat_list,chat,chat_user,start_chat,group_list,group_create,group_chat,group_add_member,group_profile,status_list,create_status,status_detail' %}{{ on }}{% else %}{{ off }}{% endif %}">
-      <i data-lucide="message-circle" class="h-5 w-5"></i><span class="text-[10px] font-semibold">Chats</span></a>
-    <a href="{% url 'hire' %}" class="rf flex flex-col items-center justify-center gap-0.5 {% if nav_name in 'hire,create_hire_job,hire_job_detail,send_hire_request' %}{{ on }}{% else %}{{ off }}{% endif %}">
-      <i data-lucide="briefcase" class="h-5 w-5"></i><span class="text-[10px] font-semibold">Hire</span></a>
-    <a href="{% url 'feed' %}" class="rf flex flex-col items-center justify-center gap-0.5 {% if nav_name in 'feed,create_post' %}{{ on }}{% else %}{{ off }}{% endif %}">
-      <i data-lucide="newspaper" class="h-5 w-5"></i><span class="text-[10px] font-semibold">Feed</span></a>
-    <a href="{% url 'wallet' %}" class="rf flex flex-col items-center justify-center gap-0.5 {% if nav_name in 'wallet,top_up,withdraw,transfer,cards_and_accounts,pay_user,global_pay,currency_converter,receipt_detail,bank_accounts,airtime_purchase,data_purchase' %}{{ on }}{% else %}{{ off }}{% endif %}">
-      <i data-lucide="wallet" class="h-5 w-5"></i><span class="text-[10px] font-semibold">Wallet</span></a>
-    <button type="button" @click="moreOpen = true" class="rf flex flex-col items-center justify-center gap-0.5 {% if nav_name in 'profile,profile_user,profile_edit,group_list,status_list,contacts,add_contact,search,agent,agent_command,notifications,bank_accounts,airtime_purchase,data_purchase,currency_converter' %}{{ on }}{% else %}{{ off }}{% endif %}" aria-haspopup="dialog">
-      <span class="relative"><i data-lucide="layout-grid" class="h-5 w-5"></i>{% if unread_notifications %}<span class="absolute -right-1 -top-0.5 h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white"></span>{% endif %}</span>
-      <span class="text-[10px] font-semibold">More</span></button>
-    {% endwith %}
+<!-- ============================================================ MOBILE TAB BAR -->
+<nav class="app-tabbar vt-tabbar glass shadow-nav fixed inset-x-0 bottom-0 z-40 lg:hidden" style="padding-bottom: env(safe-area-inset-bottom, 0px);" aria-label="Primary">
+  <div class="mx-auto grid h-[var(--tabbar-h)] max-w-xl grid-cols-5">
+    <a href="{% url 'chat_list' %}" class="tab-item tap {% if k in n_chat %}is-active{% endif %}" {% if k in n_chat %}aria-current="page"{% endif %}>
+      <span class="relative"><i data-lucide="message-circle" class="h-[23px] w-[23px]"></i>{% if unread_chats %}<span class="tab-badge">{% if unread_chats > 99 %}99+{% else %}{{ unread_chats }}{% endif %}</span>{% endif %}</span>
+      <span>Chats</span>
+    </a>
+    <a href="{% url 'hire' %}" class="tab-item tap {% if k in n_hire %}is-active{% endif %}" {% if k in n_hire %}aria-current="page"{% endif %}>
+      <i data-lucide="briefcase" class="h-[23px] w-[23px]"></i><span>Hire</span>
+    </a>
+    <a href="{% url 'feed' %}" class="tab-item tap {% if k in n_feed %}is-active{% endif %}" {% if k in n_feed %}aria-current="page"{% endif %}>
+      <i data-lucide="newspaper" class="h-[23px] w-[23px]"></i><span>Feed</span>
+    </a>
+    <a href="{% url 'wallet' %}" class="tab-item tap {% if k in n_wallet %}is-active{% endif %}" {% if k in n_wallet %}aria-current="page"{% endif %}>
+      <i data-lucide="wallet" class="h-[23px] w-[23px]"></i><span>Wallet</span>
+    </a>
+    <a href="{% url 'profile' %}" class="tab-item tap {% if k in n_me %}is-active{% endif %}" {% if k in n_me %}aria-current="page"{% endif %}>
+      {% if request.user.avatar %}
+        <img src="{{ request.user.avatar.url }}" alt="" width="24" height="24" class="h-6 w-6 rounded-full object-cover {% if k in n_me %}ring-2 ring-brand-500{% else %}ring-1 ring-line{% endif %}">
+      {% else %}
+        <i data-lucide="circle-user" class="h-[23px] w-[23px]"></i>
+      {% endif %}
+      <span>Me</span>
+    </a>
   </div>
 </nav>
 
-<!-- ================= MORE SHEET ================= -->
-<div x-show="moreOpen" x-cloak x-transition.opacity.duration.150ms class="fixed inset-0 z-50 flex items-end bg-ink/40 backdrop-blur-sm lg:hidden" @click.self="moreOpen = false" role="dialog" aria-label="More">
-  <div x-show="moreOpen" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-y-full" x-transition:enter-end="translate-y-0"
-       x-transition:leave="transition ease-in duration-150" x-transition:leave-start="translate-y-0" x-transition:leave-end="translate-y-full"
-       class="max-h-[85vh] w-full overflow-y-auto rounded-t-[2rem] bg-white pt-2 shadow-popover" style="padding-bottom:calc(1rem + env(safe-area-inset-bottom,0px))">
-    <div class="mx-auto mb-2 h-1 w-10 rounded-full bg-line"></div>
-
-    <a href="{% url 'profile' %}" @click="moreOpen = false" class="rf mx-4 mb-4 flex items-center gap-3 rounded-2xl bg-tint p-3">
-      {% if request.user.avatar %}
-        <img src="{{ request.user.avatar.url }}" alt="" class="h-11 w-11 rounded-full object-cover">
-      {% else %}
-        <span class="flex h-11 w-11 items-center justify-center rounded-full bg-brand-100 font-bold text-brand-700">{{ request.user.username|first|upper }}</span>
-      {% endif %}
-      <span class="min-w-0 flex-1">
-        <span class="block truncate text-sm font-semibold">{{ request.user.display_name|default:request.user.username }}</span>
-        <span class="block truncate text-xs text-muted">View profile</span>
-      </span>
-      <i data-lucide="chevron-right" class="h-4 w-4 text-muted"></i>
-    </a>
-
-    <div class="grid grid-cols-4 gap-x-2 gap-y-4 px-4">
-      <a href="{% url 'group_list' %}" @click="moreOpen = false" class="rf flex flex-col items-center gap-1.5"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600"><i data-lucide="users" class="h-5 w-5"></i></span><span class="text-[11px] font-medium">Groups</span></a>
-      <a href="{% url 'status_list' %}" @click="moreOpen = false" class="rf flex flex-col items-center gap-1.5"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600"><i data-lucide="circle-dashed" class="h-5 w-5"></i></span><span class="text-[11px] font-medium">Status</span></a>
-      <a href="{% url 'contacts' %}" @click="moreOpen = false" class="rf flex flex-col items-center gap-1.5"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600"><i data-lucide="address-book" class="h-5 w-5"></i></span><span class="text-[11px] font-medium">Contacts</span></a>
-      <a href="{% url 'notifications' %}" @click="moreOpen = false" class="rf flex flex-col items-center gap-1.5"><span class="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600"><i data-lucide="bell" class="h-5 w-5"></i>{% if unread_notifications %}<span class="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-brand-500 ring-2 ring-white"></span>{% endif %}</span><span class="text-[11px] font-medium">Alerts</span></a>
-      <a href="{% url 'cards_and_accounts' %}" @click="moreOpen = false" class="rf flex flex-col items-center gap-1.5"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600"><i data-lucide="credit-card" class="h-5 w-5"></i></span><span class="text-[11px] font-medium">Cards</span></a>
-      <a href="{% url 'bank_accounts' %}" @click="moreOpen = false" class="rf flex flex-col items-center gap-1.5"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600"><i data-lucide="landmark" class="h-5 w-5"></i></span><span class="text-[11px] font-medium">Banks</span></a>
-      <a href="{% url 'airtime_purchase' %}" @click="moreOpen = false" class="rf flex flex-col items-center gap-1.5"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600"><i data-lucide="smartphone" class="h-5 w-5"></i></span><span class="text-[11px] font-medium">Airtime</span></a>
-      <a href="{% url 'currency_converter' %}" @click="moreOpen = false" class="rf flex flex-col items-center gap-1.5"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600"><i data-lucide="repeat" class="h-5 w-5"></i></span><span class="text-[11px] font-medium">Convert</span></a>
-      <a href="{% url 'agent' %}" @click="moreOpen = false" class="rf flex flex-col items-center gap-1.5"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600"><i data-lucide="bot" class="h-5 w-5"></i></span><span class="text-[11px] font-medium">Agent</span></a>
-      <a href="{% url 'profile_edit' %}" @click="moreOpen = false" class="rf flex flex-col items-center gap-1.5"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600"><i data-lucide="settings" class="h-5 w-5"></i></span><span class="text-[11px] font-medium">Settings</span></a>
-      <a href="{% url 'logout' %}" class="rf flex flex-col items-center gap-1.5"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600"><i data-lucide="log-out" class="h-5 w-5"></i></span><span class="text-[11px] font-medium">Log out</span></a>
+<!-- ============================================================ SEARCH / QUICK ACTIONS (⌘K) -->
+<div x-show="commandOpen" x-cloak class="fixed inset-0 z-[60]" role="dialog" aria-modal="true" aria-label="Search and quick actions">
+  <div x-show="commandOpen" x-transition.opacity.duration.150ms class="absolute inset-0 bg-ink/40 backdrop-blur-sm" @click="commandOpen = false"></div>
+  <div class="relative mx-auto w-[calc(100%-2rem)] max-w-lg" style="margin-top: calc(env(safe-area-inset-top, 0px) + 10vh);">
+    <div x-show="commandOpen"
+         x-transition:enter="transition ease-out duration-200" x-transition:enter-start="-translate-y-2 scale-95 opacity-0" x-transition:enter-end="translate-y-0 scale-100 opacity-100"
+         x-transition:leave="transition ease-in duration-100" x-transition:leave-start="opacity-100" x-transition:leave-end="scale-95 opacity-0"
+         class="overflow-hidden rounded-3xl border border-line bg-white shadow-popover">
+      <div class="flex items-center gap-3 border-b border-line px-5">
+        <i data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></i>
+        <input type="text" x-ref="cmdInput" x-model="cmdQ" @input="cmdI = 0"
+               @keydown.arrow-down.prevent="cmdMove(1)" @keydown.arrow-up.prevent="cmdMove(-1)" @keydown.enter.prevent="cmdRun()"
+               placeholder="Search people or jump to…" autocomplete="off" autocapitalize="none" spellcheck="false" enterkeyhint="go" aria-label="Search"
+               class="h-14 w-full bg-transparent text-[15px] text-ink placeholder-muted focus:outline-none">
+        <button type="button" x-show="cmdQ" @click="cmdQ = ''; cmdI = 0; $refs.cmdInput.focus()" class="shrink-0 rounded-full p-1 text-muted hover:bg-tint" aria-label="Clear"><i data-lucide="x" class="h-4 w-4"></i></button>
+        <button type="button" @click="commandOpen = false" class="shrink-0 text-[13px] font-semibold text-brand-600 lg:hidden">Cancel</button>
+        <kbd class="hidden shrink-0 rounded-md border border-line px-1.5 py-0.5 text-[10px] font-semibold text-muted lg:inline">Esc</kbd>
+      </div>
+      <ul x-ref="cmdList" role="listbox" class="max-h-[min(55vh,420px)] overflow-y-auto overscroll-contain p-2">
+        <template x-for="(c, i) in cmdResults" :key="c.u + c.l">
+          <li role="option" :aria-selected="i === cmdI">
+            <a :href="c.u" @mousemove="cmdI = i"
+               class="flex items-center gap-3 rounded-2xl px-3 py-2.5 text-[14px] font-semibold transition-colors"
+               :class="i === cmdI ? 'bg-brand-50 text-brand-700' : 'text-ink'">
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-tint text-brand-600"><i :data-lucide="c.i" class="h-4 w-4"></i></span>
+              <span class="min-w-0 flex-1 truncate" x-text="c.l"></span>
+              <span x-show="i === cmdI" class="hidden text-[11px] font-semibold text-muted lg:inline">Enter ↵</span>
+            </a>
+          </li>
+        </template>
+        <li x-show="cmdResults.length === 0" class="px-4 py-8 text-center text-[13px] text-muted">No matches</li>
+      </ul>
+      <div class="hidden items-center gap-4 border-t border-line bg-tint px-5 py-2.5 text-[11px] text-muted lg:flex">
+        <span><b class="font-semibold">↑↓</b> navigate</span><span><b class="font-semibold">↵</b> open</span><span><b class="font-semibold">esc</b> close</span>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- ================= SEARCH OVERLAY ================= -->
-<div x-show="commandOpen" x-cloak x-transition.opacity.duration.150ms class="fixed inset-0 z-50 flex items-start justify-center bg-ink/40 px-4 pt-24 backdrop-blur-sm" @click.self="commandOpen = false" role="dialog" aria-label="Search">
-  <div x-show="commandOpen" x-transition.scale.origin.top.duration.150ms class="w-full max-w-lg overflow-hidden rounded-3xl bg-white shadow-popover">
-    <form method="get" action="{% url 'search' %}" class="flex items-center gap-3 px-5 py-4">
-      <i data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></i>
-      <input type="text" name="q" placeholder="Search people on Pheral" autocomplete="off" aria-label="Search people"
-             x-ref="commandInput" x-init="$watch('commandOpen', v => v && setTimeout(() => $refs.commandInput.focus(), 60))"
-             class="w-full bg-transparent text-[15px] placeholder-muted outline-none">
-      <kbd class="hidden shrink-0 rounded-md border border-line px-1.5 py-0.5 text-[10px] font-medium text-muted sm:inline">Esc</kbd>
-    </form>
-  </div>
-</div>
-
-<!-- ================= INSTALL SHEET (sits above bottom nav) ================= -->
-<div x-show="showInstallBanner" x-cloak x-transition.opacity class="fixed inset-x-0 z-[45] px-3 lg:hidden" style="bottom:calc(58px + env(safe-area-inset-bottom,0px) + .5rem)" role="dialog" aria-label="Install Pheral">
-  <div class="rounded-2xl border border-line bg-white p-3 shadow-popover">
+<!-- ============================================================ INSTALL SHEET (phones only; same sheet as the landing page) -->
+<div x-show="showInstall" x-cloak x-transition.opacity class="fixed inset-x-0 z-[55] px-3 lg:hidden" style="bottom: calc(var(--tabbar-total) + 8px);" role="dialog" aria-label="Install Pheral">
+  <div class="rounded-2xl border border-line bg-white p-3 shadow-2xl shadow-brand-500/20">
     <div class="flex items-center gap-3">
-      <img src="{% static 'images/favicon-48.png' %}" alt="" class="h-10 w-10 shrink-0 rounded-xl">
+      <img src="{% static 'images/favicon-48.png' %}" alt="" width="44" height="44" class="h-11 w-11 shrink-0 rounded-xl">
       <div class="min-w-0 flex-1">
         <p class="text-sm font-semibold">Install Pheral</p>
-        <p class="truncate text-xs text-muted" x-text="isIOS ? 'Add it to your Home Screen to open it like an app.' : 'Open Pheral from your home screen.'"></p>
+        <p class="text-xs leading-4 text-muted" x-text="isIOS ? 'Add it to your Home Screen to open it like an app.' : 'Open Pheral from your home screen. No app store needed.'"></p>
       </div>
-      <button type="button" @click="triggerInstall()" class="rf shrink-0 rounded-full bg-brand-500 px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-600" x-text="isIOS ? 'Show me how' : 'Install'"></button>
-      <button type="button" @click="dismissInstallBanner()" class="rf shrink-0 rounded-full p-1.5 text-muted" aria-label="Dismiss"><i data-lucide="x" class="h-4 w-4"></i></button>
+      <button type="button" @click="installApp()" class="rf shrink-0 rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-brand-500/30 hover:bg-brand-600" x-text="isIOS ? 'Show me how' : 'Install'"></button>
+      <button type="button" @click="dismissInstall()" class="rf shrink-0 rounded-full p-1.5 text-muted" aria-label="Dismiss"><i data-lucide="x" class="h-4 w-4"></i></button>
     </div>
-    <ol x-show="showIOSInstructions" x-cloak x-transition class="mt-3 space-y-1.5 border-t border-line pt-3 text-xs text-muted">
+    <ol x-show="showIOSSteps" x-collapse x-cloak class="mt-3 space-y-1.5 border-t border-line pt-3 text-xs text-muted">
       <li>1. Tap the Share button in Safari's toolbar.</li>
       <li>2. Choose <b class="text-ink">Add to Home Screen</b>.</li>
       <li>3. Tap <b class="text-ink">Add</b>.</li>
     </ol>
   </div>
 </div>
-
 {% endif %}
 
-{% endwith %}
+<!-- ============================================================ TOAST (Alpine.store('toast') / window.pheralToast) -->
+<div x-data x-show="$store.toast.visible" x-cloak
+     x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-y-3 opacity-0" x-transition:enter-end="translate-y-0 opacity-100"
+     x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+     class="pointer-events-none fixed inset-x-0 z-[70] flex justify-center px-4 lg:bottom-6" style="bottom: calc(var(--tabbar-total) + 12px);" role="status" aria-live="polite">
+  <div class="pointer-events-auto flex max-w-sm items-center gap-4 rounded-full bg-ink px-5 py-3 text-[13px] font-semibold text-white shadow-popover">
+    <span x-text="$store.toast.msg"></span>
+    <button type="button" x-show="$store.toast.action" @click="$store.toast.run()" class="shrink-0 font-bold text-brand-200" x-text="$store.toast.action"></button>
+  </div>
+</div>
 
+<script src="https://unpkg.com/lucide@0.441.0/dist/umd/lucide.min.js"></script>
 <script>
-const INSTALL_KEY = 'pheral_install_dismissed_at';
-const store = {
-  get() { try { return localStorage.getItem(INSTALL_KEY); } catch (e) { return null; } },
-  set() { try { localStorage.setItem(INSTALL_KEY, Date.now().toString()); } catch (e) {} },
-};
+  // Icons: render now, and again whenever Alpine adds new <i data-lucide> nodes (x-for / x-if / :data-lucide).
+  (function () {
+    var queued = false;
+    function refreshIcons() {
+      if (queued || !window.lucide) return;
+      queued = true;
+      requestAnimationFrame(function () { queued = false; window.lucide.createIcons(); });
+    }
+    window.refreshIcons = refreshIcons;
+    if (window.lucide) window.lucide.createIcons();
+    new MutationObserver(function (muts) {
+      for (var i = 0; i < muts.length; i++) {
+        var m = muts[i];
+        if (m.type === 'attributes') { if (m.target.tagName === 'I') return refreshIcons(); continue; }
+        for (var j = 0; j < m.addedNodes.length; j++) {
+          var n = m.addedNodes[j];
+          if (n.nodeType !== 1) continue;
+          if ((n.tagName === 'I' && n.hasAttribute('data-lucide')) || (n.querySelector && n.querySelector('i[data-lucide]'))) return refreshIcons();
+        }
+      }
+    }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-lucide'] });
+  })();
 
-function pheralShell() {
-  return {
-    commandOpen: false, moreOpen: false,
-    showInstallBanner: false, showIOSInstructions: false, isIOS: false, _deferredPrompt: null,
+  document.addEventListener('alpine:init', function () {
+    Alpine.store('toast', {
+      visible: false, msg: '', action: '', fn: null, _t: null,
+      push: function (msg, opts) {
+        opts = opts || {};
+        this.msg = msg; this.action = opts.action || ''; this.fn = opts.onAction || null; this.visible = true;
+        clearTimeout(this._t);
+        var self = this;
+        this._t = setTimeout(function () { self.visible = false; }, opts.duration || 4200);
+      },
+      run: function () { if (this.fn) this.fn(); this.visible = false; }
+    });
+    window.pheralToast = function (msg, opts) { Alpine.store('toast').push(msg, opts); };
+  });
 
-    init() {
-      this.icons();
-      this.$nextTick(() => this.icons());
-      this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-      if (matchMedia('(display-mode: standalone)').matches || navigator.standalone === true) return;
-      window.addEventListener('beforeinstallprompt', e => {
-        e.preventDefault(); this._deferredPrompt = e;
-        if (this.canPrompt()) this.showInstallBanner = true;
-      });
-      if (this.isIOS && this.canPrompt()) setTimeout(() => { this.showInstallBanner = true; }, 2500);
-    },
-    icons() { if (window.lucide) lucide.createIcons(); },
-    canPrompt() { const t = store.get(); return !t || (Date.now() - parseInt(t, 10)) / 864e5 >= 7; },
-    async triggerInstall() {
-      if (this.isIOS) { this.showIOSInstructions = !this.showIOSInstructions; return; }
-      if (!this._deferredPrompt) return;
-      this._deferredPrompt.prompt();
-      await this._deferredPrompt.userChoice;
-      this._deferredPrompt = null; this.showInstallBanner = false; store.set();
-    },
-    dismissInstallBanner() { this.showInstallBanner = false; this.showIOSInstructions = false; store.set(); },
-  };
-}
-document.addEventListener('alpine:navigated', () => { if (window.lucide) lucide.createIcons(); });
+  var INSTALL_KEY = 'pheral_install_dismissed_at';
+  function pheralShell() {
+    return {
+      commandOpen: false, cmdQ: '', cmdI: 0,
+      scrolled: false, online: navigator.onLine,
+      showInstall: false, showIOSSteps: false, isIOS: false, _deferred: null,
+      searchUrl: "{% url 'search' as u_search %}{{ u_search }}",
+      commands: [
+        {% url 'chat_list' as u %}{% if u %}{ l: 'Chats', k: 'messages conversations inbox', i: 'message-circle', u: '{{ u }}' },{% endif %}
+        {% url 'contacts' as u %}{% if u %}{ l: 'New chat', k: 'contacts people message', i: 'square-pen', u: '{{ u }}' },{% endif %}
+        {% url 'group_create' as u %}{% if u %}{ l: 'New group', k: 'create group', i: 'users', u: '{{ u }}' },{% endif %}
+        {% url 'hire' as u %}{% if u %}{ l: 'Hire', k: 'jobs work marketplace', i: 'briefcase', u: '{{ u }}' },{% endif %}
+        {% url 'create_hire_job' as u %}{% if u %}{ l: 'Post a job', k: 'hire create job', i: 'file-plus', u: '{{ u }}' },{% endif %}
+        {% url 'feed' as u %}{% if u %}{ l: 'Feed', k: 'posts timeline', i: 'newspaper', u: '{{ u }}' },{% endif %}
+        {% url 'create_post' as u %}{% if u %}{ l: 'New post', k: 'write share', i: 'square-pen', u: '{{ u }}' },{% endif %}
+        {% url 'wallet' as u %}{% if u %}{ l: 'Wallet', k: 'balance money transactions', i: 'wallet', u: '{{ u }}' },{% endif %}
+        {% url 'top_up' as u %}{% if u %}{ l: 'Top up', k: 'add money fund deposit', i: 'arrow-down-to-line', u: '{{ u }}' },{% endif %}
+        {% url 'transfer' as u %}{% if not u %}{% url 'global_pay' as u %}{% endif %}{% if u %}{ l: 'Send money', k: 'pay transfer withdraw bank', i: 'send', u: '{{ u }}' },{% endif %}
+        {% url 'currency_converter' as u %}{% if u %}{ l: 'Convert currency', k: 'exchange fx rate', i: 'repeat', u: '{{ u }}' },{% endif %}
+        {% url 'airtime_purchase' as u %}{% if u %}{ l: 'Buy airtime', k: 'recharge phone credit', i: 'smartphone', u: '{{ u }}' },{% endif %}
+        {% url 'data_purchase' as u %}{% if u %}{ l: 'Buy data', k: 'bundle internet mb gb', i: 'wifi', u: '{{ u }}' },{% endif %}
+        {% url 'cards_and_accounts' as u %}{% if u %}{ l: 'Cards and accounts', k: 'virtual card account number dollar', i: 'credit-card', u: '{{ u }}' },{% endif %}
+        {% url 'agent' as u %}{% if u %}{ l: 'Agent', k: 'assistant command ai', i: 'bot', u: '{{ u }}' },{% endif %}
+        {% url 'notifications' as u %}{% if u %}{ l: 'Notifications', k: 'alerts activity', i: 'bell', u: '{{ u }}' },{% endif %}
+        {% url 'profile' as u %}{% if u %}{ l: 'My profile', k: 'account me', i: 'user', u: '{{ u }}' },{% endif %}
+        {% url 'profile_edit' as u %}{% if u %}{ l: 'Edit profile', k: 'settings photo name bio', i: 'settings', u: '{{ u }}' },{% endif %}
+        {% url 'logout' as u %}{% if u %}{ l: 'Log out', k: 'sign out', i: 'log-out', u: '{{ u }}' },{% endif %}
+      ],
+
+      init: function () {
+        var self = this;
+        this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+        var ticking = false;
+        function onScroll() {
+          if (ticking) return;
+          ticking = true;
+          requestAnimationFrame(function () {
+            self.scrolled = window.scrollY > (matchMedia('(max-width: 1023px)').matches ? 28 : 2);
+            ticking = false;
+          });
+        }
+        window.addEventListener('scroll', onScroll, { passive: true });
+        onScroll();
+
+        window.addEventListener('online', function () { self.online = true; });
+        window.addEventListener('offline', function () { self.online = false; });
+        this.$watch('commandOpen', function (v) { document.documentElement.classList.toggle('overflow-hidden', v); });
+
+        {% if request.user.is_authenticated %}
+        if (!(matchMedia('(display-mode: standalone)').matches || navigator.standalone === true)) {
+          window.addEventListener('beforeinstallprompt', function (e) {
+            e.preventDefault(); self._deferred = e;
+            if (self.canPrompt()) self.showInstall = true;
+          });
+          if (this.isIOS && this.canPrompt()) setTimeout(function () { self.showInstall = true; }, 4000);
+        }
+        {% endif %}
+      },
+
+      onKey: function (e) {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); this.commandOpen ? (this.commandOpen = false) : this.openCmd(); }
+        else if (e.key === 'Escape' && this.commandOpen) this.commandOpen = false;
+      },
+      openCmd: function () {
+        var self = this;
+        this.cmdQ = ''; this.cmdI = 0; this.commandOpen = true;
+        this.$nextTick(function () { if (self.$refs.cmdInput) self.$refs.cmdInput.focus(); });
+      },
+      get cmdResults() {
+        var q = this.cmdQ.trim().toLowerCase();
+        var list = this.commands.filter(function (c) { return !q || (c.l + ' ' + c.k).toLowerCase().indexOf(q) > -1; });
+        if (q.length > 1 && this.searchUrl) {
+          list = list.concat([{ l: 'Search people for “' + this.cmdQ.trim() + '”', k: '', i: 'search', u: this.searchUrl + '?q=' + encodeURIComponent(this.cmdQ.trim()) }]);
+        }
+        return list;
+      },
+      cmdMove: function (d) {
+        var n = this.cmdResults.length; if (!n) return;
+        var self = this;
+        this.cmdI = (this.cmdI + d + n) % n;
+        this.$nextTick(function () {
+          var li = self.$refs.cmdList.querySelectorAll('li[role=option]')[self.cmdI];
+          if (li) li.scrollIntoView({ block: 'nearest' });
+        });
+      },
+      cmdRun: function () { var r = this.cmdResults[this.cmdI]; if (r) window.location.href = r.u; },
+
+      canPrompt: function () {
+        try { var t = localStorage.getItem(INSTALL_KEY); return !t || (Date.now() - parseInt(t, 10)) / 864e5 >= 7; } catch (e) { return true; }
+      },
+      rememberDismiss: function () { try { localStorage.setItem(INSTALL_KEY, String(Date.now())); } catch (e) {} },
+      installApp: async function () {
+        if (this.isIOS) { this.showIOSSteps = !this.showIOSSteps; return; }
+        if (!this._deferred) return;
+        this._deferred.prompt();
+        await this._deferred.userChoice;
+        this._deferred = null; this.showInstall = false; this.rememberDismiss();
+      },
+      dismissInstall: function () { this.showInstall = false; this.showIOSSteps = false; this.rememberDismiss(); }
+    };
+  }
+
+  {% url 'service_worker' as sw_url %}{% if sw_url %}
+  if ('serviceWorker' in navigator) {
+    var hadController = !!navigator.serviceWorker.controller;
+    window.addEventListener('load', function () { navigator.serviceWorker.register("{{ sw_url }}", { scope: '/' }).catch(function () {}); });
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (hadController && window.pheralToast) window.pheralToast('Pheral was updated.', { action: 'Refresh', onAction: function () { location.reload(); }, duration: 12000 });
+    });
+  }
+  {% endif %}
 </script>
+
 {% block extra_scripts %}{% endblock %}
+{% endwith %}
 </body>
 </html>
