@@ -50,6 +50,7 @@ ALLOWED_HOSTS = [
     "pheral.onrender.com",
     ".ngrok-free.dev",
     "pheral-o94i.onrender.com",
+    "pheral-6tkk.onrender.com"
 ]
 
 CSRF_TRUSTED_ORIGINS = [

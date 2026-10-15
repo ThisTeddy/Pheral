@@ -2,25 +2,25 @@
 <!DOCTYPE html>
 <html lang="en" class="h-full bg-white">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
-    <title>{% block title %}Pheral{% endblock %}</title>
+<title>{% block title %}Pheral{% endblock %}</title>
 
-    <link rel="manifest" href="{% url 'pwa_manifest' %}">
+<link rel="manifest" href="{% url 'pwa_manifest' %}">
     <meta name="theme-color" content="#7C3AED">
     <link rel="apple-touch-icon" href="{% static 'images/pheral-logo.png' %}">
-    <meta name="mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Pheral">
-    <link rel="icon" type="image/png" href="{% static 'images/pheral-logo.png' %}">
+<meta name="apple-mobile-web-app-title" content="Pheral">
+<link rel="icon" type="image/png" href="{% static 'images/pheral-logo.png' %}">
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
+<script>
         tailwind.config = {
             theme: {
                 extend: {
@@ -35,7 +35,7 @@
                             400: '#9A6BF0', 500: '#7C3AED', 600: '#6D28D9', 700: '#5B21B6',
                         },
                     },
-                    boxShadow: {
+    boxShadow: {
                         nav: '0 -1px 0 0 rgba(28,23,48,0.06)',
                         rail: '1px 0 0 0 rgba(28,23,48,0.06)',
                         popover: '0 12px 32px -8px rgba(28,23,48,0.18), 0 2px 8px -2px rgba(28,23,48,0.08)',
@@ -44,28 +44,28 @@
                 },
             },
         };
-    </script>
+</script>
 
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
-    <style>
-        [x-cloak] { display: none !important; }
-        html, body { -webkit-tap-highlight-color: transparent; }
+<style>
+  [x-cloak] { display: none !important; }
+  html, body { -webkit-tap-highlight-color: transparent; }
         body { font-size: 14px; }
-        img { display: block; }
+  img { display: block; }
         ::-webkit-scrollbar { width: 5px; height: 5px; }
         ::-webkit-scrollbar-thumb { background: #EAE6F4; border-radius: 999px; }
-        .focus-ring { outline: none; }
+  .focus-ring { outline: none; }
         .focus-ring:focus-visible { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #9A6BF0; border-radius: 9999px; }
         @keyframes install-pulse {
             0%, 100% { box-shadow: 0 0 0 0 rgba(124,58,237,0.35); }
             50% { box-shadow: 0 0 0 8px rgba(124,58,237,0); }
         }
         .install-pulse { animation: install-pulse 2s ease-out infinite; }
-    </style>
+</style>
 
-    {% block extra_head %}{% endblock %}
+{% block extra_head %}{% endblock %}
 </head>
 
 <body class="min-h-full bg-white font-sans text-ink antialiased"
@@ -73,13 +73,6 @@
       @keydown.window="if ((event.metaKey || event.ctrlKey) && event.key === 'k') { event.preventDefault(); commandOpen = true; }"
       @keydown.window.escape="commandOpen = false; moreOpen = false"
       @beforeinstallprompt.window.prevent="captureInstallPrompt($event)">
-
-      <!-- ================================================================
-     SPLASH LOADER — shown immediately on every page load, hidden
-     once the page is actually interactive. Pure CSS animation, no
-     JS dependency, so it works even before Alpine/Lucide finish
-     loading (which is exactly when you need a loader most).
-================================================================= -->
 
 <!-- ================================================================
      INSTALL BANNER — real beforeinstallprompt on Chrome/Android/Edge;
@@ -91,7 +84,7 @@
      x-transition:leave="transition ease-in duration-200" x-transition:leave-start="translate-y-0 opacity-100" x-transition:leave-end="-translate-y-full opacity-0"
      class="fixed inset-x-0 top-0 z-[60] lg:hidden">
     <div class="mx-3 mt-3 flex items-center gap-3 rounded-2xl border border-accent-200 bg-white p-3 shadow-2xl install-pulse">
-        <img src="{% static 'images/favicon-48.png' %}" alt="" class="h-11 w-11 shrink-0 rounded-2xl object-cover">
+        <img src="{% static 'images/pheral-logo.png' %}" alt="" class="h-11 w-11 shrink-0 rounded-2xl object-cover">
         <div class="min-w-0 flex-1">
             <p class="text-[12.5px] font-bold text-ink">Install Pheral</p>
             <p class="truncate text-[10.5px] text-muted" x-text="isIOS ? 'Add to your Home Screen for the full app experience' : 'One tap — no app store needed'"></p>
@@ -117,7 +110,7 @@
 
 <div class="min-h-screen">
 
-    {% if request.user.is_authenticated %}
+{% if request.user.is_authenticated %}
 
     <!-- ============================================================
          DESKTOP / TABLET RAIL (lg and up) — icon-only at lg, labeled at xl.
@@ -129,13 +122,13 @@
         <a href="{% url 'chat_list' %}" class="focus-ring mb-6 flex items-center gap-2.5 px-3 xl:px-1" aria-label="Pheral home">
             <img src="{% static 'images/pheral-logo.png' %}" alt="" class="h-9 w-9 shrink-0 rounded-xl object-cover shadow-card">
             <span class="hidden text-[15px] font-bold tracking-tight text-ink xl:inline">Pheral</span>
-        </a>
+  </a>
 
         <button type="button" @click="commandOpen = true" class="focus-ring mb-5 flex items-center gap-2 rounded-xl bg-surface px-3 py-2 text-muted transition hover:bg-line/60 xl:mx-1">
             <i data-lucide="search" class="h-4 w-4 shrink-0"></i>
             <span class="hidden flex-1 text-left text-[12px] xl:inline">Search Pheral</span>
             <kbd class="hidden shrink-0 rounded-md border border-line bg-white px-1.5 py-0.5 text-[10px] font-medium text-muted xl:inline">⌘K</kbd>
-        </button>
+  </button>
 
         <nav class="flex flex-1 flex-col gap-0.5 overflow-y-auto">
 
@@ -154,7 +147,7 @@
                       {% if nav_name in 'group_list,group_create,group_chat,group_add_member,group_profile' %}bg-accent-50 text-accent-600{% else %}text-muted hover:bg-surface hover:text-ink{% endif %}">
                 <i data-lucide="users" class="h-[19px] w-[19px] shrink-0"></i>
                 <span class="hidden text-[13px] font-medium xl:inline">Groups</span>
-            </a>
+    </a>
 
             <a href="{% url 'status_list' %}"
                class="focus-ring flex items-center gap-3 rounded-xl px-3 py-2.5 transition
@@ -168,7 +161,7 @@
                       {% if nav_name in 'contacts,add_contact,search' %}bg-accent-50 text-accent-600{% else %}text-muted hover:bg-surface hover:text-ink{% endif %}">
                 <i data-lucide="address-book" class="h-[19px] w-[19px] shrink-0"></i>
                 <span class="hidden text-[13px] font-medium xl:inline">Contacts</span>
-            </a>
+    </a>
 
             <div class="my-1.5 border-t border-line xl:mx-1"></div>
 
@@ -184,36 +177,36 @@
                       {% if nav_name in 'feed,create_post' %}bg-accent-50 text-accent-600{% else %}text-muted hover:bg-surface hover:text-ink{% endif %}">
                 <i data-lucide="newspaper" class="h-[19px] w-[19px] shrink-0"></i>
                 <span class="hidden text-[13px] font-medium xl:inline">Feed</span>
-            </a>
+    </a>
 
             <a href="{% url 'wallet' %}"
                class="focus-ring flex items-center gap-3 rounded-xl px-3 py-2.5 transition
                       {% if nav_name in 'wallet,top_up,withdraw,transfer,cards_and_accounts,pay_user,global_pay,currency_converter,receipt_detail,bank_accounts,airtime_purchase,data_purchase' %}bg-accent-50 text-accent-600{% else %}text-muted hover:bg-surface hover:text-ink{% endif %}">
                 <i data-lucide="wallet" class="h-[19px] w-[19px] shrink-0"></i>
                 <span class="hidden text-[13px] font-medium xl:inline">Wallet</span>
-            </a>
+    </a>
 
             <a href="{% url 'agent' %}"
                class="focus-ring flex items-center gap-3 rounded-xl px-3 py-2.5 transition
                       {% if nav_name in 'agent,agent_command' %}bg-accent-50 text-accent-600{% else %}text-muted hover:bg-surface hover:text-ink{% endif %}">
                 <i data-lucide="bot" class="h-[19px] w-[19px] shrink-0"></i>
                 <span class="hidden text-[13px] font-medium xl:inline">Agent</span>
-            </a>
-        </nav>
+    </a>
+  </nav>
 
         <div class="relative" x-data="{ open: false }" @click.outside="open = false">
             <button type="button" @click="open = !open" class="focus-ring flex w-full items-center gap-2.5 rounded-xl px-3 py-2 transition hover:bg-surface" aria-label="Profile menu">
-                {% if request.user.avatar %}
+      {% if request.user.avatar %}
                     <img src="{{ request.user.avatar.url }}" alt="" class="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-line">
-                {% else %}
+      {% else %}
                     <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[12px] font-semibold text-accent-700">{{ request.user.username|first|upper }}</div>
-                {% endif %}
-                <span class="hidden min-w-0 flex-1 text-left xl:block">
+      {% endif %}
+      <span class="hidden min-w-0 flex-1 text-left xl:block">
                     <span class="block truncate text-[12.5px] font-semibold text-ink">{{ request.user.display_name|default:request.user.username }}</span>
                     <span class="block truncate text-[10.5px] text-muted">@{{ request.user.username }}</span>
-                </span>
+      </span>
                 <i data-lucide="chevron-up" class="hidden h-3.5 w-3.5 shrink-0 text-muted transition xl:block" :class="open ? 'rotate-180' : ''"></i>
-            </button>
+    </button>
 
             <div x-show="open" x-cloak x-transition class="absolute bottom-[calc(100%+6px)] left-0 z-50 w-52 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-popover xl:right-0 xl:w-auto">
                 <a href="{% url 'profile' %}" class="focus-ring flex items-center gap-2.5 px-3 py-2 text-[12.5px] text-ink hover:bg-surface"><i data-lucide="user" class="h-4 w-4"></i> View profile</a>
@@ -223,12 +216,12 @@
                     {% if unread_notifications %}
                         <span class="ml-auto flex h-4 min-w-[16px] items-center justify-center rounded-full bg-accent-500 px-1 text-[9px] font-bold text-white">{{ unread_notifications|default:0 }}</span>
                     {% endif %}
-                </a>
-                <div class="my-1 border-t border-line"></div>
+      </a>
+      <div class="my-1 border-t border-line"></div>
                 <a href="{% url 'logout' %}" class="focus-ring flex items-center gap-2.5 px-3 py-2 text-[12.5px] text-red-600 hover:bg-red-50"><i data-lucide="log-out" class="h-4 w-4"></i> Log out</a>
-            </div>
-        </div>
-    </aside>
+    </div>
+  </div>
+</aside>
 
     <!-- ============================================================
          TOP BAR
@@ -238,7 +231,7 @@
             <a href="{% url 'chat_list' %}" class="focus-ring flex items-center gap-2 lg:hidden">
                 <img src="{% static 'images/pheral-logo.png' %}" alt="Pheral" class="h-7 w-7 rounded-lg object-cover">
                 <span class="text-sm font-bold tracking-tight">Pheral</span>
-            </a>
+        </a>
 
             <h1 class="hidden text-[15px] font-semibold tracking-tight text-ink lg:block">{% block page_title %}{% endblock %}</h1>
 
@@ -250,17 +243,16 @@
                     <i data-lucide="address-book" class="h-[18px] w-[18px]"></i>
                 </a>
 
-                <button type="button" @click="moreOpen = true"
-                        class="focus-ring relative rounded-full p-2 transition hover:bg-surface hover:text-ink lg:hidden
-                               {% if nav_name in 'profile,profile_user,profile_edit,group_list,group_create,group_chat,group_add_member,group_profile,status_list,create_status,status_detail,contacts,add_contact,agent,agent_command,notifications,cards_and_accounts,bank_accounts,airtime_purchase,data_purchase,currency_converter' %}text-accent-600{% else %}text-muted{% endif %}"
-                        aria-label="More">
-                    <i data-lucide="layout-grid" class="h-[18px] w-[18px]"></i>
-                    {% if unread_notifications %}<span class="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-accent-500"></span>{% endif %}
-                </button>
+                <a href="{% url 'agent' %}"
+                   class="focus-ring rounded-full p-2 transition hover:bg-surface hover:text-ink lg:hidden
+                          {% if nav_name in 'agent,agent_command' %}text-accent-600{% else %}text-muted{% endif %}"
+                   aria-label="Agent mode">
+                    <i data-lucide="bot" class="h-[18px] w-[18px]"></i>
+        </a>
 
                 <button type="button" @click="commandOpen = true" class="focus-ring rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink" aria-label="Search">
                     <i data-lucide="search" class="h-[18px] w-[18px]"></i>
-                </button>
+        </button>
 
                 <a href="{% url 'notifications' %}" class="focus-ring relative rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink" aria-label="Notifications">
                     <i data-lucide="bell" class="h-[18px] w-[18px]"></i>
@@ -269,36 +261,36 @@
                             {% if unread_notifications > 9 %}9+{% else %}{{ unread_notifications }}{% endif %}
                         </span>
                     {% endif %}
-                </a>
-            </div>
-        </div>
-    </header>
+        </a>
+      </div>
+    </div>
+  </header>
 
-    {% endif %}
+  {% endif %}
 
     <!-- ============================================================
          FLASH MESSAGES
     ============================================================= -->
-    {% if messages %}
+  {% if messages %}
         <div class="mx-auto max-w-6xl space-y-1.5 px-4 pt-3 lg:px-7 {% if request.user.is_authenticated %}lg:pl-[calc(1.75rem+76px)] xl:pl-[calc(1.75rem+240px)]{% endif %}">
-            {% for message in messages %}
+    {% for message in messages %}
                 <div class="flex items-start gap-2 rounded-xl border px-3 py-2.5 text-xs
                             {% if message.tags == 'error' %}border-red-100 bg-red-50 text-red-700
                             {% elif message.tags == 'success' %}border-accent-100 bg-accent-50 text-accent-700
                             {% elif message.tags == 'warning' %}border-amber-100 bg-amber-50 text-amber-700
                             {% else %}border-line bg-surface text-ink{% endif %}">
                     {{ message }}
-                </div>
-            {% endfor %}
-        </div>
-    {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 
     <!-- ============================================================
          PAGE CONTENT
     ============================================================= -->
     <main class="min-h-[calc(100vh-54px)] {% if request.user.is_authenticated %}pb-20 lg:min-h-[calc(100vh-60px)] lg:pb-8 lg:pl-[76px] xl:pl-60{% endif %}">
-        {% block content %}{% endblock %}
-    </main>
+    {% block content %}{% endblock %}
+  </main>
 
 </div>
 
@@ -310,46 +302,56 @@
 ================================================================= -->
 <nav class="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 shadow-nav backdrop-blur lg:hidden"
      style="padding-bottom: env(safe-area-inset-bottom);">
-    <div class="grid h-[58px] grid-cols-5">
+    <div class="grid h-[58px] grid-cols-6">
         <a href="{% url 'chat_list' %}"
            class="focus-ring flex flex-col items-center justify-center gap-0.5
                   {% if nav_name in 'chat_list,chat,chat_user,start_chat,group_list,group_create,group_chat,group_add_member,group_profile,status_list,create_status,status_detail' %}text-accent-600{% else %}text-muted{% endif %}">
             <i data-lucide="message-circle" class="h-[19px] w-[19px]"></i>
             <span class="text-[9px] font-medium">Chat</span>
-        </a>
+    </a>
 
         <a href="{% url 'hire' %}"
            class="focus-ring flex flex-col items-center justify-center gap-0.5
                   {% if nav_name in 'hire,create_hire_job,hire_job_detail,send_hire_request' %}text-accent-600{% else %}text-muted{% endif %}">
             <i data-lucide="briefcase" class="h-[19px] w-[19px]"></i>
             <span class="text-[9px] font-medium">Hire</span>
-        </a>
+    </a>
 
         <a href="{% url 'feed' %}"
            class="focus-ring flex flex-col items-center justify-center gap-0.5
                   {% if nav_name in 'feed,create_post' %}text-accent-600{% else %}text-muted{% endif %}">
             <i data-lucide="newspaper" class="h-[19px] w-[19px]"></i>
             <span class="text-[9px] font-medium">Feed</span>
-        </a>
+    </a>
 
         <a href="{% url 'wallet' %}"
            class="focus-ring flex flex-col items-center justify-center gap-0.5
                   {% if nav_name in 'wallet,top_up,withdraw,transfer,cards_and_accounts,pay_user,global_pay,currency_converter,receipt_detail,bank_accounts,airtime_purchase,data_purchase' %}text-accent-600{% else %}text-muted{% endif %}">
             <i data-lucide="wallet" class="h-[19px] w-[19px]"></i>
             <span class="text-[9px] font-medium">Wallet</span>
-        </a>
+    </a>
 
         <a href="{% url 'profile' %}"
            class="focus-ring flex flex-col items-center justify-center gap-0.5
                   {% if nav_name in 'profile,profile_user,profile_edit' %}text-accent-600{% else %}text-muted{% endif %}">
-            {% if request.user.avatar %}
+      {% if request.user.avatar %}
                 <img src="{{ request.user.avatar.url }}" alt="" class="h-[19px] w-[19px] rounded-full object-cover">
-            {% else %}
+      {% else %}
                 <i data-lucide="circle-user" class="h-[19px] w-[19px]"></i>
-            {% endif %}
+      {% endif %}
             <span class="text-[9px] font-medium">Me</span>
-        </a>
-    </div>
+    </a>
+
+        <button type="button" @click="moreOpen = true"
+                class="focus-ring flex flex-col items-center justify-center gap-0.5
+                       {% if nav_name in 'group_list,group_create,group_chat,group_add_member,group_profile,status_list,create_status,status_detail,contacts,add_contact,search,agent,agent_command,notifications,cards_and_accounts,bank_accounts,airtime_purchase,data_purchase,currency_converter' %}text-accent-600{% else %}text-muted{% endif %}">
+            <span class="relative">
+                <i data-lucide="layout-grid" class="h-[19px] w-[19px]"></i>
+                {% if unread_notifications %}<span class="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-accent-500"></span>{% endif %}
+            </span>
+            <span class="text-[9px] font-medium">More</span>
+        </button>
+  </div>
 </nav>
 
 <!-- ================================================================
@@ -365,20 +367,12 @@
 
         <div class="mx-auto mb-3 h-1 w-10 rounded-full bg-line"></div>
 
-        <div class="flex items-center gap-3 px-5 pb-4">
-            {% if request.user.avatar %}
-                <img src="{{ request.user.avatar.url }}" alt="" class="h-11 w-11 rounded-full object-cover">
-            {% else %}
-                <div class="flex h-11 w-11 items-center justify-center rounded-full bg-accent-100 text-[14px] font-semibold text-accent-700">{{ request.user.username|first|upper }}</div>
-            {% endif %}
-            <a href="{% url 'profile' %}" @click="moreOpen = false" class="focus-ring min-w-0 flex-1">
-                <p class="truncate text-[13px] font-bold text-ink">{{ request.user.display_name|default:request.user.username }}</p>
-                <p class="truncate text-[11px] text-muted">View your profile</p>
-            </a>
-            <button type="button" @click="moreOpen = false" class="focus-ring shrink-0 rounded-full p-1.5 text-muted hover:bg-surface" aria-label="Close">
+        <div class="flex items-center justify-between px-5 pb-3">
+            <p class="text-[13px] font-bold text-ink">More</p>
+            <button type="button" @click="moreOpen = false" class="focus-ring rounded-full p-1.5 text-muted hover:bg-surface" aria-label="Close">
                 <i data-lucide="x" class="h-4 w-4"></i>
             </button>
-        </div>
+      </div>
 
         <div class="grid grid-cols-4 gap-x-2 gap-y-4 px-5">
             <a href="{% url 'group_list' %}" @click="moreOpen = false" class="focus-ring flex flex-col items-center gap-1.5 text-center">
@@ -430,8 +424,8 @@
                 <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600"><i data-lucide="log-out" class="h-5 w-5"></i></span>
                 <span class="text-[10px] font-medium text-ink">Log out</span>
             </a>
-        </div>
     </div>
+  </div>
 </div>
 
 <!-- ================================================================
@@ -449,7 +443,7 @@
             <kbd class="hidden shrink-0 rounded-md border border-line px-1.5 py-0.5 text-[10px] font-medium text-muted sm:inline">Esc</kbd>
         </form>
         <div class="px-4 py-3 text-[11px] text-muted">Press <kbd class="rounded border border-line px-1">Enter</kbd> to search people on Pheral</div>
-    </div>
+  </div>
 </div>
 
 {% endif %}
@@ -457,8 +451,8 @@
 {% endwith %}
 
 <script>
-    function pheralShell() {
-        return {
+  function pheralShell() {
+    return {
             commandOpen: false,
             moreOpen: false,
             showInstallBanner: false,
@@ -499,7 +493,7 @@
                 this._deferredPrompt = null;
                 this.showInstallBanner = false;
                 if (outcome === 'accepted') localStorage.setItem('pheral_install_dismissed_at', Date.now().toString());
-            },
+      },
 
             dismissInstallBanner() {
                 this.showInstallBanner = false;

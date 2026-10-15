@@ -3,305 +3,468 @@
 {% block title %}Chats · Pheral{% endblock %}
 {% block page_title %}Chats{% endblock %}
 
-{% block extra_head %}<style>[x-cloak] { display: none !important; }</style>{% endblock %}
+{% block extra_head %}
+<style>
+  .row { position: relative; overflow: hidden; background: #fff; }
+  .row-main { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; padding: 0 0 0 16px; background: #fff; touch-action: pan-y; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; will-change: transform; }
+  .row.is-pinned .row-main { background: #FBF9FF; }
+  .row.is-selected .row-main { background: #F5F1FE; }
+  @media (hover: hover) { .row-main:hover { background: #FAF9FE; } .row.is-selected .row-main:hover { background: #EFE9FD; } }
+  .row-body { min-width: 0; flex: 1; border-bottom: 1px solid #EAE6F4; padding: 11px 16px 11px 0; }
+
+  /* State drives visibility with CSS, so rows need no per-row Alpine components */
+  .row .mute-ic, .row .pin-ic, .row .unread-badge, .row .select-dot, .row .on-pin, .row .on-mute, .row .on-archive, .row .row-more { display: none; }
+  .row.is-muted .mute-ic { display: inline-flex; }
+  .row.is-pinned:not(.has-unread) .pin-ic { display: inline-flex; }
+  .row.has-unread .unread-badge { display: inline-flex; }
+  .row.is-select-mode .select-dot { display: flex; }
+  .row.is-pinned .on-pin, .row.is-muted .on-mute, .row.is-archived .on-archive { display: inline; }
+  .row.is-pinned .off-pin, .row.is-muted .off-mute, .row.is-archived .off-archive { display: none; }
+  .row.has-unread .name { font-weight: 800; }
+  .row.has-unread .preview { color: #1C1730; font-weight: 500; }
+  .row.has-unread .ts { color: #6D28D9; font-weight: 700; }
+  .unread-badge { min-width: 20px; height: 20px; padding: 0 6px; align-items: center; justify-content: center; border-radius: 999px; background: #7C3AED; color: #fff; font-size: 12px; font-weight: 700; line-height: 1; }
+  .row.is-muted .unread-badge { background: #B7B1CC; }
+  .select-dot { width: 22px; height: 22px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 999px; border: 2px solid #CFC7E6; }
+  .select-dot > * { display: none; }
+  .row.is-selected .select-dot { background: #7C3AED; border-color: #7C3AED; }
+  .row.is-selected .select-dot > * { display: block; }
+  @media (hover: hover) and (min-width: 1024px) {
+    .row:hover .row-more { display: flex; }
+    .row:hover .ts { opacity: 0; }
+  }
+</style>
+{% endblock %}
 
 {% block content %}
+{% url 'toggle_chat_flag' conversation_id=0 flag='pin' as flag_tpl %}
+{% url 'bulk_chat_action' as bulk_url %}
+{% url 'contacts' as contacts_url %}
+{% url 'group_create' as group_create_url %}
+{% url 'create_status' as create_status_url %}
+
+<script>
+window.__chatRows = {
+{% for item in chat_items %}"{{ item.conversation_id }}":{i:{{ forloop.counter0 }},n:"{{ item.display_name|escapejs }}",pinned:{{ item.is_pinned|yesno:"true,false" }},muted:{{ item.is_muted|yesno:"true,false" }},archived:{{ item.is_archived|yesno:"true,false" }},unread:{{ item.unread_count }},group:{{ item.is_group|yesno:"true,false" }},h:"{{ item.display_name|lower|escapejs }} {{ item.last_message_preview|lower|escapejs }}"},
+{% endfor %}};
+</script>
+
+<svg width="0" height="0" class="absolute" aria-hidden="true" focusable="false">
+  <defs><linearGradient id="ring-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#B898F6"/><stop offset="1" stop-color="#6D28D9"/></linearGradient></defs>
+</svg>
+
 <div class="mx-auto w-full max-w-2xl lg:max-w-3xl"
-     x-data="chatListPage()" x-init="init()" @keydown.window="onGlobalKey($event)">
+     x-data="chatList()" x-init="init()" @keydown.window="onKey($event)" @click.capture="onClickCapture($event)"
+     data-flag-tpl="{{ flag_tpl }}" data-bulk-url="{{ bulk_url }}">
 
-    <div class="flex items-center justify-between px-4 pt-3 lg:px-7 lg:pt-6">
-        <h1 class="text-lg font-bold tracking-tight text-ink lg:hidden">Chats</h1>
-        <div class="flex items-center gap-0.5 lg:ml-auto">
-            <button type="button" @click="selectMode = !selectMode; selected = []"
-                    class="focus-ring rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink" aria-label="Select chats">
-                <i data-lucide="check-square" class="h-[18px] w-[18px]"></i>
-            </button>
-            <a href="{% url 'group_create' %}" class="focus-ring rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink" aria-label="New group">
-                <i data-lucide="users" class="h-[18px] w-[18px]"></i>
-            </a>
-            <a href="{% url 'contacts' %}" class="focus-ring rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink" aria-label="New chat">
-                <i data-lucide="square-pen" class="h-[18px] w-[18px]"></i>
-            </a>
-        </div>
+  <!-- Large title + actions -->
+  <div class="flex items-end justify-between px-4 pb-1 pt-2 lg:px-7 lg:pt-6">
+    <h1 class="text-[30px] font-extrabold leading-9 tracking-tight lg:hidden">Chats</h1>
+    <div class="ml-auto flex items-center gap-1">
+      <button type="button" x-show="selectMode" x-cloak @click="exitSelect()" class="px-3 py-2 text-[15px] font-semibold text-accent-600">Done</button>
+      <button type="button" x-show="!selectMode" @click="selectMode = true" class="flex h-10 w-10 items-center justify-center rounded-full text-accent-600 transition hover:bg-accent-50" aria-label="Select chats"><i data-lucide="check-circle-2" class="h-[22px] w-[22px]"></i></button>
+      {% if group_create_url %}<a href="{{ group_create_url }}" class="flex h-10 w-10 items-center justify-center rounded-full text-accent-600 transition hover:bg-accent-50" aria-label="New group"><i data-lucide="users" class="h-[22px] w-[22px]"></i></a>{% endif %}
+      {% if contacts_url %}<a href="{{ contacts_url }}" class="flex h-10 w-10 items-center justify-center rounded-full bg-accent-500 text-white shadow-card transition hover:bg-accent-600" aria-label="New chat"><i data-lucide="square-pen" class="h-5 w-5"></i></a>{% endif %}
     </div>
+  </div>
 
-    <!-- Status strip -->
-    <div class="flex gap-3 overflow-x-auto px-4 pb-3 pt-1 scrollbar-none lg:px-7">
-        <a href="{% if my_status %}{% url 'status_detail' status_id=my_status.latest.id %}{% else %}{% url 'create_status' %}{% endif %}"
-           class="focus-ring flex shrink-0 flex-col items-center gap-1">
-            <span class="relative block h-14 w-14">
-                <span class="block h-14 w-14 overflow-hidden rounded-full {% if my_status %}ring-2 ring-accent-500{% endif %}">
-                    {% if my_status.thumbnail_url %}
-                        <img src="{{ my_status.thumbnail_url }}" alt="" class="h-full w-full object-cover">
-                    {% elif my_status %}
-                        <div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-accent-600 to-accent-400 text-white">
-                            <i data-lucide="message-square-text" class="h-5 w-5"></i>
-                        </div>
-                    {% elif request.user.avatar %}
-                        <img src="{{ request.user.avatar.url }}" alt="" class="h-full w-full object-cover">
-                    {% else %}
-                        <div class="flex h-full w-full items-center justify-center bg-accent-100 text-lg font-semibold text-accent-700">{{ request.user.username|first|upper }}</div>
-                    {% endif %}
-                </span>
-                {% if not my_status %}
-                    <span class="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-accent-500 text-white ring-2 ring-white"><i data-lucide="plus" class="h-3 w-3"></i></span>
-                {% endif %}
-            </span>
-            <span class="max-w-[60px] truncate text-[10px] font-medium text-ink">My status</span>
+  <!-- Status -->
+  <section aria-label="Status updates" class="flex snap-x gap-3.5 overflow-x-auto px-4 pb-3 pt-2 scrollbar-none lg:px-7">
+    <div class="flex w-[68px] shrink-0 snap-start flex-col items-center gap-1.5">
+      <div class="relative h-[66px] w-[66px]">
+        <a href="{% if my_status %}{% url 'status_detail' status_id=my_status.latest.id %}{% else %}{{ create_status_url }}{% endif %}" class="block h-full w-full" aria-label="{% if my_status %}View your status{% else %}Add status{% endif %}">
+          <svg viewBox="0 0 66 66" class="absolute inset-0 h-full w-full -rotate-90" aria-hidden="true">
+            {% if my_status %}
+              {% widthratio 100 my_status.count 1 as per %}
+              <circle cx="33" cy="33" r="31" fill="none" pathLength="100" stroke-width="3" stroke="url(#ring-grad)" stroke-dasharray="{% if my_status.count > 1 %}{{ per|add:'-4' }} 4{% else %}100 0{% endif %}"/>
+            {% else %}
+              <circle cx="33" cy="33" r="31" fill="none" stroke-width="2" stroke="#D6D0E8" stroke-dasharray="4 4"/>
+            {% endif %}
+          </svg>
+          <span class="absolute inset-[6px] overflow-hidden rounded-full bg-accent-100">
+            {% if my_status.thumbnail_url %}<img src="{{ my_status.thumbnail_url }}" alt="" class="h-full w-full object-cover">
+            {% elif request.user.avatar %}<img src="{{ request.user.avatar.url }}" alt="" class="h-full w-full object-cover">
+            {% else %}<span class="flex h-full w-full items-center justify-center text-[20px] font-bold text-accent-700">{{ request.user.username|first|upper }}</span>{% endif %}
+          </span>
         </a>
-        {% for entry in story_others %}
-            <a href="{% url 'status_detail' status_id=entry.latest.id %}" class="focus-ring flex shrink-0 flex-col items-center gap-1">
-                <span class="relative block h-14 w-14">
-                    <span class="block h-14 w-14 overflow-hidden rounded-full ring-2 {% if entry.all_viewed %}ring-line{% else %}ring-accent-500{% endif %}">
-                        {% if entry.thumbnail_url %}
-                            <img src="{{ entry.thumbnail_url }}" alt="" class="h-full w-full object-cover">
-                        {% else %}
-                            <div class="flex h-full w-full items-center justify-center bg-gradient-to-br from-accent-600 to-accent-400 text-white">
-                                <i data-lucide="message-square-text" class="h-5 w-5"></i>
-                            </div>
-                        {% endif %}
-                    </span>
-                    <!-- Small avatar badge: with a photo preview filling the circle, this is
-                         what still tells you whose status it is. -->
-                    <span class="absolute -bottom-0.5 -right-0.5 block h-5 w-5 overflow-hidden rounded-full ring-2 ring-white">
-                        {% if entry.user.avatar %}
-                            <img src="{{ entry.user.avatar.url }}" alt="" class="h-full w-full object-cover">
-                        {% else %}
-                            <div class="flex h-full w-full items-center justify-center bg-accent-100 text-[8px] font-semibold text-accent-700">{{ entry.user.username|first|upper }}</div>
-                        {% endif %}
-                    </span>
-                </span>
-                <span class="max-w-[60px] truncate text-[10px] font-medium text-ink">{{ entry.user.first_name|default:entry.user.username }}</span>
-            </a>
-        {% endfor %}
+        {% if create_status_url %}<a href="{{ create_status_url }}" class="absolute -bottom-0.5 -right-0.5 flex h-[22px] w-[22px] items-center justify-center rounded-full bg-accent-500 text-white ring-2 ring-white" aria-label="Add status"><i data-lucide="plus" class="h-3.5 w-3.5"></i></a>{% endif %}
+      </div>
+      <span class="w-full truncate text-center text-[11.5px] font-medium text-ink">Your status</span>
     </div>
 
-    <div class="px-4 pb-3 lg:px-7">
+    {% for entry in story_others %}
+    <a href="{% url 'status_detail' status_id=entry.latest.id %}" class="flex w-[68px] shrink-0 snap-start flex-col items-center gap-1.5" aria-label="{{ entry.user.first_name|default:entry.user.username }}'s status, {{ entry.count }} update{{ entry.count|pluralize }}{% if not entry.all_viewed %}, new{% endif %}">
+      <span class="relative block h-[66px] w-[66px]">
+        <svg viewBox="0 0 66 66" class="absolute inset-0 h-full w-full -rotate-90" aria-hidden="true">
+          {% widthratio 100 entry.count 1 as per %}
+          <circle cx="33" cy="33" r="31" fill="none" pathLength="100" stroke-width="3" stroke="{% if entry.all_viewed %}#D6D0E8{% else %}url(#ring-grad){% endif %}" stroke-dasharray="{% if entry.count > 1 %}{{ per|add:'-4' }} 4{% else %}100 0{% endif %}"/>
+        </svg>
+        <span class="absolute inset-[6px] overflow-hidden rounded-full bg-accent-100">
+          {% if entry.thumbnail_url %}<img src="{{ entry.thumbnail_url }}" alt="" loading="lazy" class="h-full w-full object-cover">
+          {% elif entry.user.avatar %}<img src="{{ entry.user.avatar.url }}" alt="" loading="lazy" class="h-full w-full object-cover">
+          {% else %}<span class="flex h-full w-full items-center justify-center text-[20px] font-bold text-accent-700">{{ entry.user.username|first|upper }}</span>{% endif %}
+        </span>
+      </span>
+      <span class="w-full truncate text-center text-[11.5px] {% if entry.all_viewed %}font-medium text-muted{% else %}font-semibold text-ink{% endif %}">{{ entry.user.first_name|default:entry.user.username }}</span>
+    </a>
+    {% endfor %}
+  </section>
 
-        <!-- Search -->
-        <div class="relative mb-3">
-            <div class="flex h-9 items-center gap-2 rounded-xl bg-surface px-3 lg:h-10">
-                <i data-lucide="search" class="h-3.5 w-3.5 shrink-0 text-muted"></i>
-                <input type="text" x-model="q" x-ref="searchInput" @focus="searchFocused = true" @blur="setTimeout(() => searchFocused = false, 150)"
-                       @keydown.enter="commitSearch()" placeholder="Search chats  (press /)" autocomplete="off"
-                       class="w-full bg-transparent text-[12px] text-ink placeholder-muted focus:outline-none">
-                <button type="button" x-show="q" @click="q = ''" class="focus-ring shrink-0 text-muted"><i data-lucide="x" class="h-3.5 w-3.5"></i></button>
-            </div>
-
-            <!-- Recent searches -->
-            <div x-show="searchFocused && !q && recentSearches.length" x-cloak x-transition
-                 class="absolute left-0 right-0 top-full z-20 mt-1 rounded-xl border border-line bg-white py-1.5 shadow-popover">
-                <p class="px-3 pb-1 text-[9px] font-semibold uppercase tracking-wide text-muted">Recent</p>
-                <template x-for="term in recentSearches" :key="term">
-                    <button type="button" @mousedown="q = term; commitSearch()" class="focus-ring flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-ink hover:bg-surface">
-                        <i data-lucide="clock" class="h-3 w-3 text-muted"></i> <span x-text="term"></span>
-                    </button>
-                </template>
-            </div>
-        </div>
-
-        <!-- Tabs + sort -->
-        <div class="mb-2 flex items-center justify-between gap-2">
-            <div class="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                <button @click="tab = 'all'" :class="tab === 'all' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">All</button>
-                <button @click="tab = 'unread'" :class="tab === 'unread' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">Unread</button>
-                <button @click="tab = 'groups'" :class="tab === 'groups' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">Groups</button>
-                <button @click="tab = 'muted'" :class="tab === 'muted' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">Muted</button>
-                <button @click="tab = 'archived'" :class="tab === 'archived' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">Archived</button>
-            </div>
-
-            <div class="relative shrink-0" @click.outside="sortOpen = false">
-                <button type="button" @click="sortOpen = !sortOpen" class="focus-ring flex items-center gap-1 rounded-full bg-surface px-2.5 py-1 text-[10px] font-medium text-muted transition hover:text-ink">
-                    <i data-lucide="arrow-up-down" class="h-3 w-3"></i>
-                </button>
-                <div x-show="sortOpen" x-cloak x-transition class="absolute right-0 top-full z-20 mt-1 w-40 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-popover">
-                    <button type="button" @click="sortBy = 'recent'; sortOpen = false" class="focus-ring flex w-full items-center justify-between px-3 py-2 text-left text-[11px] text-ink hover:bg-surface">Most recent <i x-show="sortBy === 'recent'" data-lucide="check" class="h-3 w-3 text-accent-600"></i></button>
-                    <button type="button" @click="sortBy = 'unread'; sortOpen = false" class="focus-ring flex w-full items-center justify-between px-3 py-2 text-left text-[11px] text-ink hover:bg-surface">Most unread <i x-show="sortBy === 'unread'" data-lucide="check" class="h-3 w-3 text-accent-600"></i></button>
-                    <button type="button" @click="sortBy = 'name'; sortOpen = false" class="focus-ring flex w-full items-center justify-between px-3 py-2 text-left text-[11px] text-ink hover:bg-surface">Name (A–Z) <i x-show="sortBy === 'name'" data-lucide="check" class="h-3 w-3 text-accent-600"></i></button>
-                </div>
-            </div>
-        </div>
-
-        <!-- Bulk action bar -->
-        <div x-show="selectMode && selected.length" x-cloak x-transition class="mb-2 flex items-center justify-between rounded-xl bg-accent-50 px-3 py-2">
-            <span class="text-[11px] font-medium text-accent-700" x-text="selected.length + ' selected'"></span>
-            <div class="flex items-center gap-1">
-                <button type="button" @click="bulkAction('read')" class="focus-ring rounded-full p-1.5 text-accent-600 hover:bg-accent-100" aria-label="Mark read"><i data-lucide="check-check" class="h-3.5 w-3.5"></i></button>
-                <button type="button" @click="bulkAction('mute')" class="focus-ring rounded-full p-1.5 text-accent-600 hover:bg-accent-100" aria-label="Mute"><i data-lucide="bell-off" class="h-3.5 w-3.5"></i></button>
-                <button type="button" @click="bulkAction('archive')" class="focus-ring rounded-full p-1.5 text-accent-600 hover:bg-accent-100" aria-label="Archive"><i data-lucide="archive" class="h-3.5 w-3.5"></i></button>
-            </div>
-        </div>
-
-        {% if chat_items %}
-            <div class="divide-y divide-line lg:divide-y-0 lg:space-y-0.5">
-                {% for item in chat_items %}
-                    {% now "Y-m-d" as today_str %}
-                    <div
-                        x-data="{
-                            id: '{{ item.conversation_id }}',
-                            archived: {{ item.is_archived|yesno:'true,false' }},
-                            muted: {{ item.is_muted|yesno:'true,false' }},
-                            pinned: {{ item.is_pinned|yesno:'true,false' }},
-                            unread: {{ item.unread_count }},
-                            isGroup: {{ item.is_group|yesno:'true,false' }},
-                            name: '{{ item.display_name|escapejs|lower }}',
-                            timestamp: {{ item.latest_activity|date:'U' }},
-                            menuOpen: false,
-                        }"
-                        x-show="
-                            (tab === 'all' ? !archived : tab === 'unread' ? (unread > 0 && !archived) : tab === 'groups' ? (isGroup && !archived) : tab === 'muted' ? (muted && !archived) : archived)
-                            && (committedQ === '' || name.includes(committedQ.toLowerCase()))
-                        "
-                        x-effect="registerRow(id, { pinned, timestamp, unread, name })"
-                    >
-                        <div class="group relative flex items-center gap-1.5 -mx-1 rounded-xl px-1 py-2 transition hover:bg-surface lg:px-3 lg:py-2.5"
-                             :class="item.unread_count ? 'bg-accent-50/40' : ''"
-                             @contextmenu.prevent="menuOpen = true"
-                             @touchstart="touchTimer = setTimeout(() => menuOpen = true, 500)" @touchend="clearTimeout(touchTimer)">
-
-                            <input x-show="selectMode" x-cloak type="checkbox" :value="id" @change="toggleSelect(id, $event.target.checked)"
-                                   class="focus-ring ml-1 h-4 w-4 shrink-0 rounded border-line text-accent-500">
-
-                            <a href="{% if item.is_group %}{% url 'group_chat' conversation_id=item.conversation_id %}{% else %}{% url 'chat' conversation_id=item.conversation_id %}{% endif %}"
-                               @click="if (selectMode) { $event.preventDefault(); toggleSelect(id, true); }"
-                               class="focus-ring flex min-w-0 flex-1 items-center gap-2.5">
-
-                                <div class="relative shrink-0">
-                                    {% if item.avatar_url %}
-                                        <img src="{{ item.avatar_url }}" alt="" class="h-11 w-11 rounded-full object-cover" loading="lazy">
-                                    {% else %}
-                                        <div class="flex h-11 w-11 items-center justify-center rounded-full bg-accent-100 text-accent-700">
-                                            {% if item.is_group %}<i data-lucide="users" class="h-5 w-5"></i>{% else %}<span class="text-sm font-semibold">{{ item.display_name|first|upper }}</span>{% endif %}
-                                        </div>
-                                    {% endif %}
-                                    {% if not item.is_group and item.is_online %}<span class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white"></span>{% endif %}
-                                </div>
-
-                                <div class="min-w-0 flex-1">
-                                    <div class="flex items-center gap-1">
-                                        <i x-show="pinned" data-lucide="pin" class="h-3 w-3 shrink-0 text-accent-500"></i>
-                                        <p class="truncate text-[13px] font-semibold leading-5 text-ink">{{ item.display_name }}</p>
-                                    </div>
-                                    <div class="flex items-center justify-between gap-2">
-                                        <p class="truncate text-[11px] leading-4 text-muted">
-                                            <i x-show="muted" data-lucide="bell-off" class="mr-0.5 inline h-3 w-3 align-[-2px]"></i>
-                                            {% if item.last_message_prefix %}<span>{{ item.last_message_prefix }}</span>{% endif %}{{ item.last_message_preview|default:"No messages yet" }}
-                                        </p>
-                                        {% if item.unread_count %}<span class="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-accent-500 px-1 text-[9px] font-bold text-white">{{ item.unread_count }}</span>{% endif %}
-                                    </div>
-                                </div>
-
-                                <span class="shrink-0 text-[10px] {% if item.unread_count %}font-semibold text-accent-600{% else %}text-muted{% endif %}">
-                                    {% if item.latest_activity|date:"Y-m-d" == today_str %}{{ item.latest_activity|date:"H:i" }}{% else %}{{ item.latest_activity|date:"d M" }}{% endif %}
-                                </span>
-                            </a>
-
-                            <!-- Context menu -->
-                            <div x-show="menuOpen" x-cloak x-transition @click.outside="menuOpen = false"
-                                 class="absolute right-2 top-full z-20 mt-1 w-40 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-popover">
-                                <button type="button" @click="toggleFlag(id, 'pin', () => pinned = !pinned); menuOpen = false" class="focus-ring flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-ink hover:bg-surface">
-                                    <i data-lucide="pin" class="h-3.5 w-3.5"></i> <span x-text="pinned ? 'Unpin' : 'Pin'"></span>
-                                </button>
-                                <button type="button" @click="toggleFlag(id, 'mute', () => muted = !muted); menuOpen = false" class="focus-ring flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-ink hover:bg-surface">
-                                    <i data-lucide="bell-off" class="h-3.5 w-3.5"></i> <span x-text="muted ? 'Unmute' : 'Mute'"></span>
-                                </button>
-                                <button type="button" @click="toggleFlag(id, 'archive', () => archived = !archived); menuOpen = false" class="focus-ring flex w-full items-center gap-2 px-3 py-2 text-left text-[11px] text-ink hover:bg-surface">
-                                    <i data-lucide="archive" class="h-3.5 w-3.5"></i> <span x-text="archived ? 'Unarchive' : 'Archive'"></span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                {% endfor %}
-            </div>
-        {% else %}
-            <div class="flex flex-col items-center gap-2 py-16 text-center">
-                <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50"><i data-lucide="message-circle" class="h-6 w-6 text-accent-500"></i></div>
-                <p class="text-[13px] font-semibold text-ink">No chats yet</p>
-                <p class="max-w-xs text-[11px] leading-5 text-muted">Start a conversation with someone in your contacts.</p>
-                <a href="{% url 'contacts' %}" class="focus-ring mt-1 rounded-full bg-accent-500 px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-accent-600">Find people</a>
-            </div>
-        {% endif %}
+  {% if chat_items %}
+  <!-- Search -->
+  <div class="relative px-4 pt-1 lg:px-7">
+    <div class="flex items-center gap-3">
+      <label class="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-xl bg-surface px-3">
+        <i data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></i>
+        <input type="text" x-ref="search" x-model="q" @focus="focused = true" @blur="setTimeout(() => focused = false, 150)" @keydown.enter="commitSearch()"
+               inputmode="search" enterkeyhint="search" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Search chats"
+               placeholder="Search chats" class="w-full bg-transparent text-[14px] text-ink placeholder-muted focus:outline-none">
+        <button type="button" x-show="q" @click="q = ''" class="shrink-0 rounded-full text-muted" aria-label="Clear search"><i data-lucide="x-circle" class="h-4 w-4"></i></button>
+      </label>
+      <button type="button" x-show="focused || q" x-cloak @mousedown.prevent="q = ''; $refs.search.blur()" class="shrink-0 text-[14px] font-semibold text-accent-600 lg:hidden">Cancel</button>
     </div>
+    <div x-show="focused && !q && recent.length" x-cloak x-transition class="absolute left-4 right-4 top-full z-20 mt-1 overflow-hidden rounded-xl border border-line bg-white py-1.5 shadow-popover lg:left-7 lg:right-7">
+      <p class="px-3.5 pb-1 text-[10px] font-bold uppercase tracking-wide text-muted">Recent</p>
+      <template x-for="term in recent" :key="term">
+        <button type="button" @mousedown.prevent="q = term; commitSearch()" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13.5px] hover:bg-surface"><i data-lucide="clock" class="h-3.5 w-3.5 text-muted"></i><span x-text="term"></span></button>
+      </template>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="flex gap-2 overflow-x-auto px-4 pb-2 pt-3 scrollbar-none lg:px-7" role="tablist" aria-label="Filter chats">
+    <template x-for="t in [['all','All'],['unread','Unread'],['groups','Groups'],['muted','Muted'],['archived','Archived']]" :key="t[0]">
+      <button type="button" role="tab" :aria-selected="tab === t[0]" @click="tab = t[0]"
+              class="flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition"
+              :class="tab === t[0] ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'">
+        <span x-text="t[1]"></span>
+        <span x-show="t[0] === 'unread' && unreadCount" class="rounded-full px-1.5 text-[11px] leading-[18px]" :class="tab === 'unread' ? 'bg-white/25' : 'bg-accent-100 text-accent-700'" x-text="unreadCount"></span>
+        <span x-show="t[0] === 'archived' && archivedCount" class="text-[11px] opacity-70" x-text="archivedCount"></span>
+      </button>
+    </template>
+  </div>
+
+  <!-- List -->
+  <div x-ref="list" class="flex flex-col"
+       @touchstart.passive="onTouchStart($event)" @touchmove.passive="onTouchMove($event)" @touchend="onTouchEnd()" @touchcancel="onTouchEnd()"
+       @contextmenu="onContext($event)">
+    {% for item in chat_items %}
+    {% if item.is_group %}{% url 'group_chat' conversation_id=item.conversation_id as chat_url %}{% else %}{% url 'chat' conversation_id=item.conversation_id as chat_url %}{% endif %}
+    <div class="row" data-id="{{ item.conversation_id }}"
+         x-show="matches('{{ item.conversation_id }}')" :class="rowClass('{{ item.conversation_id }}')" :style="'order:' + orderOf('{{ item.conversation_id }}')">
+
+      <div class="absolute inset-y-0 left-0 flex w-[88px]" aria-hidden="true">
+        <button type="button" tabindex="-1" @click="act('{{ item.conversation_id }}', 'pin')" class="flex flex-1 flex-col items-center justify-center gap-1 bg-accent-500 text-[11px] font-semibold text-white">
+          <i data-lucide="pin" class="h-5 w-5"></i><span class="off-pin">Pin</span><span class="on-pin">Unpin</span>
+        </button>
+      </div>
+      <div class="absolute inset-y-0 right-0 flex w-[144px]" aria-hidden="true">
+        <button type="button" tabindex="-1" @click="act('{{ item.conversation_id }}', 'mute')" class="flex flex-1 flex-col items-center justify-center gap-1 bg-amber-500 text-[11px] font-semibold text-white">
+          <i data-lucide="bell-off" class="h-5 w-5"></i><span class="off-mute">Mute</span><span class="on-mute">Unmute</span>
+        </button>
+        <button type="button" tabindex="-1" @click="act('{{ item.conversation_id }}', 'archive')" class="flex flex-1 flex-col items-center justify-center gap-1 bg-muted text-[11px] font-semibold text-white">
+          <i data-lucide="archive" class="h-5 w-5"></i><span class="off-archive">Archive</span><span class="on-archive">Unarchive</span>
+        </button>
+      </div>
+
+      <a href="{{ chat_url }}" class="row-main" data-id="{{ item.conversation_id }}">
+        <span class="select-dot"><i data-lucide="check" class="h-3.5 w-3.5 text-white"></i></span>
+
+        <span class="relative block h-[52px] w-[52px] shrink-0">
+          {% if item.avatar_url %}
+            <img src="{{ item.avatar_url }}" alt="" width="52" height="52" loading="lazy" decoding="async" class="h-[52px] w-[52px] rounded-full object-cover">
+          {% else %}
+            <span class="flex h-[52px] w-[52px] items-center justify-center rounded-full bg-accent-100 text-[19px] font-bold text-accent-700">{% if item.is_group %}<i data-lucide="users" class="h-6 w-6"></i>{% else %}{{ item.display_name|first|upper }}{% endif %}</span>
+          {% endif %}
+          {% if not item.is_group and item.is_online %}<span class="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500"></span>{% endif %}
+        </span>
+
+        <span class="row-body block">
+          <span class="flex items-center gap-1.5">
+            <span class="name min-w-0 truncate text-[16px] font-semibold leading-5 text-ink">{{ item.display_name }}</span>
+            <i data-lucide="bell-off" class="mute-ic h-3.5 w-3.5 shrink-0 text-muted"></i>
+            <time class="ts ml-auto shrink-0 text-[12.5px] text-muted" data-ts="{{ item.latest_activity|date:'c' }}" datetime="{{ item.latest_activity|date:'c' }}">{{ item.latest_activity|date:"j M" }}</time>
+          </span>
+          <span class="mt-0.5 flex items-center gap-2">
+            <span class="preview min-w-0 flex-1 truncate text-[14px] leading-[19px] text-muted">
+              {% if item.last_message %}
+                {% with t=item.last_message.message_type %}
+                  {% if t == "image" %}<i data-lucide="image" class="mr-1 inline h-[14px] w-[14px] -translate-y-px"></i>{% elif t == "video" %}<i data-lucide="video" class="mr-1 inline h-[14px] w-[14px] -translate-y-px"></i>{% elif t == "voice" %}<i data-lucide="mic" class="mr-1 inline h-[14px] w-[14px] -translate-y-px"></i>{% elif t == "file" %}<i data-lucide="file-text" class="mr-1 inline h-[14px] w-[14px] -translate-y-px"></i>{% elif t == "payment" %}<i data-lucide="banknote" class="mr-1 inline h-[14px] w-[14px] -translate-y-px"></i>{% elif t == "hire" %}<i data-lucide="briefcase" class="mr-1 inline h-[14px] w-[14px] -translate-y-px"></i>{% elif t == "agent" %}<i data-lucide="bot" class="mr-1 inline h-[14px] w-[14px] -translate-y-px"></i>{% endif %}
+                {% endwith %}
+                {{ item.last_message_prefix }}{{ item.last_message_preview }}
+              {% else %}<span class="italic">No messages yet</span>{% endif %}
+            </span>
+            <span class="unread-badge">{{ item.unread_count }}</span>
+            <i data-lucide="pin" class="pin-ic h-[15px] w-[15px] shrink-0 text-muted"></i>
+          </span>
+        </span>
+      </a>
+
+      <button type="button" class="row-more absolute right-3 top-3 z-[2] h-8 w-8 items-center justify-center rounded-full bg-white/90 text-muted shadow-card hover:text-ink" @click.stop="openMenuFrom($event, '{{ item.conversation_id }}')" aria-label="Chat options for {{ item.display_name }}">
+        <i data-lucide="chevron-down" class="h-4 w-4"></i>
+      </button>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div x-show="visibleCount === 0" x-cloak class="px-8 py-16 text-center">
+    <span class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-accent-50 text-accent-500"><i data-lucide="message-circle" class="h-6 w-6"></i></span>
+    <p class="mt-3 text-[16px] font-bold" x-text="emptyTitle"></p>
+    <p class="mx-auto mt-1 max-w-xs text-[13.5px] leading-5 text-muted" x-text="emptyBody"></p>
+  </div>
+
+  {% else %}
+  <div class="px-8 py-16 text-center">
+    <span class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-accent-50 text-accent-500"><i data-lucide="message-circle" class="h-7 w-7"></i></span>
+    <p class="mt-4 text-[18px] font-bold">No chats yet</p>
+    <p class="mx-auto mt-1 max-w-xs text-[14px] leading-5 text-muted">Start a conversation with someone in your contacts.</p>
+    {% if contacts_url %}<a href="{{ contacts_url }}" class="mt-5 inline-flex rounded-full bg-accent-500 px-6 py-3 text-[14px] font-semibold text-white shadow-card hover:bg-accent-600">Find people</a>{% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Bulk bar -->
+  <div x-show="selectMode" x-cloak x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-y-3 opacity-0" x-transition:enter-end="translate-y-0 opacity-100"
+       class="fixed inset-x-3 z-[45] lg:inset-x-auto lg:bottom-6 lg:left-1/2 lg:w-[min(30rem,calc(100vw-8rem))] lg:-translate-x-1/2" style="bottom: calc(var(--tabbar-total) + 8px);">
+    <div class="flex items-center justify-between rounded-2xl bg-ink px-2 py-2 text-white shadow-popover">
+      <span class="px-3 text-[13.5px] font-semibold" x-text="selected.length ? selected.length + ' selected' : 'Select chats'"></span>
+      <div class="flex items-center gap-1" :class="selected.length ? '' : 'pointer-events-none opacity-40'">
+        <button type="button" @click="bulk('read')" class="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-semibold hover:bg-white/10"><i data-lucide="check-check" class="h-4 w-4"></i> Read</button>
+        <button type="button" @click="bulk('mute')" class="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-semibold hover:bg-white/10"><i data-lucide="bell-off" class="h-4 w-4"></i> Mute</button>
+        <button type="button" @click="bulk(tab === 'archived' ? 'unarchive' : 'archive')" class="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-semibold hover:bg-white/10"><i data-lucide="archive" class="h-4 w-4"></i> <span x-text="tab === 'archived' ? 'Unarchive' : 'Archive'"></span></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Actions: bottom sheet on phones, popover on desktop -->
+  <div x-show="menu.open" x-cloak class="fixed inset-0 z-[60]">
+    <div x-show="menu.open" x-transition.opacity class="absolute inset-0 bg-ink/40 lg:bg-transparent" @click="menu.open = false" @contextmenu.prevent="menu.open = false"></div>
+    <div x-show="menu.open"
+         x-transition:enter="transition duration-200 ease-out" x-transition:enter-start="translate-y-full lg:translate-y-0 lg:scale-95 lg:opacity-0" x-transition:enter-end="translate-y-0 lg:scale-100 lg:opacity-100"
+         x-transition:leave="transition duration-150 ease-in" x-transition:leave-start="translate-y-0 opacity-100" x-transition:leave-end="translate-y-full opacity-0 lg:translate-y-0"
+         class="absolute inset-x-0 bottom-0 overflow-hidden rounded-t-3xl bg-white shadow-sheet lg:inset-x-auto lg:bottom-auto lg:w-56 lg:rounded-2xl lg:shadow-popover"
+         :style="isDesktop ? 'left:' + menu.x + 'px;top:' + menu.y + 'px' : ''" style="padding-bottom: env(safe-area-inset-bottom, 0px);" role="menu">
+      <div class="mx-auto mt-2 h-1 w-9 rounded-full bg-line lg:hidden"></div>
+      <p class="truncate px-5 pb-1 pt-3 text-[13px] font-semibold text-muted lg:hidden" x-text="rows[menu.id] ? rows[menu.id].n : ''"></p>
+      <button type="button" role="menuitem" @click="act(menu.id, 'pin')" class="flex w-full items-center gap-3.5 px-5 py-3.5 text-left text-[15px] font-medium hover:bg-surface lg:px-3.5 lg:py-2.5 lg:text-[13px]"><i data-lucide="pin" class="h-[18px] w-[18px] text-muted"></i><span x-text="rows[menu.id] && rows[menu.id].pinned ? 'Unpin' : 'Pin to top'"></span></button>
+      <button type="button" role="menuitem" x-show="rows[menu.id] && rows[menu.id].unread > 0" @click="markRead(menu.id)" class="flex w-full items-center gap-3.5 px-5 py-3.5 text-left text-[15px] font-medium hover:bg-surface lg:px-3.5 lg:py-2.5 lg:text-[13px]"><i data-lucide="check-check" class="h-[18px] w-[18px] text-muted"></i> Mark as read</button>
+      <button type="button" role="menuitem" @click="act(menu.id, 'mute')" class="flex w-full items-center gap-3.5 px-5 py-3.5 text-left text-[15px] font-medium hover:bg-surface lg:px-3.5 lg:py-2.5 lg:text-[13px]"><i data-lucide="bell-off" class="h-[18px] w-[18px] text-muted"></i><span x-text="rows[menu.id] && rows[menu.id].muted ? 'Unmute' : 'Mute'"></span></button>
+      <button type="button" role="menuitem" @click="act(menu.id, 'archive')" class="flex w-full items-center gap-3.5 px-5 py-3.5 text-left text-[15px] font-medium hover:bg-surface lg:px-3.5 lg:py-2.5 lg:text-[13px]"><i data-lucide="archive" class="h-[18px] w-[18px] text-muted"></i><span x-text="rows[menu.id] && rows[menu.id].archived ? 'Unarchive' : 'Archive'"></span></button>
+      <button type="button" @click="menu.open = false" class="w-full border-t border-line px-5 py-3.5 text-center text-[15px] font-semibold text-accent-600 hover:bg-surface lg:hidden">Cancel</button>
+    </div>
+  </div>
 </div>
-
-<a href="{% url 'contacts' %}" class="focus-ring fixed bottom-20 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-white shadow-lg transition hover:bg-accent-600 lg:hidden" aria-label="New chat">
-    <i data-lucide="message-square-plus" class="h-5 w-5"></i>
-</a>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
-    function chatListPage() {
-        return {
-            tab: 'all', q: '', committedQ: '', searchFocused: false,
-            sortBy: 'recent', sortOpen: false,
-            selectMode: false, selected: [],
-            recentSearches: [],
-            _rows: {},
+function chatList() {
+  var ACTION_W = 144;
+  return {
+    rows: window.__chatRows || {},
+    tab: 'all', q: '', focused: false, recent: [],
+    selectMode: false, selected: [],
+    menu: { open: false, id: null, x: 0, y: 0 },
+    isDesktop: false, flagTpl: '', bulkUrl: '',
+    _sw: null, _open: null, _block: 0,
 
-            init() {
-                try { this.recentSearches = JSON.parse(localStorage.getItem('pheral_recent_searches') || '[]'); } catch (e) { this.recentSearches = []; }
-            },
+    init: function () {
+      var self = this;
+      this.flagTpl = this.$el.dataset.flagTpl || '';
+      this.bulkUrl = this.$el.dataset.bulkUrl || '';
+      try { this.recent = JSON.parse(localStorage.getItem('pheral_recent_searches') || '[]'); } catch (e) {}
+      var mq = matchMedia('(min-width: 1024px)');
+      this.isDesktop = mq.matches;
+      mq.addEventListener('change', function (e) { self.isDesktop = e.matches; });
+      this.formatTimes();
+      setInterval(function () { self.formatTimes(); }, 60000);
+    },
 
-            registerRow(id, data) { this._rows[id] = data; },
+    /* ---------- filtering / ordering ---------- */
+    matches: function (id) {
+      var r = this.rows[id]; if (!r) return false;
+      switch (this.tab) {
+        case 'archived': if (!r.archived) return false; break;
+        case 'unread': if (r.archived || !(r.unread > 0)) return false; break;
+        case 'groups': if (r.archived || !r.group) return false; break;
+        case 'muted': if (r.archived || !r.muted) return false; break;
+        default: if (r.archived) return false;
+      }
+      var q = this.q.trim().toLowerCase();
+      return !q || r.h.indexOf(q) > -1;
+    },
+    rowClass: function (id) {
+      var r = this.rows[id] || {};
+      return { 'is-pinned': r.pinned, 'is-muted': r.muted, 'is-archived': r.archived, 'has-unread': r.unread > 0, 'is-select-mode': this.selectMode, 'is-selected': this.selected.indexOf(id) > -1 };
+    },
+    orderOf: function (id) { var r = this.rows[id]; return r ? (r.pinned ? 0 : 100000) + r.i : 0; },
+    get unreadCount() { var n = 0; for (var k in this.rows) { var r = this.rows[k]; if (!r.archived && r.unread > 0) n++; } return n; },
+    get archivedCount() { var n = 0; for (var k in this.rows) if (this.rows[k].archived) n++; return n; },
+    get visibleCount() { var n = 0; for (var k in this.rows) if (this.matches(k)) n++; return n; },
+    get emptyTitle() {
+      if (this.q.trim()) return 'No results for “' + this.q.trim() + '”';
+      return { unread: 'No unread chats', groups: 'No group chats', muted: 'No muted chats', archived: 'Nothing archived' }[this.tab] || 'No chats';
+    },
+    get emptyBody() {
+      if (this.q.trim()) return 'Check the spelling or try a different name.';
+      return { unread: "You're all caught up.", groups: 'Groups you join will show up here.', muted: 'Mute a chat to quiet its notifications.', archived: 'Archived chats stay here until you bring them back.' }[this.tab] || '';
+    },
 
-            onGlobalKey(event) {
-                if (event.key === '/' && document.activeElement.tagName !== 'INPUT') {
-                    event.preventDefault();
-                    this.$refs.searchInput.focus();
-                }
-            },
+    /* ---------- search ---------- */
+    commitSearch: function () {
+      var t = this.q.trim(); if (!t) return;
+      this.recent = [t].concat(this.recent.filter(function (x) { return x !== t; })).slice(0, 5);
+      try { localStorage.setItem('pheral_recent_searches', JSON.stringify(this.recent)); } catch (e) {}
+      this.$refs.search.blur();
+    },
+    onKey: function (e) {
+      if (e.key === 'Escape') {
+        if (this.menu.open) this.menu.open = false;
+        else if (this.selectMode) this.exitSelect();
+        else if (this.focused) this.$refs.search.blur();
+        return;
+      }
+      var el = document.activeElement, tag = el ? el.tagName : '';
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT' && !(el && el.isContentEditable) && this.$refs.search) {
+        e.preventDefault(); this.$refs.search.focus();
+      }
+    },
 
-            commitSearch() {
-                this.committedQ = this.q;
-                if (this.q.trim() && !this.recentSearches.includes(this.q.trim())) {
-                    this.recentSearches.unshift(this.q.trim());
-                    this.recentSearches = this.recentSearches.slice(0, 5);
-                    localStorage.setItem('pheral_recent_searches', JSON.stringify(this.recentSearches));
-                }
-                this.$refs.searchInput.blur();
-            },
+    /* ---------- server calls ---------- */
+    csrf: function () { var m = document.querySelector('meta[name=csrf-token]'); return m ? m.content : ''; },
+    toast: function (msg, opts) { if (window.pheralToast) window.pheralToast(msg, opts); },
+    flagUrl: function (id, flag) { return this.flagTpl ? this.flagTpl.replace('/0/', '/' + id + '/').replace('/pin/', '/' + flag + '/') : ''; },
 
-            toggleSelect(id, checked) {
-                if (checked) { if (!this.selected.includes(id)) this.selected.push(id); }
-                else { this.selected = this.selected.filter(x => x !== id); }
-            },
+    act: async function (id, flag) {
+      var r = this.rows[id]; if (!r) return;
+      var key = { pin: 'pinned', mute: 'muted', archive: 'archived' }[flag];
+      var prev = r[key], url = this.flagUrl(id, flag);
+      this.menu.open = false; this.closeSwipe();
+      if (!url) { this.toast('That action is not available right now.'); return; }
+      r[key] = !prev;                                   // optimistic
+      try {
+        var res = await fetch(url, { method: 'POST', headers: { 'X-CSRFToken': this.csrf(), 'X-Requested-With': 'XMLHttpRequest' } });
+        var data = await res.json();
+        if (!res.ok || !data.success) throw new Error('failed');
+        r[key] = data.value;
+        if (flag === 'archive' && data.value) this.toast('Chat archived', { action: 'Undo', onAction: function () { this.act(id, 'archive'); }.bind(this) });
+      } catch (e) {
+        r[key] = prev;
+        this.toast("Couldn't update that chat. Try again.");
+      }
+    },
+    bulkRaw: async function (ids, action) {
+      var body = new URLSearchParams(); body.append('action', action);
+      ids.forEach(function (i) { body.append('conversation_ids[]', i); });
+      var res = await fetch(this.bulkUrl, { method: 'POST', headers: { 'X-CSRFToken': this.csrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' }, body: body.toString() });
+      if (!res.ok) throw new Error('failed');
+      var self = this;
+      ids.forEach(function (id) {
+        var r = self.rows[id]; if (!r) return;
+        if (action === 'read') r.unread = 0;
+        if (action === 'archive') r.archived = true;
+        if (action === 'unarchive') r.archived = false;
+        if (action === 'mute') r.muted = true;
+        if (action === 'unmute') r.muted = false;
+      });
+    },
+    bulk: async function (action) {
+      if (!this.selected.length || !this.bulkUrl) return;
+      var ids = this.selected.slice(), self = this;
+      try {
+        await this.bulkRaw(ids, action);
+        this.exitSelect();
+        if (action === 'archive') this.toast(ids.length + (ids.length > 1 ? ' chats archived' : ' chat archived'), { action: 'Undo', onAction: function () { self.bulkRaw(ids, 'unarchive'); } });
+      } catch (e) { this.toast("Couldn't update those chats."); }
+    },
+    markRead: async function (id) {
+      this.menu.open = false;
+      try { await this.bulkRaw([id], 'read'); } catch (e) { this.toast("Couldn't mark that chat as read."); }
+    },
 
-            getCookie(name) {
-                const match = document.cookie.match("(^|;)\\s*" + name + "\\s*=\\s*([^;]+)");
-                return match ? match.pop() : "";
-            },
+    /* ---------- selection ---------- */
+    toggleSelect: function (id) { var i = this.selected.indexOf(id); if (i > -1) this.selected.splice(i, 1); else this.selected.push(id); },
+    exitSelect: function () { this.selectMode = false; this.selected = []; },
 
-            async toggleFlag(conversationId, flag, applyLocally) {
-                applyLocally();
-                try {
-                    await fetch('/chat/' + conversationId + '/toggle/' + flag + '/', {
-                        method: 'POST',
-                        headers: { 'X-CSRFToken': this.getCookie('csrftoken') },
-                    });
-                } catch (e) {
-                    applyLocally(); // revert on failure
-                }
-            },
+    /* ---------- menu ---------- */
+    openMenu: function (id, x, y) {
+      this.menu = { open: true, id: id, x: Math.max(8, Math.min(x, window.innerWidth - 232)), y: Math.max(8, Math.min(y, window.innerHeight - 210)) };
+    },
+    openMenuFrom: function (e, id) { var r = e.currentTarget.getBoundingClientRect(); this.openMenu(id, r.right - 224, r.bottom + 4); },
+    onContext: function (e) {
+      var row = e.target.closest('.row'); if (!row) return;
+      e.preventDefault(); this.openMenu(row.dataset.id, e.clientX, e.clientY);
+    },
 
-            async bulkAction(action) {
-                if (!this.selected.length) return;
-                const body = new URLSearchParams();
-                body.append('action', action);
-                this.selected.forEach(id => body.append('conversation_ids[]', id));
-                try {
-                    await fetch('{% url 'bulk_chat_action' %}', {
-                        method: 'POST',
-                        headers: { 'X-CSRFToken': this.getCookie('csrftoken'), 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: body.toString(),
-                    });
-                    window.location.reload();
-                } catch (e) {}
-            },
-        };
+    /* ---------- click guard: swipe aftermath, open swipe row, select mode ---------- */
+    onClickCapture: function (e) {
+      if (Date.now() < this._block) { e.preventDefault(); e.stopPropagation(); return; }
+      if (this._open && !e.target.closest('.row button')) { e.preventDefault(); e.stopPropagation(); this.closeSwipe(); return; }
+      var main = e.target.closest('.row-main');
+      if (this.selectMode && main) { e.preventDefault(); e.stopPropagation(); this.toggleSelect(main.dataset.id); }
+    },
+
+    /* ---------- touch: swipe right = pin, swipe left = mute/archive, long-press = menu ---------- */
+    onTouchStart: function (e) {
+      if (this.selectMode || e.touches.length !== 1) return;
+      var main = e.target.closest('.row-main');
+      if (this._open && this._open !== main) this.closeSwipe();
+      if (!main) return;
+      var t = e.touches[0], self = this;
+      var s = { main: main, id: main.dataset.id, x: t.clientX, y: t.clientY, dx: 0, drag: false, base: this._open === main ? -ACTION_W : 0 };
+      s.timer = setTimeout(function () {
+        if (s.drag) return;
+        self._sw = null; self._block = Date.now() + 700;
+        var r = main.getBoundingClientRect();
+        self.openMenu(s.id, r.left + 24, r.top + r.height / 2);
+        if (navigator.vibrate) navigator.vibrate(12);
+      }, 480);
+      this._sw = s;
+    },
+    onTouchMove: function (e) {
+      var s = this._sw; if (!s) return;
+      var t = e.touches[0], dx = t.clientX - s.x, dy = t.clientY - s.y;
+      if (!s.drag) {
+        if (Math.abs(dy) > 8) { clearTimeout(s.timer); this._sw = null; return; }
+        if (Math.abs(dx) <= 8) return;
+        s.drag = true; clearTimeout(s.timer);
+      }
+      s.dx = dx;
+      var x = Math.max(-170, Math.min(100, s.base + dx));
+      s.main.style.transition = 'none';
+      s.main.style.transform = 'translate3d(' + x + 'px,0,0)';
+    },
+    onTouchEnd: function () {
+      var s = this._sw; if (!s) return;
+      clearTimeout(s.timer); this._sw = null;
+      if (!s.drag) return;
+      this._block = Date.now() + 350;
+      var x = s.base + s.dx;
+      if (x >= 64) { this.snap(s.main, 0); this._open = null; this.act(s.id, 'pin'); }
+      else if (x <= -56) { this.snap(s.main, -ACTION_W); this._open = s.main; }
+      else { this.snap(s.main, 0); if (this._open === s.main) this._open = null; }
+    },
+    snap: function (main, x) {
+      main.style.transition = 'transform .25s cubic-bezier(.2,.8,.2,1)';
+      main.style.transform = x ? 'translate3d(' + x + 'px,0,0)' : '';
+    },
+    closeSwipe: function () { if (this._open) { this.snap(this._open, 0); this._open = null; } },
+
+    /* ---------- times in the viewer's own timezone ---------- */
+    formatTimes: function () {
+      var now = new Date();
+      function sod(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
+      this.$el.querySelectorAll('time[data-ts]').forEach(function (el) {
+        var d = new Date(el.dataset.ts); if (isNaN(d)) return;
+        var diff = Math.round((sod(now) - sod(d)) / 864e5), s;
+        if (diff <= 0) s = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        else if (diff === 1) s = 'Yesterday';
+        else if (diff < 7) s = d.toLocaleDateString([], { weekday: 'short' });
+        else if (d.getFullYear() === now.getFullYear()) s = d.toLocaleDateString([], { day: 'numeric', month: 'short' });
+        else s = d.toLocaleDateString([], { day: 'numeric', month: 'short', year: '2-digit' });
+        el.textContent = s;
+      });
     }
-
-    document.addEventListener('alpine:initialized', () => lucide.createIcons());
-    lucide.createIcons();
+  };
+}
 </script>
 {% endblock %}
