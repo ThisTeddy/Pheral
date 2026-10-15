@@ -1,470 +1,99 @@
 {% extends "base.html" %}
+{% load static %}
+
+{% comment %}
+ASSUMED CONTEXT (adjust names in this one block if yours differ):
+  conversations : iterable of items with
+      conv.user            -> the other person (username, display_name, avatar, is_online)
+      conv.last_message    -> .content, .created_at, .is_mine (bool), .is_payment (bool, optional)
+      conv.unread_count    -> int
+URL: {% url 'chat_user' conv.user.username %}  -> change the argument if your route differs.
+{% endcomment %}
 
 {% block title %}Chats · Pheral{% endblock %}
 {% block page_title %}Chats{% endblock %}
 
-{% block extra_head %}
-<style>
-  .row { position: relative; overflow: hidden; background: #fff; }
-  .row-main { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; padding: 0 0 0 16px; background: #fff; touch-action: pan-y; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; will-change: transform; }
-  .row.is-pinned .row-main { background: #FBF9FF; }
-  .row.is-selected .row-main { background: #F5F1FE; }
-  @media (hover: hover) { .row-main:hover { background: #FAF9FE; } .row.is-selected .row-main:hover { background: #EFE9FD; } }
-  .row-body { min-width: 0; flex: 1; border-bottom: 1px solid #EAE6F4; padding: 11px 16px 11px 0; }
-
-  /* State drives visibility with CSS, so rows need no per-row Alpine components */
-  .row .mute-ic, .row .pin-ic, .row .unread-badge, .row .select-dot, .row .on-pin, .row .on-mute, .row .on-archive, .row .row-more { display: none; }
-  .row.is-muted .mute-ic { display: inline-flex; }
-  .row.is-pinned:not(.has-unread) .pin-ic { display: inline-flex; }
-  .row.has-unread .unread-badge { display: inline-flex; }
-  .row.is-select-mode .select-dot { display: flex; }
-  .row.is-pinned .on-pin, .row.is-muted .on-mute, .row.is-archived .on-archive { display: inline; }
-  .row.is-pinned .off-pin, .row.is-muted .off-mute, .row.is-archived .off-archive { display: none; }
-  .row.has-unread .name { font-weight: 800; }
-  .row.has-unread .preview { color: #1C1730; font-weight: 500; }
-  .row.has-unread .ts { color: #6D28D9; font-weight: 700; }
-  .unread-badge { min-width: 20px; height: 20px; padding: 0 6px; align-items: center; justify-content: center; border-radius: 999px; background: #7C3AED; color: #fff; font-size: 12px; font-weight: 700; line-height: 1; }
-  .row.is-muted .unread-badge { background: #B7B1CC; }
-  .select-dot { width: 22px; height: 22px; flex-shrink: 0; align-items: center; justify-content: center; border-radius: 999px; border: 2px solid #CFC7E6; }
-  .select-dot > * { display: none; }
-  .row.is-selected .select-dot { background: #7C3AED; border-color: #7C3AED; }
-  .row.is-selected .select-dot > * { display: block; }
-  @media (hover: hover) and (min-width: 1024px) {
-    .row:hover .row-more { display: flex; }
-    .row:hover .ts { opacity: 0; }
-  }
-</style>
-{% endblock %}
-
 {% block content %}
-{% url 'toggle_chat_flag' conversation_id=0 flag='pin' as flag_tpl %}
-{% url 'bulk_chat_action' as bulk_url %}
-{% url 'contacts' as contacts_url %}
-{% url 'group_create' as group_create_url %}
-{% url 'create_status' as create_status_url %}
+<div class="mx-auto max-w-2xl px-4 pb-6 pt-4 lg:px-0 lg:pt-6"
+     x-data="{ q: '', filter: 'all', empty: false }"
+     x-effect="q; filter; $nextTick(() => { empty = ![...$root.querySelectorAll('[data-row]')].some(r => r.style.display !== 'none') })">
 
-<script>
-window.__chatRows = {
-{% for item in chat_items %}"{{ item.conversation_id }}":{i:{{ forloop.counter0 }},n:"{{ item.display_name|escapejs }}",pinned:{{ item.is_pinned|yesno:"true,false" }},muted:{{ item.is_muted|yesno:"true,false" }},archived:{{ item.is_archived|yesno:"true,false" }},unread:{{ item.unread_count }},group:{{ item.is_group|yesno:"true,false" }},h:"{{ item.display_name|lower|escapejs }} {{ item.last_message_preview|lower|escapejs }}"},
-{% endfor %}};
-</script>
-
-<svg width="0" height="0" class="absolute" aria-hidden="true" focusable="false">
-  <defs><linearGradient id="ring-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#B898F6"/><stop offset="1" stop-color="#6D28D9"/></linearGradient></defs>
-</svg>
-
-<div class="mx-auto w-full max-w-2xl lg:max-w-3xl"
-     x-data="chatList()" x-init="init()" @keydown.window="onKey($event)" @click.capture="onClickCapture($event)"
-     data-flag-tpl="{{ flag_tpl }}" data-bulk-url="{{ bulk_url }}">
-
-  <!-- Large title + actions -->
-  <div class="flex items-end justify-between px-4 pb-1 pt-2 lg:px-7 lg:pt-6">
-    <h1 class="text-[30px] font-extrabold leading-9 tracking-tight lg:hidden">Chats</h1>
-    <div class="ml-auto flex items-center gap-1">
-      <button type="button" x-show="selectMode" x-cloak @click="exitSelect()" class="px-3 py-2 text-[15px] font-semibold text-accent-600">Done</button>
-      <button type="button" x-show="!selectMode" @click="selectMode = true" class="flex h-10 w-10 items-center justify-center rounded-full text-accent-600 transition hover:bg-accent-50" aria-label="Select chats"><i data-lucide="check-circle-2" class="h-[22px] w-[22px]"></i></button>
-      {% if group_create_url %}<a href="{{ group_create_url }}" class="flex h-10 w-10 items-center justify-center rounded-full text-accent-600 transition hover:bg-accent-50" aria-label="New group"><i data-lucide="users" class="h-[22px] w-[22px]"></i></a>{% endif %}
-      {% if contacts_url %}<a href="{{ contacts_url }}" class="flex h-10 w-10 items-center justify-center rounded-full bg-accent-500 text-white shadow-card transition hover:bg-accent-600" aria-label="New chat"><i data-lucide="square-pen" class="h-5 w-5"></i></a>{% endif %}
-    </div>
-  </div>
-
-  <!-- Status -->
-  <section aria-label="Status updates" class="flex snap-x gap-3.5 overflow-x-auto px-4 pb-3 pt-2 scrollbar-none lg:px-7">
-    <div class="flex w-[68px] shrink-0 snap-start flex-col items-center gap-1.5">
-      <div class="relative h-[66px] w-[66px]">
-        <a href="{% if my_status %}{% url 'status_detail' status_id=my_status.latest.id %}{% else %}{{ create_status_url }}{% endif %}" class="block h-full w-full" aria-label="{% if my_status %}View your status{% else %}Add status{% endif %}">
-          <svg viewBox="0 0 66 66" class="absolute inset-0 h-full w-full -rotate-90" aria-hidden="true">
-            {% if my_status %}
-              {% widthratio 100 my_status.count 1 as per %}
-              <circle cx="33" cy="33" r="31" fill="none" pathLength="100" stroke-width="3" stroke="url(#ring-grad)" stroke-dasharray="{% if my_status.count > 1 %}{{ per|add:'-4' }} 4{% else %}100 0{% endif %}"/>
-            {% else %}
-              <circle cx="33" cy="33" r="31" fill="none" stroke-width="2" stroke="#D6D0E8" stroke-dasharray="4 4"/>
-            {% endif %}
-          </svg>
-          <span class="absolute inset-[6px] overflow-hidden rounded-full bg-accent-100">
-            {% if my_status.thumbnail_url %}<img src="{{ my_status.thumbnail_url }}" alt="" class="h-full w-full object-cover">
-            {% elif request.user.avatar %}<img src="{{ request.user.avatar.url }}" alt="" class="h-full w-full object-cover">
-            {% else %}<span class="flex h-full w-full items-center justify-center text-[20px] font-bold text-accent-700">{{ request.user.username|first|upper }}</span>{% endif %}
-          </span>
-        </a>
-        {% if create_status_url %}<a href="{{ create_status_url }}" class="absolute -bottom-0.5 -right-0.5 flex h-[22px] w-[22px] items-center justify-center rounded-full bg-accent-500 text-white ring-2 ring-white" aria-label="Add status"><i data-lucide="plus" class="h-3.5 w-3.5"></i></a>{% endif %}
-      </div>
-      <span class="w-full truncate text-center text-[11.5px] font-medium text-ink">Your status</span>
-    </div>
-
-    {% for entry in story_others %}
-    <a href="{% url 'status_detail' status_id=entry.latest.id %}" class="flex w-[68px] shrink-0 snap-start flex-col items-center gap-1.5" aria-label="{{ entry.user.first_name|default:entry.user.username }}'s status, {{ entry.count }} update{{ entry.count|pluralize }}{% if not entry.all_viewed %}, new{% endif %}">
-      <span class="relative block h-[66px] w-[66px]">
-        <svg viewBox="0 0 66 66" class="absolute inset-0 h-full w-full -rotate-90" aria-hidden="true">
-          {% widthratio 100 entry.count 1 as per %}
-          <circle cx="33" cy="33" r="31" fill="none" pathLength="100" stroke-width="3" stroke="{% if entry.all_viewed %}#D6D0E8{% else %}url(#ring-grad){% endif %}" stroke-dasharray="{% if entry.count > 1 %}{{ per|add:'-4' }} 4{% else %}100 0{% endif %}"/>
-        </svg>
-        <span class="absolute inset-[6px] overflow-hidden rounded-full bg-accent-100">
-          {% if entry.thumbnail_url %}<img src="{{ entry.thumbnail_url }}" alt="" loading="lazy" class="h-full w-full object-cover">
-          {% elif entry.user.avatar %}<img src="{{ entry.user.avatar.url }}" alt="" loading="lazy" class="h-full w-full object-cover">
-          {% else %}<span class="flex h-full w-full items-center justify-center text-[20px] font-bold text-accent-700">{{ entry.user.username|first|upper }}</span>{% endif %}
-        </span>
-      </span>
-      <span class="w-full truncate text-center text-[11.5px] {% if entry.all_viewed %}font-medium text-muted{% else %}font-semibold text-ink{% endif %}">{{ entry.user.first_name|default:entry.user.username }}</span>
+  <!-- Search + new chat -->
+  <div class="flex items-center gap-2">
+    <label class="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-tint px-4 py-2.5 focus-within:ring-2 focus-within:ring-brand-500">
+      <i data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></i>
+      <input type="search" x-model="q" placeholder="Search chats" aria-label="Search chats"
+             class="w-full min-w-0 bg-transparent text-[14px] outline-none placeholder:text-muted">
+    </label>
+    <a href="{% url 'start_chat' %}" class="rf flex shrink-0 items-center gap-1.5 rounded-full bg-brand-500 px-4 py-2.5 text-[13px] font-semibold text-white shadow-sm shadow-brand-500/30 transition hover:bg-brand-600">
+      <i data-lucide="plus" class="h-4 w-4"></i> New chat
     </a>
-    {% endfor %}
-  </section>
-
-  {% if chat_items %}
-  <!-- Search -->
-  <div class="relative px-4 pt-1 lg:px-7">
-    <div class="flex items-center gap-3">
-      <label class="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-xl bg-surface px-3">
-        <i data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></i>
-        <input type="text" x-ref="search" x-model="q" @focus="focused = true" @blur="setTimeout(() => focused = false, 150)" @keydown.enter="commitSearch()"
-               inputmode="search" enterkeyhint="search" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Search chats"
-               placeholder="Search chats" class="w-full bg-transparent text-[14px] text-ink placeholder-muted focus:outline-none">
-        <button type="button" x-show="q" @click="q = ''" class="shrink-0 rounded-full text-muted" aria-label="Clear search"><i data-lucide="x-circle" class="h-4 w-4"></i></button>
-      </label>
-      <button type="button" x-show="focused || q" x-cloak @mousedown.prevent="q = ''; $refs.search.blur()" class="shrink-0 text-[14px] font-semibold text-accent-600 lg:hidden">Cancel</button>
-    </div>
-    <div x-show="focused && !q && recent.length" x-cloak x-transition class="absolute left-4 right-4 top-full z-20 mt-1 overflow-hidden rounded-xl border border-line bg-white py-1.5 shadow-popover lg:left-7 lg:right-7">
-      <p class="px-3.5 pb-1 text-[10px] font-bold uppercase tracking-wide text-muted">Recent</p>
-      <template x-for="term in recent" :key="term">
-        <button type="button" @mousedown.prevent="q = term; commitSearch()" class="flex w-full items-center gap-2.5 px-3.5 py-2 text-left text-[13.5px] hover:bg-surface"><i data-lucide="clock" class="h-3.5 w-3.5 text-muted"></i><span x-text="term"></span></button>
-      </template>
-    </div>
   </div>
 
   <!-- Filters -->
-  <div class="flex gap-2 overflow-x-auto px-4 pb-2 pt-3 scrollbar-none lg:px-7" role="tablist" aria-label="Filter chats">
-    <template x-for="t in [['all','All'],['unread','Unread'],['groups','Groups'],['muted','Muted'],['archived','Archived']]" :key="t[0]">
-      <button type="button" role="tab" :aria-selected="tab === t[0]" @click="tab = t[0]"
-              class="flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition"
-              :class="tab === t[0] ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'">
-        <span x-text="t[1]"></span>
-        <span x-show="t[0] === 'unread' && unreadCount" class="rounded-full px-1.5 text-[11px] leading-[18px]" :class="tab === 'unread' ? 'bg-white/25' : 'bg-accent-100 text-accent-700'" x-text="unreadCount"></span>
-        <span x-show="t[0] === 'archived' && archivedCount" class="text-[11px] opacity-70" x-text="archivedCount"></span>
-      </button>
-    </template>
+  <div class="mt-3 flex gap-1.5" role="tablist" aria-label="Filter chats">
+    <button type="button" role="tab" :aria-selected="filter === 'all'" @click="filter = 'all'"
+            class="rf rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold transition"
+            :class="filter === 'all' ? 'bg-brand-500 text-white' : 'border border-line text-muted hover:bg-tint hover:text-ink'">All</button>
+    <button type="button" role="tab" :aria-selected="filter === 'unread'" @click="filter = 'unread'"
+            class="rf rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold transition"
+            :class="filter === 'unread' ? 'bg-brand-500 text-white' : 'border border-line text-muted hover:bg-tint hover:text-ink'">Unread</button>
   </div>
 
-  <!-- List -->
-  <div x-ref="list" class="flex flex-col"
-       @touchstart.passive="onTouchStart($event)" @touchmove.passive="onTouchMove($event)" @touchend="onTouchEnd()" @touchcancel="onTouchEnd()"
-       @contextmenu="onContext($event)">
-    {% for item in chat_items %}
-    {% if item.is_group %}{% url 'group_chat' conversation_id=item.conversation_id as chat_url %}{% else %}{% url 'chat' conversation_id=item.conversation_id as chat_url %}{% endif %}
-    <div class="row" data-id="{{ item.conversation_id }}"
-         x-show="matches('{{ item.conversation_id }}')" :class="rowClass('{{ item.conversation_id }}')" :style="'order:' + orderOf('{{ item.conversation_id }}')">
+  {% if conversations %}
+  <ul class="mt-3 divide-y divide-line overflow-hidden rounded-3xl border border-line bg-white">
+    {% for conv in conversations %}
+    <li data-row
+        data-name="{{ conv.user.display_name|default:conv.user.username|lower }} {{ conv.user.username|lower }}"
+        data-unread="{% if conv.unread_count %}1{% else %}0{% endif %}"
+        x-show="(!q || $el.dataset.name.includes(q.toLowerCase().trim())) && (filter === 'all' || $el.dataset.unread === '1')">
+      <a href="{% url 'chat_user' conv.user.username %}" class="rf flex items-center gap-3 px-3.5 py-3 transition hover:bg-tint/70">
 
-      <div class="absolute inset-y-0 left-0 flex w-[88px]" aria-hidden="true">
-        <button type="button" tabindex="-1" @click="act('{{ item.conversation_id }}', 'pin')" class="flex flex-1 flex-col items-center justify-center gap-1 bg-accent-500 text-[11px] font-semibold text-white">
-          <i data-lucide="pin" class="h-5 w-5"></i><span class="off-pin">Pin</span><span class="on-pin">Unpin</span>
-        </button>
-      </div>
-      <div class="absolute inset-y-0 right-0 flex w-[144px]" aria-hidden="true">
-        <button type="button" tabindex="-1" @click="act('{{ item.conversation_id }}', 'mute')" class="flex flex-1 flex-col items-center justify-center gap-1 bg-amber-500 text-[11px] font-semibold text-white">
-          <i data-lucide="bell-off" class="h-5 w-5"></i><span class="off-mute">Mute</span><span class="on-mute">Unmute</span>
-        </button>
-        <button type="button" tabindex="-1" @click="act('{{ item.conversation_id }}', 'archive')" class="flex flex-1 flex-col items-center justify-center gap-1 bg-muted text-[11px] font-semibold text-white">
-          <i data-lucide="archive" class="h-5 w-5"></i><span class="off-archive">Archive</span><span class="on-archive">Unarchive</span>
-        </button>
-      </div>
-
-      <a href="{{ chat_url }}" class="row-main" data-id="{{ item.conversation_id }}">
-        <span class="select-dot"><i data-lucide="check" class="h-3.5 w-3.5 text-white"></i></span>
-
-        <span class="relative block h-[52px] w-[52px] shrink-0">
-          {% if item.avatar_url %}
-            <img src="{{ item.avatar_url }}" alt="" width="52" height="52" loading="lazy" decoding="async" class="h-[52px] w-[52px] rounded-full object-cover">
+        <span class="relative shrink-0">
+          {% if conv.user.avatar %}
+            <img src="{{ conv.user.avatar.url }}" alt="" class="h-11 w-11 rounded-full object-cover">
           {% else %}
-            <span class="flex h-[52px] w-[52px] items-center justify-center rounded-full bg-accent-100 text-[19px] font-bold text-accent-700">{% if item.is_group %}<i data-lucide="users" class="h-6 w-6"></i>{% else %}{{ item.display_name|first|upper }}{% endif %}</span>
+            <span class="flex h-11 w-11 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-700">{{ conv.user.username|first|upper }}</span>
           {% endif %}
-          {% if not item.is_group and item.is_online %}<span class="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white bg-emerald-500"></span>{% endif %}
+          {% if conv.user.is_online %}<span class="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-cash-600 ring-2 ring-white" title="Online"></span>{% endif %}
         </span>
 
-        <span class="row-body block">
-          <span class="flex items-center gap-1.5">
-            <span class="name min-w-0 truncate text-[16px] font-semibold leading-5 text-ink">{{ item.display_name }}</span>
-            <i data-lucide="bell-off" class="mute-ic h-3.5 w-3.5 shrink-0 text-muted"></i>
-            <time class="ts ml-auto shrink-0 text-[12.5px] text-muted" data-ts="{{ item.latest_activity|date:'c' }}" datetime="{{ item.latest_activity|date:'c' }}">{{ item.latest_activity|date:"j M" }}</time>
+        <span class="min-w-0 flex-1">
+          <span class="flex items-baseline justify-between gap-2">
+            <span class="truncate text-[14px] {% if conv.unread_count %}font-bold{% else %}font-semibold{% endif %}">{{ conv.user.display_name|default:conv.user.username }}</span>
+            {% if conv.last_message %}
+              <time class="shrink-0 text-[11px] {% if conv.unread_count %}font-semibold text-brand-600{% else %}text-muted{% endif %}" datetime="{{ conv.last_message.created_at|date:'c' }}">{{ conv.last_message.created_at|date:"M j" }}</time>
+            {% endif %}
           </span>
-          <span class="mt-0.5 flex items-center gap-2">
-            <span class="preview min-w-0 flex-1 truncate text-[14px] leading-[19px] text-muted">
-              {% if item.last_message %}
-                {% with t=item.last_message.message_type %}
-                  {% if t == "image" %}<i data-lucide="image" class="mr-1 inline h-[14px] w-[14px] -translate-y-px"></i>{% elif t == "video" %}<i data-lucide="video" class="mr-1 inline h-[14px] w-[14px] -translate-y-px"></i>{% elif t == "voice" %}<i data-lucide="mic" class="mr-1 inline h-[14px] w-[14px] -translate-y-px"></i>{% elif t == "file" %}<i data-lucide="file-text" class="mr-1 inline h-[14px] w-[14px] -translate-y-px"></i>{% elif t == "payment" %}<i data-lucide="banknote" class="mr-1 inline h-[14px] w-[14px] -translate-y-px"></i>{% elif t == "hire" %}<i data-lucide="briefcase" class="mr-1 inline h-[14px] w-[14px] -translate-y-px"></i>{% elif t == "agent" %}<i data-lucide="bot" class="mr-1 inline h-[14px] w-[14px] -translate-y-px"></i>{% endif %}
-                {% endwith %}
-                {{ item.last_message_prefix }}{{ item.last_message_preview }}
-              {% else %}<span class="italic">No messages yet</span>{% endif %}
+          <span class="mt-0.5 flex items-center justify-between gap-2">
+            <span class="flex min-w-0 items-center gap-1 truncate text-[13px] {% if conv.unread_count %}font-medium text-ink{% else %}text-muted{% endif %}">
+              {% if conv.last_message.is_payment %}<i data-lucide="wallet" class="h-3.5 w-3.5 shrink-0 text-cash-600"></i>{% endif %}
+              <span class="truncate">{% if conv.last_message %}{% if conv.last_message.is_mine %}You: {% endif %}{{ conv.last_message.content|truncatechars:70 }}{% else %}Say hello{% endif %}</span>
             </span>
-            <span class="unread-badge">{{ item.unread_count }}</span>
-            <i data-lucide="pin" class="pin-ic h-[15px] w-[15px] shrink-0 text-muted"></i>
+            {% if conv.unread_count %}
+              <span class="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-brand-500 px-1.5 text-[11px] font-bold text-white" aria-label="{{ conv.unread_count }} unread">{% if conv.unread_count > 99 %}99+{% else %}{{ conv.unread_count }}{% endif %}</span>
+            {% endif %}
           </span>
         </span>
       </a>
-
-      <button type="button" class="row-more absolute right-3 top-3 z-[2] h-8 w-8 items-center justify-center rounded-full bg-white/90 text-muted shadow-card hover:text-ink" @click.stop="openMenuFrom($event, '{{ item.conversation_id }}')" aria-label="Chat options for {{ item.display_name }}">
-        <i data-lucide="chevron-down" class="h-4 w-4"></i>
-      </button>
-    </div>
+    </li>
     {% endfor %}
-  </div>
+  </ul>
 
-  <div x-show="visibleCount === 0" x-cloak class="px-8 py-16 text-center">
-    <span class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-accent-50 text-accent-500"><i data-lucide="message-circle" class="h-6 w-6"></i></span>
-    <p class="mt-3 text-[16px] font-bold" x-text="emptyTitle"></p>
-    <p class="mx-auto mt-1 max-w-xs text-[13.5px] leading-5 text-muted" x-text="emptyBody"></p>
-  </div>
+  <p x-show="empty" x-cloak class="pop mt-10 text-center text-sm text-muted">
+    No chats match. <button type="button" @click="q = ''; filter = 'all'" class="rf font-semibold text-brand-600">Clear filters</button>
+  </p>
 
   {% else %}
-  <div class="px-8 py-16 text-center">
-    <span class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-accent-50 text-accent-500"><i data-lucide="message-circle" class="h-7 w-7"></i></span>
-    <p class="mt-4 text-[18px] font-bold">No chats yet</p>
-    <p class="mx-auto mt-1 max-w-xs text-[14px] leading-5 text-muted">Start a conversation with someone in your contacts.</p>
-    {% if contacts_url %}<a href="{{ contacts_url }}" class="mt-5 inline-flex rounded-full bg-accent-500 px-6 py-3 text-[14px] font-semibold text-white shadow-card hover:bg-accent-600">Find people</a>{% endif %}
+  <div class="mt-4 rounded-3xl border border-line bg-tint/60 px-6 py-12 text-center">
+    <span class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-100 text-brand-600"><i data-lucide="message-circle" class="h-6 w-6"></i></span>
+    <h2 class="mt-4 font-display text-xl font-bold tracking-tight">No chats yet</h2>
+    <p class="mx-auto mt-1.5 max-w-xs text-sm text-muted">Message someone, send money, or post a job from the same thread.</p>
+    <div class="mt-5 flex flex-col justify-center gap-2 sm:flex-row">
+      <a href="{% url 'start_chat' %}" class="rf rounded-full bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-600">Start a chat</a>
+      <a href="{% url 'contacts' %}" class="rf rounded-full border border-line bg-white px-5 py-2.5 text-sm font-semibold hover:bg-tint">Open contacts</a>
+    </div>
   </div>
   {% endif %}
-
-  <!-- Bulk bar -->
-  <div x-show="selectMode" x-cloak x-transition:enter="transition ease-out duration-200" x-transition:enter-start="translate-y-3 opacity-0" x-transition:enter-end="translate-y-0 opacity-100"
-       class="fixed inset-x-3 z-[45] lg:inset-x-auto lg:bottom-6 lg:left-1/2 lg:w-[min(30rem,calc(100vw-8rem))] lg:-translate-x-1/2" style="bottom: calc(var(--tabbar-total) + 8px);">
-    <div class="flex items-center justify-between rounded-2xl bg-ink px-2 py-2 text-white shadow-popover">
-      <span class="px-3 text-[13.5px] font-semibold" x-text="selected.length ? selected.length + ' selected' : 'Select chats'"></span>
-      <div class="flex items-center gap-1" :class="selected.length ? '' : 'pointer-events-none opacity-40'">
-        <button type="button" @click="bulk('read')" class="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-semibold hover:bg-white/10"><i data-lucide="check-check" class="h-4 w-4"></i> Read</button>
-        <button type="button" @click="bulk('mute')" class="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-semibold hover:bg-white/10"><i data-lucide="bell-off" class="h-4 w-4"></i> Mute</button>
-        <button type="button" @click="bulk(tab === 'archived' ? 'unarchive' : 'archive')" class="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-semibold hover:bg-white/10"><i data-lucide="archive" class="h-4 w-4"></i> <span x-text="tab === 'archived' ? 'Unarchive' : 'Archive'"></span></button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Actions: bottom sheet on phones, popover on desktop -->
-  <div x-show="menu.open" x-cloak class="fixed inset-0 z-[60]">
-    <div x-show="menu.open" x-transition.opacity class="absolute inset-0 bg-ink/40 lg:bg-transparent" @click="menu.open = false" @contextmenu.prevent="menu.open = false"></div>
-    <div x-show="menu.open"
-         x-transition:enter="transition duration-200 ease-out" x-transition:enter-start="translate-y-full lg:translate-y-0 lg:scale-95 lg:opacity-0" x-transition:enter-end="translate-y-0 lg:scale-100 lg:opacity-100"
-         x-transition:leave="transition duration-150 ease-in" x-transition:leave-start="translate-y-0 opacity-100" x-transition:leave-end="translate-y-full opacity-0 lg:translate-y-0"
-         class="absolute inset-x-0 bottom-0 overflow-hidden rounded-t-3xl bg-white shadow-sheet lg:inset-x-auto lg:bottom-auto lg:w-56 lg:rounded-2xl lg:shadow-popover"
-         :style="isDesktop ? 'left:' + menu.x + 'px;top:' + menu.y + 'px' : ''" style="padding-bottom: env(safe-area-inset-bottom, 0px);" role="menu">
-      <div class="mx-auto mt-2 h-1 w-9 rounded-full bg-line lg:hidden"></div>
-      <p class="truncate px-5 pb-1 pt-3 text-[13px] font-semibold text-muted lg:hidden" x-text="rows[menu.id] ? rows[menu.id].n : ''"></p>
-      <button type="button" role="menuitem" @click="act(menu.id, 'pin')" class="flex w-full items-center gap-3.5 px-5 py-3.5 text-left text-[15px] font-medium hover:bg-surface lg:px-3.5 lg:py-2.5 lg:text-[13px]"><i data-lucide="pin" class="h-[18px] w-[18px] text-muted"></i><span x-text="rows[menu.id] && rows[menu.id].pinned ? 'Unpin' : 'Pin to top'"></span></button>
-      <button type="button" role="menuitem" x-show="rows[menu.id] && rows[menu.id].unread > 0" @click="markRead(menu.id)" class="flex w-full items-center gap-3.5 px-5 py-3.5 text-left text-[15px] font-medium hover:bg-surface lg:px-3.5 lg:py-2.5 lg:text-[13px]"><i data-lucide="check-check" class="h-[18px] w-[18px] text-muted"></i> Mark as read</button>
-      <button type="button" role="menuitem" @click="act(menu.id, 'mute')" class="flex w-full items-center gap-3.5 px-5 py-3.5 text-left text-[15px] font-medium hover:bg-surface lg:px-3.5 lg:py-2.5 lg:text-[13px]"><i data-lucide="bell-off" class="h-[18px] w-[18px] text-muted"></i><span x-text="rows[menu.id] && rows[menu.id].muted ? 'Unmute' : 'Mute'"></span></button>
-      <button type="button" role="menuitem" @click="act(menu.id, 'archive')" class="flex w-full items-center gap-3.5 px-5 py-3.5 text-left text-[15px] font-medium hover:bg-surface lg:px-3.5 lg:py-2.5 lg:text-[13px]"><i data-lucide="archive" class="h-[18px] w-[18px] text-muted"></i><span x-text="rows[menu.id] && rows[menu.id].archived ? 'Unarchive' : 'Archive'"></span></button>
-      <button type="button" @click="menu.open = false" class="w-full border-t border-line px-5 py-3.5 text-center text-[15px] font-semibold text-accent-600 hover:bg-surface lg:hidden">Cancel</button>
-    </div>
-  </div>
 </div>
-{% endblock %}
-
-{% block extra_scripts %}
-<script>
-function chatList() {
-  var ACTION_W = 144;
-  return {
-    rows: window.__chatRows || {},
-    tab: 'all', q: '', focused: false, recent: [],
-    selectMode: false, selected: [],
-    menu: { open: false, id: null, x: 0, y: 0 },
-    isDesktop: false, flagTpl: '', bulkUrl: '',
-    _sw: null, _open: null, _block: 0,
-
-    init: function () {
-      var self = this;
-      this.flagTpl = this.$el.dataset.flagTpl || '';
-      this.bulkUrl = this.$el.dataset.bulkUrl || '';
-      try { this.recent = JSON.parse(localStorage.getItem('pheral_recent_searches') || '[]'); } catch (e) {}
-      var mq = matchMedia('(min-width: 1024px)');
-      this.isDesktop = mq.matches;
-      mq.addEventListener('change', function (e) { self.isDesktop = e.matches; });
-      this.formatTimes();
-      setInterval(function () { self.formatTimes(); }, 60000);
-    },
-
-    /* ---------- filtering / ordering ---------- */
-    matches: function (id) {
-      var r = this.rows[id]; if (!r) return false;
-      switch (this.tab) {
-        case 'archived': if (!r.archived) return false; break;
-        case 'unread': if (r.archived || !(r.unread > 0)) return false; break;
-        case 'groups': if (r.archived || !r.group) return false; break;
-        case 'muted': if (r.archived || !r.muted) return false; break;
-        default: if (r.archived) return false;
-      }
-      var q = this.q.trim().toLowerCase();
-      return !q || r.h.indexOf(q) > -1;
-    },
-    rowClass: function (id) {
-      var r = this.rows[id] || {};
-      return { 'is-pinned': r.pinned, 'is-muted': r.muted, 'is-archived': r.archived, 'has-unread': r.unread > 0, 'is-select-mode': this.selectMode, 'is-selected': this.selected.indexOf(id) > -1 };
-    },
-    orderOf: function (id) { var r = this.rows[id]; return r ? (r.pinned ? 0 : 100000) + r.i : 0; },
-    get unreadCount() { var n = 0; for (var k in this.rows) { var r = this.rows[k]; if (!r.archived && r.unread > 0) n++; } return n; },
-    get archivedCount() { var n = 0; for (var k in this.rows) if (this.rows[k].archived) n++; return n; },
-    get visibleCount() { var n = 0; for (var k in this.rows) if (this.matches(k)) n++; return n; },
-    get emptyTitle() {
-      if (this.q.trim()) return 'No results for “' + this.q.trim() + '”';
-      return { unread: 'No unread chats', groups: 'No group chats', muted: 'No muted chats', archived: 'Nothing archived' }[this.tab] || 'No chats';
-    },
-    get emptyBody() {
-      if (this.q.trim()) return 'Check the spelling or try a different name.';
-      return { unread: "You're all caught up.", groups: 'Groups you join will show up here.', muted: 'Mute a chat to quiet its notifications.', archived: 'Archived chats stay here until you bring them back.' }[this.tab] || '';
-    },
-
-    /* ---------- search ---------- */
-    commitSearch: function () {
-      var t = this.q.trim(); if (!t) return;
-      this.recent = [t].concat(this.recent.filter(function (x) { return x !== t; })).slice(0, 5);
-      try { localStorage.setItem('pheral_recent_searches', JSON.stringify(this.recent)); } catch (e) {}
-      this.$refs.search.blur();
-    },
-    onKey: function (e) {
-      if (e.key === 'Escape') {
-        if (this.menu.open) this.menu.open = false;
-        else if (this.selectMode) this.exitSelect();
-        else if (this.focused) this.$refs.search.blur();
-        return;
-      }
-      var el = document.activeElement, tag = el ? el.tagName : '';
-      if (e.key === '/' && !e.metaKey && !e.ctrlKey && tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT' && !(el && el.isContentEditable) && this.$refs.search) {
-        e.preventDefault(); this.$refs.search.focus();
-      }
-    },
-
-    /* ---------- server calls ---------- */
-    csrf: function () { var m = document.querySelector('meta[name=csrf-token]'); return m ? m.content : ''; },
-    toast: function (msg, opts) { if (window.pheralToast) window.pheralToast(msg, opts); },
-    flagUrl: function (id, flag) { return this.flagTpl ? this.flagTpl.replace('/0/', '/' + id + '/').replace('/pin/', '/' + flag + '/') : ''; },
-
-    act: async function (id, flag) {
-      var r = this.rows[id]; if (!r) return;
-      var key = { pin: 'pinned', mute: 'muted', archive: 'archived' }[flag];
-      var prev = r[key], url = this.flagUrl(id, flag);
-      this.menu.open = false; this.closeSwipe();
-      if (!url) { this.toast('That action is not available right now.'); return; }
-      r[key] = !prev;                                   // optimistic
-      try {
-        var res = await fetch(url, { method: 'POST', headers: { 'X-CSRFToken': this.csrf(), 'X-Requested-With': 'XMLHttpRequest' } });
-        var data = await res.json();
-        if (!res.ok || !data.success) throw new Error('failed');
-        r[key] = data.value;
-        if (flag === 'archive' && data.value) this.toast('Chat archived', { action: 'Undo', onAction: function () { this.act(id, 'archive'); }.bind(this) });
-      } catch (e) {
-        r[key] = prev;
-        this.toast("Couldn't update that chat. Try again.");
-      }
-    },
-    bulkRaw: async function (ids, action) {
-      var body = new URLSearchParams(); body.append('action', action);
-      ids.forEach(function (i) { body.append('conversation_ids[]', i); });
-      var res = await fetch(this.bulkUrl, { method: 'POST', headers: { 'X-CSRFToken': this.csrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' }, body: body.toString() });
-      if (!res.ok) throw new Error('failed');
-      var self = this;
-      ids.forEach(function (id) {
-        var r = self.rows[id]; if (!r) return;
-        if (action === 'read') r.unread = 0;
-        if (action === 'archive') r.archived = true;
-        if (action === 'unarchive') r.archived = false;
-        if (action === 'mute') r.muted = true;
-        if (action === 'unmute') r.muted = false;
-      });
-    },
-    bulk: async function (action) {
-      if (!this.selected.length || !this.bulkUrl) return;
-      var ids = this.selected.slice(), self = this;
-      try {
-        await this.bulkRaw(ids, action);
-        this.exitSelect();
-        if (action === 'archive') this.toast(ids.length + (ids.length > 1 ? ' chats archived' : ' chat archived'), { action: 'Undo', onAction: function () { self.bulkRaw(ids, 'unarchive'); } });
-      } catch (e) { this.toast("Couldn't update those chats."); }
-    },
-    markRead: async function (id) {
-      this.menu.open = false;
-      try { await this.bulkRaw([id], 'read'); } catch (e) { this.toast("Couldn't mark that chat as read."); }
-    },
-
-    /* ---------- selection ---------- */
-    toggleSelect: function (id) { var i = this.selected.indexOf(id); if (i > -1) this.selected.splice(i, 1); else this.selected.push(id); },
-    exitSelect: function () { this.selectMode = false; this.selected = []; },
-
-    /* ---------- menu ---------- */
-    openMenu: function (id, x, y) {
-      this.menu = { open: true, id: id, x: Math.max(8, Math.min(x, window.innerWidth - 232)), y: Math.max(8, Math.min(y, window.innerHeight - 210)) };
-    },
-    openMenuFrom: function (e, id) { var r = e.currentTarget.getBoundingClientRect(); this.openMenu(id, r.right - 224, r.bottom + 4); },
-    onContext: function (e) {
-      var row = e.target.closest('.row'); if (!row) return;
-      e.preventDefault(); this.openMenu(row.dataset.id, e.clientX, e.clientY);
-    },
-
-    /* ---------- click guard: swipe aftermath, open swipe row, select mode ---------- */
-    onClickCapture: function (e) {
-      if (Date.now() < this._block) { e.preventDefault(); e.stopPropagation(); return; }
-      if (this._open && !e.target.closest('.row button')) { e.preventDefault(); e.stopPropagation(); this.closeSwipe(); return; }
-      var main = e.target.closest('.row-main');
-      if (this.selectMode && main) { e.preventDefault(); e.stopPropagation(); this.toggleSelect(main.dataset.id); }
-    },
-
-    /* ---------- touch: swipe right = pin, swipe left = mute/archive, long-press = menu ---------- */
-    onTouchStart: function (e) {
-      if (this.selectMode || e.touches.length !== 1) return;
-      var main = e.target.closest('.row-main');
-      if (this._open && this._open !== main) this.closeSwipe();
-      if (!main) return;
-      var t = e.touches[0], self = this;
-      var s = { main: main, id: main.dataset.id, x: t.clientX, y: t.clientY, dx: 0, drag: false, base: this._open === main ? -ACTION_W : 0 };
-      s.timer = setTimeout(function () {
-        if (s.drag) return;
-        self._sw = null; self._block = Date.now() + 700;
-        var r = main.getBoundingClientRect();
-        self.openMenu(s.id, r.left + 24, r.top + r.height / 2);
-        if (navigator.vibrate) navigator.vibrate(12);
-      }, 480);
-      this._sw = s;
-    },
-    onTouchMove: function (e) {
-      var s = this._sw; if (!s) return;
-      var t = e.touches[0], dx = t.clientX - s.x, dy = t.clientY - s.y;
-      if (!s.drag) {
-        if (Math.abs(dy) > 8) { clearTimeout(s.timer); this._sw = null; return; }
-        if (Math.abs(dx) <= 8) return;
-        s.drag = true; clearTimeout(s.timer);
-      }
-      s.dx = dx;
-      var x = Math.max(-170, Math.min(100, s.base + dx));
-      s.main.style.transition = 'none';
-      s.main.style.transform = 'translate3d(' + x + 'px,0,0)';
-    },
-    onTouchEnd: function () {
-      var s = this._sw; if (!s) return;
-      clearTimeout(s.timer); this._sw = null;
-      if (!s.drag) return;
-      this._block = Date.now() + 350;
-      var x = s.base + s.dx;
-      if (x >= 64) { this.snap(s.main, 0); this._open = null; this.act(s.id, 'pin'); }
-      else if (x <= -56) { this.snap(s.main, -ACTION_W); this._open = s.main; }
-      else { this.snap(s.main, 0); if (this._open === s.main) this._open = null; }
-    },
-    snap: function (main, x) {
-      main.style.transition = 'transform .25s cubic-bezier(.2,.8,.2,1)';
-      main.style.transform = x ? 'translate3d(' + x + 'px,0,0)' : '';
-    },
-    closeSwipe: function () { if (this._open) { this.snap(this._open, 0); this._open = null; } },
-
-    /* ---------- times in the viewer's own timezone ---------- */
-    formatTimes: function () {
-      var now = new Date();
-      function sod(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
-      this.$el.querySelectorAll('time[data-ts]').forEach(function (el) {
-        var d = new Date(el.dataset.ts); if (isNaN(d)) return;
-        var diff = Math.round((sod(now) - sod(d)) / 864e5), s;
-        if (diff <= 0) s = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-        else if (diff === 1) s = 'Yesterday';
-        else if (diff < 7) s = d.toLocaleDateString([], { weekday: 'short' });
-        else if (d.getFullYear() === now.getFullYear()) s = d.toLocaleDateString([], { day: 'numeric', month: 'short' });
-        else s = d.toLocaleDateString([], { day: 'numeric', month: 'short', year: '2-digit' });
-        el.textContent = s;
-      });
-    }
-  };
-}
-</script>
 {% endblock %}
