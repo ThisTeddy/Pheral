@@ -68,8 +68,8 @@ window.__wallets = [{% for w in wallets %}{ code: "{{ w.currency.code|escapejs }
 
       <!-- Pending transfers / bills -->
       {% for t in transactions %}{% if t.is_pending and t.poll_kind %}
-      <section class="rounded-2xl border border-brand-200 bg-white p-3.5" data-pending data-ref="{{ t.reference }}"
-               data-sync-url="{% if t.poll_kind == 'withdrawal' %}{% url 'sync_withdrawal_status' reference=t.reference %}{% else %}{% url 'sync_bill_status' reference=t.reference %}{% endif %}" aria-live="polite">
+      {% if t.poll_kind == 'withdrawal' %}{% url 'sync_withdrawal_status' reference=t.reference as sync_url %}{% else %}{% url 'sync_bill_status' reference=t.reference as sync_url %}{% endif %}
+      <section class="rounded-2xl border border-brand-200 bg-white p-3.5" data-pending data-ref="{{ t.reference }}" data-sync-url="{{ sync_url }}" aria-live="polite">
         <div class="flex items-center gap-3">
           <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800"><i data-lucide="clock" class="h-[18px] w-[18px]"></i></span>
           <div class="min-w-0 flex-1"><p class="truncate text-[13px] font-semibold">{{ t.title }}</p><p class="text-xs text-muted">{{ t.signed }}{% if t.fee_note %} · {{ t.fee_note }}{% endif %} · being checked</p></div>
@@ -104,7 +104,7 @@ window.__wallets = [{% for w in wallets %}{ code: "{{ w.currency.code|escapejs }
         <ul class="px-2 pb-2 md:px-3">
           {% for t in transactions %}
           <li data-txn data-dir="{{ t.direction }}" data-pending="{% if t.is_pending %}1{% else %}0{% endif %}" x-show="match($el.dataset)">
-            {% if t.receipt_ref %}<a href="{% url 'receipt_detail' reference=t.receipt_ref %}" class="rf flex items-center gap-3 rounded-2xl px-2 py-2.5 transition hover:bg-tint">{% else %}<div class="flex items-center gap-3 rounded-2xl px-2 py-2.5">{% endif %}
+            {% url 'receipt_detail' reference=t.receipt_ref|default:"none" as ru %}{% if t.receipt_ref and ru %}<a href="{{ ru }}" class="rf flex items-center gap-3 rounded-2xl px-2 py-2.5 transition hover:bg-tint">{% else %}<div class="flex items-center gap-3 rounded-2xl px-2 py-2.5">{% endif %}
               <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.95rem] {% if t.direction == 'in' %}bg-cash-100 text-cash-600{% else %}bg-brand-50 text-brand-600{% endif %}"><i data-lucide="{{ t.icon }}" class="h-[18px] w-[18px]"></i></span>
               <span class="min-w-0 flex-1"><span class="block truncate text-[14px] font-semibold">{{ t.title }}</span><span class="block truncate text-xs text-muted">{{ t.subtitle }} · {{ t.created_at|date:"M j, g:i A" }}</span></span>
               <span class="flex shrink-0 flex-col items-end gap-1">
@@ -113,7 +113,7 @@ window.__wallets = [{% for w in wallets %}{ code: "{{ w.currency.code|escapejs }
                 {% elif t.status_key == 'failed' %}<span class="rounded-full bg-red-50 px-2 py-0.5 text-[10.5px] font-semibold text-red-700">Failed</span>
                 {% else %}<span class="rounded-full bg-cash-100 px-2 py-0.5 text-[10.5px] font-semibold text-cash-600">Completed</span>{% endif %}
               </span>
-            {% if t.receipt_ref %}</a>{% else %}</div>{% endif %}
+            {% if t.receipt_ref and ru %}</a>{% else %}</div>{% endif %}
           </li>
           {% endfor %}
         </ul>
@@ -228,6 +228,7 @@ function walletPage() {
         if (++tries > 20) return;
         let changed = false;
         for (const c of cards) {
+          if (!c.dataset.syncUrl) continue;
           try {
             const r = await fetch(c.dataset.syncUrl, { method: 'POST', headers: { 'X-CSRFToken': this.$root.dataset.csrf, 'X-Requested-With': 'XMLHttpRequest' } });
             const d = await r.json();

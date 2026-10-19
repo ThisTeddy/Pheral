@@ -4931,3 +4931,256 @@ def wallet(request):
             .order_by("-created_at").first()
         ),
     })
+
+
+
+
+"""
+Backend changes for the new chat_list.html and wallet.html.
+Paste into views.py (all names it uses are already imported or defined there,
+except the two extra imports below).
+
+1. Add to the imports at the top:
+       from django.db.models import F
+       from datetime import timedelta   # already imported
+
+2. Fix the decorator: remove @login_required from above _status_thumbnail_url
+   and put it directly above `def chat_list(request):`.
+
+3. Paste the helpers below anywhere above chat_list.
+
+4. In chat_list(), just before the final `return render(...)`, add:
+
+       chat_counts = enrich_chat_items(chat_items, request.user)
+       glance_wallet = get_glance_wallet(request.user)
+       attention_items = get_attention_items(request.user)
+
+   and add these three keys to the render context:
+       "chat_counts": chat_counts,
+       "glance_wallet": glance_wallet,
+       "attention_items": attention_items,
+
+5. Replace the existing wallet() view with the one at the bottom.
+
+"""
+
+
+# ============================================================
+# CHAT LIST HELPERS
+# ============================================================
+
+def enrich_chat_items(chat_items, user):
+    """
+    Adds needs_reply / is_money / is_job / smart_line to each chat item and
+    returns counts for the filter chips. smart_line is rule-based (no AI call).
+    """
+    counts = {"unread": 0, "reply": 0, "money": 0, "jobs": 0}
+
+    for item in chat_items:
+        last = item["last_message"]
+        archived = item["is_archived"]
+
+        item["needs_reply"] = bool(
+            last and not item["is_group"] and last.sender_id and last.sender_id != user.id
+        )
+        item["is_money"] = bool(last and last.transaction_id)
+        item["is_job"] = bool(last and last.message_type == Message.MessageType.HIRE)
+
+        line = ""
+        if item["is_money"]:
+            line = last.content or "Payment"
+        elif item["is_job"]:
+            line = "Hire request in this chat"
+        elif item["unread_count"] >= 3:
+            line = f"{item['unread_count']} new messages"
+        elif item["needs_reply"] and item["unread_count"]:
+            line = "Waiting on your reply"
+        item["smart_line"] = line
+
+        if not archived:
+            counts["unread"] += 1 if item["unread_count"] else 0
+            counts["reply"] += 1 if item["needs_reply"] else 0
+            counts["money"] += 1 if item["is_money"] else 0
+            counts["jobs"] += 1 if item["is_job"] else 0
+
+    return counts
+
+
+def get_glance_wallet(user):
+    currency = get_default_currency()
+    if not currency:
+        return None
+    return Wallet.objects.select_related("currency").get(pk=get_or_create_wallet(user, currency).pk)
+
+
+def get_attention_items(user, limit=4):
+    """Things that are waiting on this user: hire offers/applications and pending transfers."""
+    items = []
+
+    offers = (
+        HireRequest.objects.filter(status=HireRequest.Status.PENDING, worker=user)
+        .exclude(requester=user).select_related("job", "requester").order_by("-created_at")[:limit]
+    )
+    for hr in offers:
+        items.append({
+            "icon": "briefcase", "title": f"@{hr.requester.username} wants to hire you",
+            "sub": hr.job.title, "cta": "Review",
+            "url": reverse("hire_job_detail", args=[hr.job_id]),
+        })
+
+    applicants = (
+        HireRequest.objects.filter(
+            status=HireRequest.Status.PENDING, job__employer=user, requester=F("worker"),
+        ).select_related("job", "requester").order_by("-created_at")[:limit]
+    )
+    for hr in applicants:
+        items.append({
+            "icon": "user-plus", "title": f"@{hr.requester.username} applied",
+            "sub": hr.job.title, "cta": "Review",
+            "url": reverse("hire_job_detail", args=[hr.job_id]),
+        })
+
+    pending_transfers = PheralTransaction.objects.filter(
+        sender=user, status=PheralTransaction.Status.PENDING,
+        transaction_type=PheralTransaction.TransactionType.WITHDRAWAL,
+    ).count()
+    if pending_transfers:
+        items.append({
+            "icon": "clock", "title": "Bank transfer being checked",
+            "sub": f"{pending_transfers} pending", "cta": "View", "url": reverse("wallet"),
+        })
+
+    return items[:limit]
+
+
+# ============================================================
+# WALLET
+# ============================================================
+
+def _txn_view_model(txn, user, receipts):
+    T = PheralTransaction.TransactionType
+    kind = txn.transaction_type
+    sym = txn.currency.symbol
+    meta = txn.metadata or {}
+    amount = txn.amount
+    fee_note = ""
+    poll_kind = ""
+
+    if kind == T.TOP_UP:
+        direction, icon, title = "in", "plus", "Top-up"
+        subtitle = txn.description or "Wallet top-up"
+    elif kind == T.WITHDRAWAL:
+        direction, icon = "out", "landmark"
+        title = f"Withdrawal · {meta.get('bank_name', 'Bank')}"
+        subtitle = f"••{meta['account_last4']}" if meta.get("account_last4") else "Bank transfer"
+        amount = txn.amount + (txn.fee or 0)
+        if txn.fee:
+            fee_note = f"incl. {sym}{txn.fee:,.2f} fee"
+        poll_kind = "withdrawal"
+    elif kind in (T.AIRTIME, T.DATA):
+        direction, icon = "out", "smartphone" if kind == T.AIRTIME else "wifi"
+        title = txn.description or ("Airtime" if kind == T.AIRTIME else "Data bundle")
+        subtitle = "Wallet purchase"
+        poll_kind = "bill"
+    elif kind == T.CARD_FUNDING:
+        direction, icon, title, subtitle = "out", "credit-card", "Card funding", txn.description or "Virtual card"
+    elif kind == T.FX:
+        direction, icon = "swap", "repeat"
+        title = f"Converted to {meta.get('target_currency', '')}".strip()
+        subtitle = f"Received {meta.get('converted_amount', '')} {meta.get('target_currency', '')}".strip()
+    else:  # TRANSFER, HIRE_PAYMENT, GROUP_TRANSFER, anything new
+        incoming = txn.recipient_id == user.id and txn.sender_id != user.id
+        direction = "in" if incoming else "out"
+        icon = "briefcase" if kind == T.HIRE_PAYMENT else ("arrow-down-left" if incoming else "arrow-up-right")
+        other = txn.sender if incoming else txn.recipient
+        if kind == T.TRANSFER and other:
+            title = f"{'Received from' if incoming else 'Sent to'} @{other.username}"
+        else:
+            title = txn.description or "Payment"
+        subtitle = txn.get_transaction_type_display() if hasattr(txn, "get_transaction_type_display") else "Payment"
+
+    sign = {"in": "+", "out": "−", "swap": "−"}[direction]
+
+    status_key = {
+        PheralTransaction.Status.COMPLETED: "completed",
+        PheralTransaction.Status.FAILED: "failed",
+    }.get(txn.status, "pending")
+
+    txn.direction = direction
+    txn.icon = icon
+    txn.title = title
+    txn.subtitle = subtitle
+    txn.signed = f"{sign}{sym}{amount:,.2f}"
+    txn.fee_note = fee_note
+    txn.status_key = status_key
+    txn.is_pending = status_key == "pending"
+    txn.poll_kind = poll_kind if txn.is_pending else ""
+    txn.receipt_ref = receipts.get(txn.pk, "")
+    return txn
+
+
+def _wallet_trend(wallet_obj, days=7):
+    """
+    Closing balance for each of the last `days` days, plus the change over the week.
+    Uses the parent transaction's created_at (always present) and never raises:
+    a trend line is nice-to-have and must not take the wallet page down.
+    """
+    try:
+        now = timezone.now()
+        start = now - timedelta(days=days)
+        entries = list(
+            LedgerEntry.objects.filter(wallet=wallet_obj, transaction__created_at__gte=start)
+            .select_related("transaction").order_by("transaction__created_at")
+        )
+        if not entries:
+            return [], Decimal("0")
+
+        balance = entries[0].balance_before
+        opening = balance
+        by_day = {e.transaction.created_at.date(): e.balance_after for e in entries}
+
+        points = []
+        for i in range(days + 1):
+            day = (start + timedelta(days=i)).date()
+            balance = by_day.get(day, balance)
+            points.append(float(balance))
+
+        return points, wallet_obj.balance - opening
+    except Exception:
+        logger.exception("Could not build wallet trend")
+        return [], Decimal("0")
+
+
+@login_required
+def wallet(request):
+    wallets = list(
+        Wallet.objects.filter(user=request.user, is_active=True)
+        .select_related("currency").order_by("currency__code")
+    )
+
+    raw = list(
+        PheralTransaction.objects.filter(Q(sender=request.user) | Q(recipient=request.user))
+        .select_related("sender", "recipient", "currency").order_by("-created_at")[:50]
+    )
+    receipts = dict(
+        Receipt.objects.filter(transaction__in=raw).values_list("transaction_id", "reference")
+    )
+    transactions = [_txn_view_model(t, request.user, receipts) for t in raw]
+
+    default = get_default_currency()
+    main_wallet = next((w for w in wallets if default and w.currency_id == default.pk), wallets[0] if wallets else None)
+    trend_points, week_change = _wallet_trend(main_wallet) if main_wallet else ([], Decimal("0"))
+
+    return render(request, "wallet.html", {
+        "wallets": wallets,
+        "transactions": transactions,
+        "wallet_token": get_or_create_wallet_token(request.user),
+        "trend_points": trend_points,
+        "week_change": week_change if week_change else None,
+        "virtual_account": VirtualAccount.objects.filter(user=request.user, is_active=True).first(),
+        "virtual_card": (
+            VirtualCard.objects.select_related("currency")
+            .filter(user=request.user).exclude(status=VirtualCard.Status.TERMINATED)
+            .order_by("-created_at").first()
+        ),
+    })
