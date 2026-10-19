@@ -1,402 +1,244 @@
 {% extends "base.html" %}
-{% load l10n %}
+{% load static %}
+
+{% comment %}
+Context: wallets, transactions, wallet_token (existing) plus, from views_changes.py:
+  transactions carry: direction ('in'|'out'|'swap'), icon, title, subtitle, signed, status_key,
+    is_pending, poll_kind ('withdrawal'|'bill'|''), receipt_ref
+  trend_points (list of 7 numbers), week_change (number), virtual_account, virtual_card.
+Optional pieces are wrapped in {% if %}.
+{% endcomment %}
 
 {% block title %}Wallet · Pheral{% endblock %}
 {% block page_title %}Wallet{% endblock %}
 
-{% block extra_head %}
-<style>
-    #copy-toast { transition: opacity 0.2s ease, transform 0.2s ease; }
-    [x-cloak] { display: none !important; }
-</style>
-{% endblock %}
-
 {% block content %}
-{# Hidden CSRF token, read by the status-polling script below #}
-<div id="wallet-csrf" class="hidden">{% csrf_token %}</div>
+<script>
+window.__wallets = [{% for w in wallets %}{ code: "{{ w.currency.code|escapejs }}", name: "{{ w.currency.name|escapejs }}", symbol: "{{ w.currency.symbol|escapejs }}", balance: {{ w.balance|stringformat:".2f" }} }{% if not forloop.last %},{% endif %}{% endfor %}];
+</script>
+{% if trend_points %}{{ trend_points|json_script:"trend-data" }}{% endif %}
 
-<div class="mx-auto max-w-2xl px-4 pb-10 pt-3 lg:max-w-6xl lg:px-7 lg:pt-6"
-     x-data="{
-        activeWalletCode: '{{ wallets.first.currency.code|default:'' }}',
-        tab: 'all',
-        q: '',
-        wallets: [
-            {% for w in wallets %}
-            { code: '{{ w.currency.code|escapejs }}', name: '{{ w.currency.name|escapejs }}', symbol: '{{ w.currency.symbol|escapejs }}', balance: {{ w.balance|unlocalize }} },
-            {% endfor %}
-        ],
-        txns: [
-            {% for txn in transactions %}
-            {
-                id: '{{ txn.id }}',
-                type: '{{ txn.transaction_type }}',
-                status: '{{ txn.status }}',
-                dir: '{% if txn.transaction_type == 'top_up' or txn.transaction_type == 'refund' %}in{% elif txn.transaction_type == 'withdrawal' or txn.transaction_type == 'airtime' or txn.transaction_type == 'data' or txn.transaction_type == 'card_funding' %}out{% elif txn.recipient_id == request.user.id and txn.sender_id != request.user.id %}in{% else %}out{% endif %}',
-                amount: {{ txn.amount|unlocalize }},
-                fee: {{ txn.fee|default:0|unlocalize }},
-                currencyCode: '{{ txn.currency.code|escapejs }}',
-                reference: '{{ txn.reference|escapejs }}',
-                description: '{{ txn.description|escapejs }}',
-            },
-            {% endfor %}
-        ],
-        get txnMap() { return Object.fromEntries(this.txns.map(t => [t.id, t])); },
-        get activeWallet() {
-            return this.wallets.find(w => w.code === this.activeWalletCode) || this.wallets[0];
-        },
-        get walletTxns() {
-            return this.txns.filter(t => t.currencyCode === this.activeWalletCode);
-        },
-        get moneyIn() {
-            return this.walletTxns.filter(t => t.dir === 'in' && t.status === 'completed').reduce((s, t) => s + t.amount, 0);
-        },
-        get moneyOut() {
-            return this.walletTxns.filter(t => t.dir === 'out' && t.status === 'completed').reduce((s, t) => s + t.amount + t.fee, 0);
-        },
-        get pendingCount() {
-            return this.walletTxns.filter(t => t.status === 'pending').length;
-        },
-        get typeBreakdown() {
-            const counts = {};
-            this.walletTxns.forEach(t => { counts[t.type] = (counts[t.type] || 0) + 1; });
-            const total = this.walletTxns.length || 1;
-            return Object.entries(counts)
-                .map(([type, count]) => ({ type, count, pct: Math.round((count / total) * 100) }))
-                .sort((a, b) => b.count - a.count)
-                .slice(0, 5);
-        },
-        typeLabel(type) {
-            const labels = { top_up: 'Top-ups', withdrawal: 'Withdrawals', transfer: 'Transfers', fx: 'Conversions', hire_payment: 'Hire payments', group_transfer: 'Group transfers', refund: 'Refunds', airtime: 'Airtime', data: 'Data bundles', card_funding: 'Card funding' };
-            return labels[type] || type;
-        },
-        sign(id) { const t = this.txnMap[id]; return t && t.dir === 'in' ? '+' : '-'; },
-        amountClass(id) {
-            const t = this.txnMap[id];
-            if (!t) return '';
-            if (t.status === 'failed') return 'text-muted line-through';
-            if (t.dir === 'in') return 'text-emerald-600';
-            return (t.type === 'withdrawal' || t.type === 'airtime' || t.type === 'data' || t.type === 'card_funding') ? 'text-orange-600' : 'text-red-500';
-        },
-        isVisible(id) {
-            const t = this.txnMap[id];
-            if (!t || t.currencyCode !== this.activeWalletCode) return false;
-            if (this.tab === 'in' && t.dir !== 'in') return false;
-            if (this.tab === 'out' && t.dir !== 'out') return false;
-            if (this.tab === 'pending' && t.status !== 'pending') return false;
-            const needle = this.q.trim().toLowerCase();
-            return !needle || t.reference.toLowerCase().includes(needle) || t.description.toLowerCase().includes(needle);
-        },
-     }">
+<div class="mx-auto max-w-6xl px-4 pb-8 pt-3 lg:px-7 lg:pt-6" x-data="walletPage()" data-csrf="{{ csrf_token }}">
+  <div class="grid gap-5 lg:grid-cols-[1fr_21rem]">
 
-    <h1 class="mb-3 text-lg font-bold tracking-tight text-ink lg:hidden">Wallet</h1>
+    <!-- ============ MAIN COLUMN ============ -->
+    <div class="min-w-0 space-y-4">
 
-    <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_1.5fr]">
-        <div>
-
-            <!-- CURRENCY TABS -->
-            {% if wallets %}
-                <div class="mb-3 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                    {% for w in wallets %}
-                        <button @click="activeWalletCode = '{{ w.currency.code|escapejs }}'"
-                                :class="activeWalletCode === '{{ w.currency.code|escapejs }}' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'"
-                                class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">
-                            {{ w.currency.code }}
-                        </button>
-                    {% endfor %}
-                </div>
-
-                <!-- BALANCE CARD -->
-                <div class="relative mb-4 overflow-hidden rounded-3xl bg-gradient-to-br from-accent-600 via-accent-500 to-accent-400 p-5 text-white shadow-card">
-                    <div class="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10"></div>
-                    <div class="absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-white/10"></div>
-
-                    <div class="relative flex items-center justify-between">
-                        <span class="text-[10px] font-medium uppercase tracking-wide text-white/80" x-text="activeWallet.name + ' balance'"></span>
-                        <span class="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold" x-text="activeWallet.code"></span>
-                    </div>
-
-                    <p class="relative mt-2 text-[30px] font-extrabold tracking-tight">
-                        <span x-text="activeWallet.symbol"></span><span x-text="Number(activeWallet.balance).toLocaleString(undefined, {minimumFractionDigits: 2})"></span>
-                    </p>
-
-                    <div class="relative mt-4 flex items-center gap-4 border-t border-white/15 pt-3">
-                        <div>
-                            <p class="text-[9px] uppercase tracking-wide text-white/70">In</p>
-                            <p class="text-[13px] font-semibold" x-text="activeWallet.symbol + moneyIn.toLocaleString(undefined, {minimumFractionDigits: 2})"></p>
-                        </div>
-                        <div class="h-6 w-px bg-white/20"></div>
-                        <div>
-                            <p class="text-[9px] uppercase tracking-wide text-white/70">Out</p>
-                            <p class="text-[13px] font-semibold" x-text="activeWallet.symbol + moneyOut.toLocaleString(undefined, {minimumFractionDigits: 2})"></p>
-                        </div>
-                        <div class="h-6 w-px bg-white/20" x-show="pendingCount > 0"></div>
-                        <div x-show="pendingCount > 0">
-                            <p class="text-[9px] uppercase tracking-wide text-white/70">Pending</p>
-                            <p class="text-[13px] font-semibold" x-text="pendingCount"></p>
-                        </div>
-                    </div>
-                </div>
-            {% else %}
-                <div class="mb-4 rounded-3xl border border-dashed border-line bg-surface p-5 text-center">
-                    <p class="text-[12px] text-muted">No wallet has been set up yet.</p>
-                </div>
-            {% endif %}
-
-            <!-- QUICK ACTIONS -->
-            <div class="mb-5 grid grid-cols-4 gap-1.5 lg:grid-cols-2 lg:gap-2">
-                <a href="{% url 'top_up' %}" class="focus-ring flex flex-col items-center gap-1 rounded-2xl border border-line bg-white py-2.5 shadow-card transition hover:bg-surface lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3.5">
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="arrow-down-to-line" class="h-4 w-4"></i></span>
-                    <span class="text-[10px] font-medium text-ink lg:text-[12px]">Top up</span>
-                </a>
-                <a href="{% url 'transfer' %}" class="focus-ring flex flex-col items-center gap-1 rounded-2xl border border-line bg-white py-2.5 shadow-card transition hover:bg-surface lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3.5">
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="landmark" class="h-4 w-4"></i></span>
-                    <span class="text-[10px] font-medium text-ink lg:text-[12px]">Transfer</span>
-                </a>
-                <a href="{% url 'withdraw' %}" class="focus-ring flex flex-col items-center gap-1 rounded-2xl border border-line bg-white py-2.5 shadow-card transition hover:bg-surface lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3.5">
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="arrow-up-from-line" class="h-4 w-4"></i></span>
-                    <span class="text-[10px] font-medium text-ink lg:text-[12px]">Withdraw</span>
-                </a>
-                <a href="{% url 'global_pay' %}" class="focus-ring flex flex-col items-center gap-1 rounded-2xl border border-line bg-white py-2.5 shadow-card transition hover:bg-surface lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3.5">
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="send" class="h-4 w-4"></i></span>
-                    <span class="text-[10px] font-medium text-ink lg:text-[12px]">Send</span>
-                </a>
-                <a href="{% url 'currency_converter' %}" class="focus-ring flex flex-col items-center gap-1 rounded-2xl border border-line bg-white py-2.5 shadow-card transition hover:bg-surface lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3.5">
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="repeat" class="h-4 w-4"></i></span>
-                    <span class="text-[10px] font-medium text-ink lg:text-[12px]">Convert</span>
-                </a>
-                <a href="{% url 'airtime_purchase' %}" class="focus-ring flex flex-col items-center gap-1 rounded-2xl border border-line bg-white py-2.5 shadow-card transition hover:bg-surface lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3.5">
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="smartphone" class="h-4 w-4"></i></span>
-                    <span class="text-[10px] font-medium text-ink lg:text-[12px]">Airtime</span>
-                </a>
-                <a href="{% url 'data_purchase' %}" class="focus-ring flex flex-col items-center gap-1 rounded-2xl border border-line bg-white py-2.5 shadow-card transition hover:bg-surface lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3.5">
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="wifi" class="h-4 w-4"></i></span>
-                    <span class="text-[10px] font-medium text-ink lg:text-[12px]">Data</span>
-                </a>
-                <a href="{% url 'cards_and_accounts' %}" class="focus-ring flex flex-col items-center gap-1 rounded-2xl border border-line bg-white py-2.5 shadow-card transition hover:bg-surface lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3.5">
-                    <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-50 text-accent-600"><i data-lucide="credit-card" class="h-4 w-4"></i></span>
-                    <span class="text-[10px] font-medium text-ink lg:text-[12px]">Cards</span>
-                </a>
+      <!-- Balance hero -->
+      <section class="rounded-[1.75rem] bg-brand-500 p-5 text-white md:p-6" aria-label="Balance">
+        <div class="flex flex-col gap-5 md:flex-row md:items-stretch md:justify-between">
+          <div class="min-w-0 flex-1 space-y-3">
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex flex-wrap gap-1.5" role="tablist" aria-label="Currency">
+                <template x-for="(w, i) in wallets" :key="w.code">
+                  <button type="button" role="tab" :aria-selected="i === sel" @click="sel = i" class="rf rounded-full px-3 py-1 text-xs font-bold transition" :class="i === sel ? 'bg-white text-brand-700' : 'bg-white/20 text-white hover:bg-white/30'" x-text="w.code"></button>
+                </template>
+              </div>
+              <button type="button" @click="toggleHide()" class="rf rounded-full p-2 text-white/85 hover:bg-white/15 md:hidden" :aria-label="hide ? 'Show balance' : 'Hide balance'"><i data-lucide="eye" class="h-[18px] w-[18px]"></i></button>
             </div>
-
-            <!-- INSIGHTS -->
-            <div x-show="walletTxns.length > 0" class="rounded-2xl border border-line bg-white p-4 shadow-card">
-                <p class="mb-3 text-[12px] font-semibold text-ink">Activity breakdown</p>
-                <div class="space-y-2.5">
-                    <template x-for="row in typeBreakdown" :key="row.type">
-                        <div>
-                            <div class="mb-1 flex items-center justify-between text-[11px]">
-                                <span class="text-ink" x-text="typeLabel(row.type)"></span>
-                                <span class="text-muted" x-text="row.count + ' · ' + row.pct + '%'"></span>
-                            </div>
-                            <div class="h-1.5 overflow-hidden rounded-full bg-surface">
-                                <div class="h-full rounded-full bg-accent-500" :style="'width: ' + row.pct + '%'"></div>
-                            </div>
-                        </div>
-                    </template>
-                </div>
+            <div>
+              <p class="text-xs text-white/80" x-text="cur.name ? cur.name + ' balance' : 'Balance'"></p>
+              <div class="flex items-center gap-2">
+                <p class="truncate font-display text-[34px] font-extrabold leading-tight md:text-[42px]" aria-live="polite">
+                  <template x-if="!hide"><span><span x-text="cur.symbol"></span><span x-text="whole"></span><span class="text-[0.55em] opacity-70" x-text="cents"></span></span></template>
+                  <template x-if="hide"><span>••••••</span></template>
+                </p>
+                <button type="button" @click="toggleHide()" class="rf hidden rounded-full p-2 text-white/85 hover:bg-white/15 md:block" :aria-label="hide ? 'Show balance' : 'Hide balance'"><i data-lucide="eye" class="h-[18px] w-[18px]"></i></button>
+              </div>
+              {% if week_change %}<p class="mt-1 inline-flex rounded-full bg-white/20 px-2.5 py-0.5 text-[11.5px] font-semibold">{% if week_change > 0 %}↑{% else %}↓{% endif %} {{ week_change|floatformat:2 }} this week</p>{% endif %}
             </div>
+            <div class="grid grid-cols-4 gap-2 pt-1 md:flex md:gap-2">
+              <a href="{% url 'transfer' %}" class="rf flex flex-col items-center gap-1.5 md:flex-row md:rounded-full md:bg-white md:px-4 md:py-2.5 md:text-brand-700"><span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-brand-700 md:hidden"><i data-lucide="arrow-up-right" class="h-5 w-5"></i></span><i data-lucide="arrow-up-right" class="hidden h-4 w-4 md:block"></i><span class="text-[11px] font-semibold md:text-[13px]">Send</span></a>
+              <a href="{% url 'top_up' %}" class="rf flex flex-col items-center gap-1.5 md:flex-row md:rounded-full md:bg-white/20 md:px-4 md:py-2.5"><span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/20 md:hidden"><i data-lucide="plus" class="h-5 w-5"></i></span><i data-lucide="plus" class="hidden h-4 w-4 md:block"></i><span class="text-[11px] font-semibold md:text-[13px]">Top up</span></a>
+              <a href="{% url 'withdraw' %}" class="rf flex flex-col items-center gap-1.5 md:flex-row md:rounded-full md:bg-white/20 md:px-4 md:py-2.5"><span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/20 md:hidden"><i data-lucide="landmark" class="h-5 w-5"></i></span><i data-lucide="landmark" class="hidden h-4 w-4 md:block"></i><span class="text-[11px] font-semibold md:text-[13px]">Withdraw</span></a>
+              <a href="{% url 'currency_converter' %}" class="rf flex flex-col items-center gap-1.5 md:flex-row md:rounded-full md:bg-white/20 md:px-4 md:py-2.5"><span class="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/20 md:hidden"><i data-lucide="repeat" class="h-5 w-5"></i></span><i data-lucide="repeat" class="hidden h-4 w-4 md:block"></i><span class="text-[11px] font-semibold md:text-[13px]">Convert</span></a>
+            </div>
+          </div>
+          {% if trend_points %}
+          <div class="md:w-64 md:self-end">
+            <svg viewBox="0 0 300 60" class="h-16 w-full md:h-24" preserveAspectRatio="none" role="img" aria-label="Balance over the last 7 days">
+              <path :d="area" fill="rgba(255,255,255,.16)"></path>
+              <path :d="line" fill="none" stroke="#fff" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></path>
+            </svg>
+            <div class="mt-1 hidden justify-between text-[10.5px] text-white/80 md:flex"><span>7 days ago</span><span>Today</span></div>
+          </div>
+          {% endif %}
+        </div>
+      </section>
+
+      <!-- Pending transfers / bills -->
+      {% for t in transactions %}{% if t.is_pending and t.poll_kind %}
+      <section class="rounded-2xl border border-brand-200 bg-white p-3.5" data-pending data-ref="{{ t.reference }}"
+               data-sync-url="{% if t.poll_kind == 'withdrawal' %}{% url 'sync_withdrawal_status' reference=t.reference %}{% else %}{% url 'sync_bill_status' reference=t.reference %}{% endif %}" aria-live="polite">
+        <div class="flex items-center gap-3">
+          <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800"><i data-lucide="clock" class="h-[18px] w-[18px]"></i></span>
+          <div class="min-w-0 flex-1"><p class="truncate text-[13px] font-semibold">{{ t.title }}</p><p class="text-xs text-muted">{{ t.signed }}{% if t.fee_note %} · {{ t.fee_note }}{% endif %} · being checked</p></div>
+          <span class="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">Processing</span>
+        </div>
+        <div class="mt-2.5 h-1 overflow-hidden rounded-full bg-brand-100"><div class="h-1 w-1/2 animate-pulse rounded-full bg-brand-500"></div></div>
+        <p class="mt-1.5 text-[11.5px] text-muted">Your balance is refunded automatically if this fails.</p>
+      </section>
+      {% endif %}{% endfor %}
+
+      <!-- Services -->
+      <nav class="flex gap-2 overflow-x-auto" aria-label="Wallet services">
+        <a href="{% url 'airtime_purchase' %}" class="rf flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-[12.5px] font-semibold hover:bg-tint"><i data-lucide="smartphone" class="h-4 w-4 text-brand-600"></i> Airtime</a>
+        <a href="{% url 'data_purchase' %}" class="rf flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-[12.5px] font-semibold hover:bg-tint"><i data-lucide="wifi" class="h-4 w-4 text-brand-600"></i> Data</a>
+        <a href="{% url 'cards_and_accounts' %}" class="rf flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-[12.5px] font-semibold hover:bg-tint"><i data-lucide="credit-card" class="h-4 w-4 text-brand-600"></i> Cards</a>
+        <a href="{% url 'bank_accounts' %}" class="rf flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-[12.5px] font-semibold hover:bg-tint"><i data-lucide="landmark" class="h-4 w-4 text-brand-600"></i> Banks</a>
+        <a href="{% url 'global_pay' %}" class="rf flex shrink-0 items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-[12.5px] font-semibold hover:bg-tint"><i data-lucide="send" class="h-4 w-4 text-brand-600"></i> Pay a user</a>
+      </nav>
+
+      <!-- Activity -->
+      <section class="rounded-3xl border border-line bg-white" aria-label="Activity">
+        <div class="flex flex-wrap items-center justify-between gap-2 px-4 pb-2 pt-4 md:px-5">
+          <h2 class="font-display text-[17px] font-extrabold tracking-tight">Activity</h2>
+          <div class="flex gap-1.5 overflow-x-auto" role="tablist" aria-label="Filter activity">
+            <template x-for="f in [['all','All'],['in','Money in'],['out','Money out'],['pending','Pending']]" :key="f[0]">
+              <button type="button" role="tab" :aria-selected="filter === f[0]" @click="filter = f[0]" class="rf shrink-0 rounded-full border px-3 py-1 text-[12px] font-semibold transition" :class="filter === f[0] ? 'border-ink bg-ink text-white' : 'border-line text-muted hover:bg-tint hover:text-ink'" x-text="f[1]"></button>
+            </template>
+          </div>
         </div>
 
-        <!-- TRANSACTION HISTORY -->
-        <div>
-            <h2 class="mb-2.5 text-[13px] font-semibold text-ink">Transaction history</h2>
-
-            <div class="mb-2.5 flex h-9 items-center gap-2 rounded-xl bg-surface px-3">
-                <i data-lucide="search" class="h-3.5 w-3.5 shrink-0 text-muted"></i>
-                <input type="text" x-model="q" placeholder="Search by reference or note" autocomplete="off" class="w-full bg-transparent text-[12px] text-ink placeholder-muted focus:outline-none">
-            </div>
-
-            <div class="mb-3 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                <button @click="tab = 'all'" :class="tab === 'all' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">All</button>
-                <button @click="tab = 'in'" :class="tab === 'in' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">Money in</button>
-                <button @click="tab = 'out'" :class="tab === 'out' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">Money out</button>
-                <button @click="tab = 'pending'" :class="tab === 'pending' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">Pending</button>
-            </div>
-
-            {% if transactions %}
-                {% regroup transactions by created_at|date:"Y-m-d" as date_groups %}
-                {% now "Y-m-d" as today_str %}
-
-                <div class="space-y-4">
-                    {% for group in date_groups %}
-                        <div>
-                            <p class="mb-1.5 px-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
-                                {% if group.grouper == today_str %}Today{% else %}{{ group.list.0.created_at|date:"d M Y" }}{% endif %}
-                            </p>
-
-                            <div class="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-white shadow-card">
-                                {% for txn in group.list %}
-                                    <div x-show="isVisible('{{ txn.id }}')"
-                                         x-transition
-                                         {% if txn.status == 'pending' %}
-                                            {% if txn.transaction_type == 'withdrawal' %}data-sync-url="{% url 'sync_withdrawal_status' txn.reference %}"
-                                            {% elif txn.transaction_type == 'airtime' or txn.transaction_type == 'data' %}data-sync-url="{% url 'sync_bill_status' txn.reference %}"{% endif %}
-                                         {% endif %}
-                                         class="p-3.5">
-                                        <div class="flex items-start gap-2.5">
-                                            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full
-                                                         {% if txn.transaction_type == 'top_up' or txn.transaction_type == 'refund' %}bg-emerald-50 text-emerald-600
-                                                         {% elif txn.transaction_type == 'withdrawal' %}bg-orange-50 text-orange-600
-                                                         {% elif txn.transaction_type == 'fx' %}bg-sky-50 text-sky-600
-                                                         {% elif txn.transaction_type == 'airtime' or txn.transaction_type == 'data' or txn.transaction_type == 'card_funding' %}bg-violet-50 text-violet-600
-                                                         {% elif txn.sender_id == request.user.id %}bg-red-50 text-red-500
-                                                         {% else %}bg-emerald-50 text-emerald-600{% endif %}">
-                                                {% if txn.transaction_type == 'top_up' %}<i data-lucide="arrow-down-to-line" class="h-4 w-4"></i>
-                                                {% elif txn.transaction_type == 'withdrawal' %}<i data-lucide="arrow-up-from-line" class="h-4 w-4"></i>
-                                                {% elif txn.transaction_type == 'fx' %}<i data-lucide="repeat" class="h-4 w-4"></i>
-                                                {% elif txn.transaction_type == 'hire_payment' %}<i data-lucide="briefcase" class="h-4 w-4"></i>
-                                                {% elif txn.transaction_type == 'group_transfer' %}<i data-lucide="users" class="h-4 w-4"></i>
-                                                {% elif txn.transaction_type == 'refund' %}<i data-lucide="undo-2" class="h-4 w-4"></i>
-                                                {% elif txn.transaction_type == 'airtime' %}<i data-lucide="phone" class="h-4 w-4"></i>
-                                                {% elif txn.transaction_type == 'data' %}<i data-lucide="wifi" class="h-4 w-4"></i>
-                                                {% elif txn.transaction_type == 'card_funding' %}<i data-lucide="credit-card" class="h-4 w-4"></i>
-                                                {% elif txn.sender_id == request.user.id %}<i data-lucide="arrow-up-right" class="h-4 w-4"></i>
-                                                {% else %}<i data-lucide="arrow-down-left" class="h-4 w-4"></i>{% endif %}
-                                            </span>
-
-                                            <div class="min-w-0 flex-1">
-                                                <div class="flex items-start justify-between gap-2">
-                                                    <div class="min-w-0">
-                                                        <p class="truncate text-[12px] font-semibold text-ink">
-                                                            {% if txn.transaction_type == 'top_up' %}Wallet top-up
-                                                            {% elif txn.transaction_type == 'withdrawal' %}Bank transfer
-                                                            {% elif txn.transaction_type == 'fx' %}Currency conversion
-                                                            {% elif txn.transaction_type == 'hire_payment' %}Hire payment
-                                                            {% elif txn.transaction_type == 'group_transfer' %}Group transfer
-                                                            {% elif txn.transaction_type == 'refund' %}Refund
-                                                            {% elif txn.transaction_type == 'airtime' %}Airtime purchase
-                                                            {% elif txn.transaction_type == 'data' %}Data bundle
-                                                            {% elif txn.transaction_type == 'card_funding' %}Card funding
-                                                            {% elif txn.sender_id == request.user.id %}To @{{ txn.recipient.username|default:"unknown" }}
-                                                            {% else %}From @{{ txn.sender.username|default:"unknown" }}{% endif %}
-                                                        </p>
-                                                        {% if txn.description %}<p class="truncate text-[10px] text-muted">{{ txn.description }}</p>{% endif %}
-                                                        <p class="mt-0.5 text-[10px] text-muted">{{ txn.created_at|date:"H:i" }}</p>
-                                                    </div>
-                                                    <div class="shrink-0 text-right">
-                                                        <p class="text-[12px] font-semibold" :class="amountClass('{{ txn.id }}')">
-                                                            <span x-text="sign('{{ txn.id }}')"></span>{{ txn.currency.symbol }}{{ txn.amount|floatformat:2 }}
-                                                        </p>
-                                                        {% if txn.fee and txn.fee > 0 %}
-                                                            <p class="text-[9px] text-muted">+ {{ txn.currency.symbol }}{{ txn.fee|floatformat:2 }} fee</p>
-                                                        {% endif %}
-                                                        <span class="mt-0.5 inline-block rounded-full px-2 py-0.5 text-[9px] font-medium
-                                                                     {% if txn.status == 'completed' %}bg-emerald-50 text-emerald-600
-                                                                     {% elif txn.status == 'pending' %}bg-amber-50 text-amber-600
-                                                                     {% elif txn.status == 'failed' %}bg-red-50 text-red-600
-                                                                     {% elif txn.status == 'reversed' %}bg-orange-50 text-orange-600
-                                                                     {% else %}bg-surface text-muted{% endif %}">
-                                                            {{ txn.get_status_display }}
-                                                        </span>
-                                                    </div>
-                                                </div>
-
-                                                {% if txn.status == 'pending' and txn.transaction_type == 'withdrawal' or txn.status == 'pending' and txn.transaction_type == 'airtime' or txn.status == 'pending' and txn.transaction_type == 'data' %}
-                                                    <p class="mt-1.5 text-[10px] text-amber-600">Checking with the payment network… this page updates on its own.</p>
-                                                {% elif txn.status == 'failed' and txn.transaction_type == 'withdrawal' %}
-                                                    <p class="mt-1.5 text-[10px] text-muted">This transfer didn't go through. The amount and fee were refunded to your wallet.</p>
-                                                {% endif %}
-
-                                                <button type="button" onclick="copyToClipboard('{{ txn.reference }}', this)"
-                                                        class="copy-target focus-ring mt-2 flex items-center gap-1.5 rounded-lg bg-surface px-2 py-1.5 text-left transition hover:bg-line/60" aria-label="Copy transaction reference">
-                                                    <span class="font-mono text-[10px] text-muted">{{ txn.reference }}</span>
-                                                    <i data-lucide="copy" class="copy-icon h-3 w-3 shrink-0 text-muted"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                    {% endfor %}
-                </div>
-            {% else %}
-                <div class="flex flex-col items-center gap-2 rounded-2xl border border-line bg-white py-14 text-center shadow-card">
-                    <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50"><i data-lucide="receipt" class="h-6 w-6 text-accent-500"></i></div>
-                    <p class="text-[13px] font-semibold text-ink">No transactions yet</p>
-                    <p class="max-w-xs text-[11px] leading-5 text-muted">Top up your wallet or send a payment to get started.</p>
-                </div>
-            {% endif %}
+        {% if transactions %}
+        <ul class="px-2 pb-2 md:px-3">
+          {% for t in transactions %}
+          <li data-txn data-dir="{{ t.direction }}" data-pending="{% if t.is_pending %}1{% else %}0{% endif %}" x-show="match($el.dataset)">
+            {% if t.receipt_ref %}<a href="{% url 'receipt_detail' reference=t.receipt_ref %}" class="rf flex items-center gap-3 rounded-2xl px-2 py-2.5 transition hover:bg-tint">{% else %}<div class="flex items-center gap-3 rounded-2xl px-2 py-2.5">{% endif %}
+              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.95rem] {% if t.direction == 'in' %}bg-cash-100 text-cash-600{% else %}bg-brand-50 text-brand-600{% endif %}"><i data-lucide="{{ t.icon }}" class="h-[18px] w-[18px]"></i></span>
+              <span class="min-w-0 flex-1"><span class="block truncate text-[14px] font-semibold">{{ t.title }}</span><span class="block truncate text-xs text-muted">{{ t.subtitle }} · {{ t.created_at|date:"M j, g:i A" }}</span></span>
+              <span class="flex shrink-0 flex-col items-end gap-1">
+                <span class="text-[14px] font-bold {% if t.direction == 'in' %}text-cash-600{% endif %}">{{ t.signed }}</span>
+                {% if t.status_key == 'pending' %}<span class="rounded-full bg-amber-100 px-2 py-0.5 text-[10.5px] font-semibold text-amber-800">Processing</span>
+                {% elif t.status_key == 'failed' %}<span class="rounded-full bg-red-50 px-2 py-0.5 text-[10.5px] font-semibold text-red-700">Failed</span>
+                {% else %}<span class="rounded-full bg-cash-100 px-2 py-0.5 text-[10.5px] font-semibold text-cash-600">Completed</span>{% endif %}
+              </span>
+            {% if t.receipt_ref %}</a>{% else %}</div>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        <p x-show="visibleCount === 0" x-cloak class="px-5 pb-6 pt-2 text-center text-sm text-muted">Nothing here yet.</p>
+        {% else %}
+        <div class="px-6 pb-10 pt-6 text-center">
+          <span class="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-100 text-brand-600"><i data-lucide="wallet" class="h-6 w-6"></i></span>
+          <p class="mt-3 font-display text-lg font-bold">No activity yet</p>
+          <p class="mx-auto mt-1 max-w-xs text-sm text-muted">Top up your wallet to send money, pay for jobs and buy airtime.</p>
+          <a href="{% url 'top_up' %}" class="rf mt-4 inline-block rounded-full bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-600">Top up</a>
         </div>
+        {% endif %}
+      </section>
     </div>
-</div>
 
-<div id="copy-toast" class="pointer-events-none fixed bottom-20 left-1/2 z-50 -translate-x-1/2 translate-y-2 rounded-full bg-ink px-4 py-2 text-[11px] font-medium text-white opacity-0 lg:bottom-8" role="status" aria-live="polite">
-    Copied to clipboard
+    <!-- ============ SIDE COLUMN ============ -->
+    <aside class="space-y-4">
+      <section class="rounded-3xl border border-line bg-white p-2" aria-label="Your wallets">
+        <p class="px-3 pb-1 pt-3 text-[11px] font-bold uppercase tracking-wider text-muted">Your wallets</p>
+        <template x-for="(w, i) in wallets" :key="w.code">
+          <button type="button" @click="sel = i; window.scrollTo({ top: 0, behavior: 'smooth' })" class="rf flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left transition" :class="i === sel ? 'bg-brand-50' : 'hover:bg-tint'">
+            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[11px] font-bold" :class="i === sel ? 'bg-brand-500 text-white' : 'bg-brand-100 text-brand-700'" x-text="w.code"></span>
+            <span class="min-w-0 flex-1 truncate text-[13.5px] font-semibold" x-text="w.name"></span>
+            <span class="text-[13.5px] font-bold" x-text="hide ? '••••' : w.symbol + fmt(w.balance)"></span>
+          </button>
+        </template>
+      </section>
+
+      <section class="rounded-3xl border border-line bg-white p-4" aria-label="Receive by bank transfer">
+        <div class="flex items-center justify-between"><p class="text-[11px] font-bold uppercase tracking-wider text-muted">Receive by bank transfer</p>{% if virtual_account %}<span class="rounded-full bg-cash-100 px-2 py-0.5 text-[10.5px] font-semibold text-cash-600">Active</span>{% endif %}</div>
+        {% if virtual_account %}
+          <div class="mt-2 flex items-center justify-between gap-2">
+            <p class="font-display text-[24px] font-extrabold tracking-wider">{{ virtual_account.account_number }}</p>
+            <button type="button" @click="copy('{{ virtual_account.account_number }}')" class="rf rounded-full p-2 text-brand-600 hover:bg-brand-50" aria-label="Copy account number"><i data-lucide="copy" class="h-[18px] w-[18px]"></i></button>
+          </div>
+          <p class="text-xs text-muted">{{ virtual_account.bank_name }} · {{ virtual_account.account_name }}<span x-show="copied" x-cloak class="ml-2 font-semibold text-cash-600">Copied</span></p>
+        {% else %}
+          <p class="mt-2 text-sm text-muted">Get a bank account number that tops up your wallet when anyone sends money to it.</p>
+          <a href="{% url 'cards_and_accounts' %}" class="rf mt-3 inline-block rounded-full border border-brand-200 px-4 py-2 text-[12.5px] font-semibold text-brand-700 hover:bg-brand-50">Set up account</a>
+        {% endif %}
+      </section>
+
+      <section aria-label="Virtual card">
+        {% if virtual_card %}
+        <div class="rounded-3xl bg-brand-700 p-4 text-white">
+          <div class="flex items-center justify-between text-xs text-white/85"><span>{{ virtual_card.currency.code }} virtual card</span><i data-lucide="credit-card" class="h-5 w-5"></i></div>
+          <p class="mt-4 font-display text-xl font-bold tracking-[0.12em]">{{ virtual_card.masked_pan }}</p>
+          <div class="mt-4 flex items-end justify-between">
+            <div><p class="text-[10.5px] text-white/80">Card balance</p><p class="font-bold">{{ virtual_card.currency.symbol }}{{ virtual_card.balance|floatformat:2 }}</p></div>
+            <a href="{% url 'cards_and_accounts' %}" class="rf rounded-full bg-white/20 px-3.5 py-1.5 text-xs font-semibold hover:bg-white/30">Manage</a>
+          </div>
+        </div>
+        {% else %}
+        <div class="rounded-3xl border border-dashed border-brand-200 p-4 text-center">
+          <i data-lucide="credit-card" class="mx-auto h-6 w-6 text-brand-500"></i>
+          <p class="mt-2 text-sm font-semibold">Get a USD virtual card</p>
+          <p class="mt-0.5 text-xs text-muted">Pay online in dollars from your wallet.</p>
+          <a href="{% url 'cards_and_accounts' %}" class="rf mt-3 inline-block rounded-full bg-brand-500 px-4 py-2 text-[12.5px] font-semibold text-white hover:bg-brand-600">Create card</a>
+        </div>
+        {% endif %}
+      </section>
+    </aside>
+  </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
-    // ---------- copy reference ----------
-    let toastTimeout = null;
-    function showCopyToast() {
-        const toast = document.getElementById('copy-toast');
-        clearTimeout(toastTimeout);
-        toast.style.opacity = '1'; toast.style.transform = 'translateX(-50%) translateY(0)';
-        toastTimeout = setTimeout(() => { toast.style.opacity = '0'; toast.style.transform = 'translateX(-50%) translateY(8px)'; }, 1500);
-    }
-    function flashCopiedIcon(button) {
-        const icon = button.querySelector('.copy-icon');
-        if (!icon) return;
-        icon.setAttribute('data-lucide', 'check'); icon.classList.add('text-emerald-600'); lucide.createIcons();
-        setTimeout(() => { icon.setAttribute('data-lucide', 'copy'); icon.classList.remove('text-emerald-600'); lucide.createIcons(); }, 1200);
-    }
-    function copyToClipboard(text, button) {
-        const done = () => { showCopyToast(); if (button) flashCopiedIcon(button); };
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
-        } else { fallbackCopy(text, done); }
-    }
-    function fallbackCopy(text, done) {
-        const textarea = document.createElement('textarea');
-        textarea.value = text; textarea.style.position = 'fixed'; textarea.style.opacity = '0';
-        document.body.appendChild(textarea); textarea.focus(); textarea.select();
-        try { document.execCommand('copy'); done(); } catch (err) {}
-        document.body.removeChild(textarea);
-    }
-
-    // ---------- settle pending bank transfers / airtime / data ----------
-    // Each pending row carries data-sync-url. We ask the server to check with
-    // Flutterwave; once anything settles (completed, or failed + refunded) reload.
-    (function () {
-        const rows = Array.from(document.querySelectorAll('[data-sync-url]'));
-        if (!rows.length) return;
-
-        const csrfInput = document.querySelector('#wallet-csrf input[name=csrfmiddlewaretoken]');
-        const csrf = csrfInput ? csrfInput.value : '';
-        let attempts = 0;
-
-        async function poll() {
-            attempts += 1;
-            let settled = false;
-            let stillPending = false;
-
-            for (const row of rows) {
-                if (row.dataset.done) continue;
-                try {
-                    const response = await fetch(row.dataset.syncUrl, {
-                        method: 'POST',
-                        headers: { 'X-CSRFToken': csrf },
-                        credentials: 'same-origin',
-                    });
-                    const data = await response.json();
-                    if (data.status === 'success' && data.transaction_status && data.transaction_status !== 'pending') {
-                        row.dataset.done = '1';
-                        settled = true;
-                    } else {
-                        stillPending = true;
-                    }
-                } catch (err) {
-                    stillPending = true;
-                }
-            }
-
-            if (settled) { window.location.reload(); return; }
-            if (stillPending && attempts < 30) setTimeout(poll, attempts < 5 ? 4000 : 10000);
+function walletPage() {
+  return {
+    wallets: window.__wallets || [], sel: 0, hide: false, filter: 'all', visibleCount: 1, copied: false, series: [],
+    init() {
+      try { this.hide = localStorage.getItem('pheral_hide_bal') === '1'; } catch (e) {}
+      const el = document.getElementById('trend-data');
+      if (el) { try { this.series = JSON.parse(el.textContent) || []; } catch (e) {} }
+      this.$watch('filter', () => this.count());
+      this.count();
+      this.poll();
+    },
+    get cur() { return this.wallets[this.sel] || { code: '', name: '', symbol: '', balance: 0 }; },
+    fmt(n) { return Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
+    get whole() { return this.fmt(this.cur.balance).split('.')[0]; },
+    get cents() { return '.' + (this.fmt(this.cur.balance).split('.')[1] || '00'); },
+    toggleHide() { this.hide = !this.hide; try { localStorage.setItem('pheral_hide_bal', this.hide ? '1' : '0'); } catch (e) {} },
+    get pts() {
+      const s = this.series; if (s.length < 2) return [];
+      const lo = Math.min(...s), hi = Math.max(...s), span = (hi - lo) || 1;
+      return s.map((v, i) => [(i / (s.length - 1)) * 300, 52 - ((v - lo) / span) * 44]);
+    },
+    get line() { return this.pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' '); },
+    get area() { return this.pts.length ? this.line + ' L300 60 L0 60Z' : ''; },
+    match(d) {
+      if (this.filter === 'in') return d.dir === 'in';
+      if (this.filter === 'out') return d.dir === 'out';
+      if (this.filter === 'pending') return d.pending === '1';
+      return true;
+    },
+    count() {
+      this.$nextTick(() => {
+        this.visibleCount = [...this.$root.querySelectorAll('[data-txn]')].filter(r => r.style.display !== 'none').length;
+        if (window.lucide) lucide.createIcons();
+      });
+    },
+    async copy(text) {
+      try { await navigator.clipboard.writeText(text); this.copied = true; setTimeout(() => this.copied = false, 1800); } catch (e) {}
+    },
+    poll() {
+      const cards = [...document.querySelectorAll('[data-pending]')];
+      if (!cards.length) return;
+      let tries = 0;
+      const tick = async () => {
+        if (++tries > 20) return;
+        let changed = false;
+        for (const c of cards) {
+          try {
+            const r = await fetch(c.dataset.syncUrl, { method: 'POST', headers: { 'X-CSRFToken': this.$root.dataset.csrf, 'X-Requested-With': 'XMLHttpRequest' } });
+            const d = await r.json();
+            if (d.status === 'success' && d.transaction_status && d.transaction_status !== 'pending') changed = true;
+          } catch (e) {}
         }
-
-        poll();
-    })();
+        if (changed) location.reload(); else setTimeout(tick, 8000);
+      };
+      setTimeout(tick, 5000);
+    },
+  };
+}
 </script>
 {% endblock %}
