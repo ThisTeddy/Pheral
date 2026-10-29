@@ -477,7 +477,7 @@ LOGGING = {
 # provider is wired up. REMOVE THIS ENTIRE FEATURE once real
 # SMS is live and you have paying users with wallet balances.
 # Added: [today's date] — reminder to rip this out.
-MASTER_OTP_CODE = "555555"  # change this to your own random string
+MASTER_OTP_CODE = "171105"  # change this to your own random string
 
 
 FLUTTERWAVE_SECRET_KEY = os.getenv("FLW_SECRET_KEY", "")
