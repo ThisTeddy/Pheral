@@ -50,7 +50,8 @@
 {% block content %}
 {% now "Y-m-d" as today_str %}
 
-<div x-data="pheralChat()" x-init="init()"
+{# NOTE: no x-init here. Alpine calls init() automatically; adding x-init="init()" ran it twice (two sockets, duplicate bubbles). #}
+<div x-data="pheralChat()"
      data-presence="{% if other_online %}online{% elif other_presence.last_seen_at %}last seen {% if other_presence.last_seen_at|date:'Y-m-d' == today_str %}today at {{ other_presence.last_seen_at|date:'g:i A' }}{% else %}{{ other_presence.last_seen_at|date:'j M' }}{% endif %}{% endif %}"
      class="chat-shell flex flex-col bg-white">
 
@@ -258,7 +259,7 @@
                     {% endif %}
 
                 {% empty %}
-                    <div class="flex justify-center px-6 py-20">
+                    <div class="empty-state flex justify-center px-6 py-20">
                         <span class="rounded-lg bg-white/90 px-4 py-2 text-center text-[12.5px] text-ink/60 shadow-sm">
                             No messages yet. Say hi 👋
                         </span>
@@ -425,6 +426,7 @@
     window.PHERAL_CHAT = {
         currentUserId: {{ current_user.id }},
         wsPath: "/ws/chat/{{ conversation.id }}/",
+        postUrl: "{% url 'chat' conversation.id %}",
         typingUrl: "{% url 'chat_typing' conversation.id %}",
         heartbeatUrl: "{% url 'presence_heartbeat' %}",
         deleteUrl: "{% url 'delete_message' 0 %}",
@@ -432,6 +434,26 @@
 
     const TICK_SINGLE = '<svg viewBox="0 0 18 12" class="h-[11px] w-[16px]" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 6.5l3 3L14 2.5"/></svg>';
     const TICK_DOUBLE = '<svg viewBox="0 0 18 12" class="h-[11px] w-[16px]" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M1 6.5l3 3L10.5 2.5M6.5 8.7l.8.8L14 2.5"/></svg>';
+    const CHEVRON_SVG = '<svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+    const VOICE_PLAYER_HTML =
+        '<button type="button" @click="toggle()" class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-500 text-white">' +
+            '<svg x-show="!playing" viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>' +
+            '<svg x-show="playing" x-cloak viewBox="0 0 24 24" class="h-5 w-5" fill="currentColor"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>' +
+        '</button>' +
+        '<div class="min-w-0 flex-1">' +
+            '<div class="flex h-7 cursor-pointer items-center gap-[2px]" @click="seek($event)">' +
+                '<template x-for="(h, i) in bars" :key="i"><span class="w-[3px] shrink-0 rounded-full" :style="\'height:\' + h + \'%\'" :class="(i / bars.length) < progress ? \'bg-accent-500\' : \'bg-ink/25\'"></span></template>' +
+            '</div>' +
+            '<p class="text-[10.5px] text-ink/50" x-text="label"></p>' +
+        '</div>';
+
+    /* tiny DOM helper: text always goes through textContent, never innerHTML */
+    function mk(tag, cls, text) {
+        const e = document.createElement(tag);
+        if (cls) e.className = cls;
+        if (text !== undefined && text !== null) e.textContent = text;
+        return e;
+    }
 
     function renderTicks(root) {
         (root || document).querySelectorAll('.tick-wrap').forEach(function (el) {
@@ -493,7 +515,7 @@
             showJump: false, unseenCount: 0, lightboxUrl: null,
             emojiOpen: false, attachOpen: false, menuOpen: false,
             actions: { open: false, id: '', mine: false, type: '', text: '', preview: '' },
-            socket: null, socketReady: false, reconnectDelay: 1000,
+            socket: null, socketReady: false, reconnectDelay: 1000, _reconnectTimer: null, _started: false,
             isTouch: false, pendingReads: [],
             emojis: ['😀','😂','🥹','😍','😘','😎','🤔','😭','😅','🙏','👍','👎','👏','🙌','🔥','❤️','💜','🎉','💯','✨','😢','😮','🤝','💪','🥳','😴','🤩','😬','👀','✅','❌','💰','💸','🏦','📱','🎁','🙈','😇','😜','🤗'],
 
@@ -504,6 +526,10 @@
             get hasContent() { return this.content.trim().length > 0 || !!this.attachmentName; },
 
             init() {
+                // Safety net: never start twice, even if init() is somehow called again.
+                if (this._started) return;
+                this._started = true;
+
                 this.presenceText = this.$el.dataset.presence || '';
                 this.isTouch = window.matchMedia('(pointer: coarse)').matches;
                 renderTicks();
@@ -528,24 +554,31 @@
                 setInterval(beat, 60000);
 
                 document.addEventListener('visibilitychange', () => { if (!document.hidden) this.flushReads(); });
+                window.addEventListener('beforeunload', () => { try { if (this.socket) this.socket.close(1000); } catch (e) {} });
             },
 
             csrf() { return this.$refs.form.querySelector('[name=csrfmiddlewaretoken]').value; },
 
             /* ------------------------------------------------ socket */
             connectSocket() {
+                clearTimeout(this._reconnectTimer);
                 const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
                 let sock;
-                try { sock = new WebSocket(proto + '//' + location.host + cfg.wsPath); } catch (e) { return; }
+                try { sock = new WebSocket(proto + '//' + location.host + cfg.wsPath); }
+                catch (e) { this.scheduleReconnect(); return; }
                 this.socket = sock;
 
-                sock.addEventListener('open', () => { this.socketReady = true; this.reconnectDelay = 1000; this.flushReads(); });
-                sock.addEventListener('close', (ev) => {
-                    this.socketReady = false;
-                    if (ev.code >= 4000) return; // rejected (not logged in / not a participant)
-                    setTimeout(() => this.connectSocket(), this.reconnectDelay);
-                    this.reconnectDelay = Math.min(this.reconnectDelay * 2, 15000);
+                sock.addEventListener('open', () => {
+                    if (this.socket !== sock) return;
+                    this.socketReady = true; this.reconnectDelay = 1000; this.flushReads();
                 });
+                sock.addEventListener('close', (ev) => {
+                    if (this.socket !== sock) return;           // stale socket
+                    this.socketReady = false;
+                    if (ev.code >= 4000 && ev.code < 5000) return; // rejected (not logged in / not a participant): don't retry
+                    this.scheduleReconnect();
+                });
+                sock.addEventListener('error', () => { /* 'close' follows and handles the retry */ });
                 sock.addEventListener('message', (ev) => {
                     let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
                     if (d.type === 'chat_message_event') this.onIncoming(d);
@@ -553,7 +586,18 @@
                     else if (d.type === 'read_receipt_event') this.onReadReceipt(d);
                 });
             },
-            sendSocket(payload) { if (this.socketReady) this.socket.send(JSON.stringify(payload)); },
+            scheduleReconnect() {
+                clearTimeout(this._reconnectTimer);
+                this._reconnectTimer = setTimeout(() => this.connectSocket(), this.reconnectDelay);
+                this.reconnectDelay = Math.min(this.reconnectDelay * 2, 15000);
+            },
+            sendSocket(payload) {
+                if (this.socketReady && this.socket && this.socket.readyState === 1) {
+                    this.socket.send(JSON.stringify(payload));
+                    return true;
+                }
+                return false;
+            },
 
             /* ------------------------------------------------ scrolling */
             nearBottom() { const el = this.$refs.scroll; return el.scrollHeight - el.scrollTop - el.clientHeight < 140; },
@@ -583,6 +627,7 @@
 
             /* ------------------------------------------------ incoming live messages */
             onIncoming(d) {
+                if (document.getElementById('msg-' + d.id)) return;   // already on the page (server-rendered or duplicate event)
                 const mine = d.sender_id === cfg.currentUserId;
                 const stick = mine || this.nearBottom();
                 this.appendMessage(d, mine);
@@ -594,8 +639,10 @@
             },
             flushReads() {
                 if (!this.socketReady || document.hidden || !this.nearBottom() || !this.pendingReads.length) return;
-                this.pendingReads.forEach((id) => this.sendSocket({ type: 'read_receipt', message_id: id }));
+                // Reading the newest message implies everything before it, so one receipt is enough.
+                const newest = Math.max.apply(null, this.pendingReads);
                 this.pendingReads = [];
+                this.sendSocket({ type: 'read_receipt', message_id: newest });
             },
             onReadReceipt(d) {
                 // Reading message N means everything of mine up to N has been read
@@ -606,43 +653,116 @@
                 });
                 renderTicks(this.$refs.column);
             },
-            appendMessage(d, mine) {
-                const rows = this.$refs.column.querySelectorAll('.msg-row');
-                const last = rows[rows.length - 1];
-                const grouped = last && last.dataset.senderId === String(d.sender_id);
 
-                const row = document.createElement('div');
+            appendMessage(d, mine) {
+                const type = d.message_type || 'text';
+                const col = this.$refs.column;
+                const empty = col.querySelector('.empty-state');
+                if (empty) empty.remove();
+
+                const rows = col.querySelectorAll('.msg-row');
+                const last = rows[rows.length - 1];
+                const grouped = !!last && last.dataset.senderId === String(d.sender_id);
+                const url = d.attachment_url || '';
+                const text = d.content || '';
+
+                const row = mk('div', 'msg-row flex px-3 transition-transform duration-150 ' + (mine ? 'justify-end ' : 'justify-start ') + (grouped ? 'mt-0.5' : 'mt-2'));
                 row.id = 'msg-' + d.id;
-                row.className = 'msg-row flex px-3 transition-transform duration-150 ' + (mine ? 'justify-end ' : 'justify-start ') + (grouped ? 'mt-0.5' : 'mt-2');
                 row.dataset.messageId = d.id;
                 row.dataset.senderId = d.sender_id;
                 row.dataset.mine = mine ? '1' : '0';
-                row.dataset.type = 'text';
-                row.dataset.text = d.content;
+                row.dataset.type = type;
+                row.dataset.text = text;
                 row.dataset.senderName = mine ? 'You' : (d.sender_first_name || d.sender_username || '');
 
-                const bubble = document.createElement('div');
-                bubble.className = 'bubble relative max-w-[82%] rounded-lg px-2 pb-1.5 pt-1.5 text-[14px] leading-[1.35] text-ink shadow-sm lg:max-w-[65%] ' + (mine ? 'bubble-out' : 'bubble-in') + (grouped ? '' : ' tail');
-                bubble.innerHTML =
-                    '<button type="button" class="bubble-chevron" aria-label="Message options"><svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>' +
-                    (d.reply_to_id ? '<div class="quote mb-1 overflow-hidden rounded-md border-l-4 border-accent-500 bg-black/5 px-2 py-1" data-reply-id="' + d.reply_to_id + '"><p class="q-name text-[12px] font-semibold text-accent-600"></p><p class="q-text truncate text-[12.5px] text-ink/70"></p></div>' : '') +
-                    '<p class="msg-text whitespace-pre-wrap break-words"></p>' +
-                    '<span class="absolute bottom-1 right-2 flex items-center gap-0.5 text-[10.5px] text-ink/50"><span class="msg-time"></span>' + (mine ? '<span class="tick-wrap" data-state="sent"></span>' : '') + '</span>';
+                const bubble = mk('div', 'bubble relative max-w-[82%] rounded-lg px-2 pb-1.5 pt-1.5 text-[14px] leading-[1.35] text-ink shadow-sm lg:max-w-[65%] ' + (mine ? 'bubble-out' : 'bubble-in') + (grouped ? '' : ' tail'));
 
+                const chev = mk('button', 'bubble-chevron');
+                chev.type = 'button'; chev.setAttribute('aria-label', 'Message options'); chev.innerHTML = CHEVRON_SVG;
+                bubble.appendChild(chev);
+
+                // quoted reply
                 if (d.reply_to_id) {
-                    bubble.querySelector('.q-name').textContent = d.reply_to_sender === undefined || d.reply_to_sender === null ? '' : d.reply_to_sender;
-                    bubble.querySelector('.q-text').textContent = d.reply_to_preview || '';
+                    const q = mk('div', 'quote mb-1 overflow-hidden rounded-md border-l-4 border-accent-500 bg-black/5 px-2 py-1');
+                    q.dataset.replyId = d.reply_to_id;
+                    q.appendChild(mk('p', 'text-[12px] font-semibold text-accent-600',
+                        d.reply_to_sender_id === cfg.currentUserId ? 'You' : (d.reply_to_sender || 'Unknown')));
+                    q.appendChild(mk('p', 'truncate text-[12.5px] text-ink/70', d.reply_to_preview || ''));
+                    bubble.appendChild(q);
                 }
-                const p = bubble.querySelector('.msg-text');
-                p.appendChild(document.createTextNode(d.content));
-                const spacer = document.createElement('span');
-                spacer.className = 'inline-block ' + (mine ? 'w-[64px]' : 'w-[44px]');
-                p.appendChild(spacer);
-                bubble.querySelector('.msg-time').textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+                // attachment / cards
+                let overlayTime = false, needsSpacerRow = false, captionTopGap = false;
+                if (type === 'image' && url) {
+                    const b = mk('button', 'block w-full overflow-hidden rounded-md');
+                    b.type = 'button'; b.dataset.lightbox = url;
+                    const img = mk('img', 'max-h-80 w-full object-cover');
+                    img.src = url; img.alt = ''; img.loading = 'lazy';
+                    b.appendChild(img); bubble.appendChild(b);
+                    overlayTime = !text; captionTopGap = true;
+                } else if (type === 'video' && url) {
+                    const v = mk('video', 'max-h-80 w-full rounded-md bg-black');
+                    v.src = url; v.controls = true; v.preload = 'metadata'; v.setAttribute('playsinline', '');
+                    bubble.appendChild(v);
+                    needsSpacerRow = !text; captionTopGap = true;
+                } else if (type === 'voice' && url) {
+                    const w = mk('div', 'flex w-[236px] items-center gap-2.5 pr-1');
+                    w.setAttribute('x-data', 'voicePlayer(' + JSON.stringify(url) + ')');
+                    w.innerHTML = VOICE_PLAYER_HTML;
+                    bubble.appendChild(w); needsSpacerRow = true;
+                } else if (type === 'file' && url) {
+                    const a = mk('a', 'flex items-center gap-2.5 rounded-md bg-black/5 p-2');
+                    a.href = url; a.target = '_blank'; a.rel = 'noopener';
+                    a.innerHTML = '<span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-500 text-white"><i data-lucide="file-text" class="h-5 w-5"></i></span>' +
+                        '<span class="min-w-0 flex-1"><span class="fname block truncate text-[13px] font-medium"></span><span class="block text-[11px] text-ink/50">Tap to open</span></span>' +
+                        '<i data-lucide="download" class="h-4 w-4 shrink-0 text-ink/50"></i>';
+                    a.querySelector('.fname').textContent = d.file_name || 'Document';
+                    bubble.appendChild(a); needsSpacerRow = true;
+                } else if (type === 'payment') {
+                    const c = mk('div', 'flex min-w-[190px] items-center gap-2.5 rounded-md bg-black/5 p-2');
+                    c.innerHTML = '<span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-500 text-white"><i data-lucide="banknote" class="h-4 w-4"></i></span><div class="min-w-0"><p class="pay-text text-[13.5px] font-semibold"></p></div>';
+                    c.querySelector('.pay-text').textContent = text;
+                    if (d.receipt_url) {
+                        const r = mk('a', 'text-[11.5px] font-medium text-accent-600 underline', 'View receipt');
+                        r.href = d.receipt_url; c.querySelector('.min-w-0').appendChild(r);
+                    }
+                    bubble.appendChild(c); needsSpacerRow = true;
+                } else if (type === 'hire') {
+                    const c = mk('div', 'flex min-w-[190px] items-center gap-2.5 rounded-md bg-black/5 p-2');
+                    c.innerHTML = '<span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink text-white"><i data-lucide="briefcase" class="h-4 w-4"></i></span><p class="hire-text text-[13.5px] font-medium"></p>';
+                    c.querySelector('.hire-text').textContent = text;
+                    bubble.appendChild(c); needsSpacerRow = true;
+                } else if (type === 'agent') {
+                    const l = mk('p', 'mb-0.5 flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wide text-accent-600');
+                    l.innerHTML = '<i data-lucide="bot" class="h-3 w-3"></i> Agent';
+                    bubble.appendChild(l);
+                }
+
+                // text / caption (payment + hire already show their text inside the card)
+                if (text && type !== 'payment' && type !== 'hire') {
+                    const p = mk('p', (captionTopGap ? 'mt-1 ' : '') + 'whitespace-pre-wrap break-words');
+                    p.appendChild(document.createTextNode(text));
+                    p.appendChild(mk('span', 'inline-block ' + (mine ? 'w-[64px]' : 'w-[44px]')));
+                    bubble.appendChild(p);
+                }
+                if (needsSpacerRow) bubble.appendChild(mk('div', 'h-3.5'));
+
+                // time + ticks
+                const time = d.created_at || new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                const stamp = overlayTime
+                    ? mk('span', 'img-overlay absolute bottom-2.5 right-3.5 flex items-center gap-0.5 rounded-full bg-black/45 px-1.5 py-0.5 text-[10px] text-white')
+                    : mk('span', 'absolute bottom-1 right-2 flex items-center gap-0.5 text-[10.5px] text-ink/50');
+                stamp.appendChild(document.createTextNode(time));
+                if (mine) {
+                    const t = mk('span', 'tick-wrap'); t.dataset.state = 'sent';
+                    stamp.appendChild(t);
+                }
+                bubble.appendChild(stamp);
 
                 row.appendChild(bubble);
-                this.$refs.column.appendChild(row);
+                col.appendChild(row);
                 renderTicks(row);
+                if (window.lucide) lucide.createIcons();
             },
 
             /* ------------------------------------------------ composer */
@@ -669,14 +789,52 @@
                 const text = this.content.trim();
                 if (!text && !hasFile) return;
 
-                // Files (and any send while the socket is down) use a normal form POST.
-                if (hasFile || !this.socketReady) { this.nativeSubmit(); return; }
+                // Files upload in the background (no page reload); the view broadcasts the saved message.
+                if (hasFile) { this.uploadAttachment(); return; }
 
-                this.sendSocket({ type: 'chat_message', content: text, reply_to: this.replyId || null });
+                // Text: socket if it's really open, otherwise fall back to a normal POST.
+                const sent = this.sendSocket({ type: 'chat_message', content: text, reply_to: this.replyId || null });
+                if (!sent) { this.nativeSubmit(); return; }
+
                 this.content = '';
                 this.cancelReply();
                 this.$nextTick(() => this.resizeTextarea());
                 this.stopTyping();
+            },
+
+            /* background uploads (no page reload) */
+            async postForm(fd) {
+                try {
+                    const r = await fetch(cfg.postUrl, {
+                        method: 'POST', body: fd, credentials: 'same-origin',
+                        headers: { 'X-CSRFToken': this.csrf(), 'X-Requested-With': 'XMLHttpRequest' },
+                    });
+                    if (!r.ok) throw new Error('HTTP ' + r.status);
+                    // The saved message reaches us through the socket broadcast.
+                    // If the socket is down we can't receive it, so reload to show it.
+                    if (!this.socketReady) location.reload();
+                } catch (err) {
+                    alert("Couldn't send. Check your connection and try again.");
+                }
+            },
+            uploadAttachment() {
+                const fd = new FormData();
+                fd.append('content', this.content.trim());
+                fd.append('reply_to', this.replyId || '');
+                fd.append('attachment', this.$refs.attachmentInput.files[0]);
+                this.content = '';
+                this.clearAttachment();
+                this.cancelReply();
+                this.$nextTick(() => this.resizeTextarea());
+                this.stopTyping();
+                return this.postForm(fd);
+            },
+            uploadVoice(file) {
+                const fd = new FormData();
+                fd.append('reply_to', this.replyId || '');
+                fd.append('voice_note', file);
+                this.cancelReply();
+                return this.postForm(fd);
             },
 
             /* typing */
@@ -687,7 +845,7 @@
             },
             stopTyping() { clearTimeout(this._typingTimer); if (this._typingSent) { this._typingSent = false; this.sendTyping(false); } },
             sendTyping(v) {
-                if (this.socketReady) { this.sendSocket({ type: 'typing', typing: v }); return; }
+                if (this.sendSocket({ type: 'typing', typing: v })) return;
                 fetch(cfg.typingUrl, {
                     method: 'POST',
                     headers: { 'X-CSRFToken': this.csrf(), 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
@@ -735,9 +893,7 @@
                         const type = (this._rec.mimeType || 'audio/webm').split(';')[0];
                         const ext = type.indexOf('mp4') > -1 ? 'm4a' : 'webm';
                         const file = new File([new Blob(this._chunks, { type: type })], 'voice-note.' + ext, { type: type });
-                        const dt = new DataTransfer(); dt.items.add(file);
-                        this.$refs.voiceInput.files = dt.files;
-                        this.nativeSubmit();
+                        this.uploadVoice(file);
                     });
 
                     this._rec.start();

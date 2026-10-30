@@ -64,9 +64,96 @@ tailwind.config = { theme: { extend: {
   @keyframes mq{to{transform:translateX(-50%)}}
   @media (prefers-reduced-motion:reduce){.navpill::before,.shimmer::after,.marquee{animation:none}}
   summary::-webkit-details-marker{display:none}
+  /* Pheral Purple Preloader */
+#pheral-preloader {
+    position: fixed;
+    inset: 0;
+    z-index: 999999;
+    background: #FBFAF8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.5s ease, visibility 0.5s ease;
+}
+
+#pheral-preloader.hide {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.loader-triangle {
+    position: relative;
+    width: 58px;
+    height: 58px;
+    animation: triangle-spin 1.2s linear infinite;
+}
+
+.loader-dot {
+    position: absolute;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: #6E45FF;
+    box-shadow: 0 0 12px rgba(110, 69, 255, 0.25);
+}
+
+.dot-one {
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.dot-two {
+    bottom: 0;
+    left: 0;
+}
+
+.dot-three {
+    bottom: 0;
+    right: 0;
+}
+
+@keyframes triangle-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+/* Pheral thin purple scrollbar */
+::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+
+::-webkit-scrollbar-track {
+    background: #FBFAF8;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #6E45FF;
+    border-radius: 20px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #5934E8;
+}
+
+/* Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #6E45FF #FBFAF8;
+}
 </style>
 </head>
 <body class="bg-white font-sans text-ink antialiased" x-data="landingApp()">
+<!-- Pheral Preloader -->
+<div id="pheral-preloader">
+    <div class="loader-triangle">
+        <span class="loader-dot dot-one"></span>
+        <span class="loader-dot dot-two"></span>
+        <span class="loader-dot dot-three"></span>
+    </div>
+</div>
 
 <div class="pointer-events-none fixed inset-x-0 top-0 z-[60] h-[3px]" aria-hidden="true"><div class="h-full origin-left bg-gradient-to-r from-brand-500 to-fuchsia-400" :style="{ transform: 'scaleX(' + progress + ')' }"></div></div>
 
@@ -168,134 +255,455 @@ tailwind.config = { theme: { extend: {
   </div>
 </section>
 
-<!-- Plain statement -->
-<section class="mx-auto max-w-3xl px-5 py-16 md:py-24">
-  <p class="font-serif text-[24px] leading-[1.45] md:text-[30px]">Pheral is a messaging app with a wallet inside it. You can talk to someone, send them money, or pay them for a job without leaving the conversation. Every payment is recorded.</p>
-  <dl class="mt-10 grid gap-6 border-t border-line pt-6 text-[15px] leading-6 sm:grid-cols-3">
-    <div><dt class="font-semibold">Currencies</dt><dd class="mt-1 text-ink/75">Thirteen, held in one account.</dd></div>
-    <div><dt class="font-semibold">Payments</dt><dd class="mt-1 text-ink/75">Sent from inside the chat, with a receipt for each one.</dd></div>
-    <div><dt class="font-semibold">Sign-up</dt><dd class="mt-1 text-ink/75">A phone number and a code we text you.</dd></div>
-  </dl>
+{% comment %}
+  LOWER PAGE: everything after the currency ticker.
+
+  The standard (same tokens the nav, hero and ticker already use):
+    section    border-t border-line, py-16 md:py-24, alternating bg-white / bg-tint, one dark band (security)
+    container  mx-auto max-w-6xl px-5 md:px-8
+    eyebrow    pill: border-line, text-brand-700, 11px, brand dot
+    heading    font-display extrabold tracking-tight, 30px up to 42px, one text-brand-500 accent
+    lead       15px / leading-7 / text-muted
+    card       rounded-2xl border border-line bg-white p-5 shadow-lg shadow-brand-500/5
+    icon chip  h-10 w-10 rounded-xl bg-brand-50 text-brand-600
+    buttons    rounded-full, 13px semibold (brand-500 primary, ink secondary)
+    motion     nothing moves on scroll (keeps the "everything below is still" rule);
+               only user-initiated: tabs, calculator, demo buttons, FAQ.
+
+  Needs no JavaScript changes: it reads state that landingApp() already has
+  (cases, uc, rates, amount, from, to, tour, grpTotal, pct, did, contribute,
+  filter, shownJobs, histF, shownHist, openTx).
+{% endcomment %}
+
+<!-- 1. INTRO -->
+<section class="border-t border-line bg-white py-16 md:py-24" aria-labelledby="intro-h">
+  <div class="mx-auto max-w-6xl px-5 md:px-8">
+    <div class="grid gap-8 md:grid-cols-[1.3fr_1fr] md:items-end md:gap-14">
+      <div>
+        <p class="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3.5 py-1.5 text-[11px] font-semibold text-brand-700"><span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>What Pheral is</p>
+        <h2 id="intro-h" class="mt-4 font-display text-[30px] font-extrabold leading-[1.08] tracking-tight md:text-[44px]">Pheral is a messaging app with <span class="text-brand-500">a wallet inside it.</span></h2>
+      </div>
+      <p class="text-[15px] leading-7 text-ink/80">You can talk to someone, send them money, or pay them for a job without leaving the conversation. Every payment is recorded.</p>
+    </div>
+    <dl class="mt-10 grid gap-4 sm:grid-cols-3">
+      <div class="rounded-2xl border border-line bg-white p-5 shadow-lg shadow-brand-500/5">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><i data-lucide="coins" class="h-5 w-5"></i></span>
+        <dt class="mt-4 font-display text-lg font-extrabold tracking-tight">Currencies</dt>
+        <dd class="mt-1 text-[14px] leading-6 text-muted">Thirteen, held in one account.</dd>
+      </div>
+      <div class="rounded-2xl border border-line bg-white p-5 shadow-lg shadow-brand-500/5">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><i data-lucide="send" class="h-5 w-5"></i></span>
+        <dt class="mt-4 font-display text-lg font-extrabold tracking-tight">Payments</dt>
+        <dd class="mt-1 text-[14px] leading-6 text-muted">Sent from inside the chat, with a receipt for each one.</dd>
+      </div>
+      <div class="rounded-2xl border border-line bg-white p-5 shadow-lg shadow-brand-500/5">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><i data-lucide="smartphone" class="h-5 w-5"></i></span>
+        <dt class="mt-4 font-display text-lg font-extrabold tracking-tight">Sign-up</dt>
+        <dd class="mt-1 text-[14px] leading-6 text-muted">A phone number and a code we text you.</dd>
+      </div>
+    </dl>
+  </div>
 </section>
 
-<!-- Where it helps -->
-<section id="try" class="border-t border-line py-16 md:py-24"><div class="mx-auto max-w-3xl px-5">
-  <h2 class="font-serif text-[28px] font-semibold leading-tight tracking-tight md:text-[34px]">Where it helps</h2>
-  <p class="mt-3 text-[16px] leading-7 text-ink/80">Most people already move money inside conversations. Here is how four common situations go today, and how they go on Pheral.</p>
-  <div class="mt-8 overflow-x-auto">
-    <table class="w-full min-w-[560px] border-collapse text-left text-[15px] leading-6">
-      <thead><tr class="border-b-2 border-ink text-[13px]"><th class="py-3 pr-4 font-semibold">Situation</th><th class="py-3 pr-4 font-semibold">Today</th><th class="py-3 font-semibold">On Pheral</th></tr></thead>
-      <tbody class="divide-y divide-line align-top">
-        <tr><td class="py-4 pr-4 font-semibold">Asking a friend for money</td><td class="py-4 pr-4 text-ink/80">Ask, wait for an account number, ask which bank, then copy it into a bank app.</td><td class="py-4 text-ink/80">The friend taps pay inside the chat. The money and the receipt arrive in the same thread.</td></tr>
-        <tr><td class="py-4 pr-4 font-semibold">Collecting class dues</td><td class="py-4 pr-4 text-ink/80">One person keeps a list and chases screenshots.</td><td class="py-4 text-ink/80">A group wallet shows who has paid and what is left. Everyone sees the same record.</td></tr>
-        <tr><td class="py-4 pr-4 font-semibold">Paying a freelancer abroad</td><td class="py-4 pr-4 text-ink/80">Find their account, compare converters, and hope the fee is what you expected.</td><td class="py-4 text-ink/80">Choose the currency, see exactly what they will receive, then confirm.</td></tr>
-        <tr><td class="py-4 pr-4 font-semibold">Selling to a customer</td><td class="py-4 pr-4 text-ink/80">Wait for a screenshot, then check the bank app to be sure.</td><td class="py-4 text-ink/80">The payment appears in the chat with a receipt number.</td></tr>
-      </tbody>
-    </table>
-  </div>
-
-  <form class="mt-12 rounded-md border border-line p-5" @submit.prevent aria-labelledby="calc-h">
-    <h3 id="calc-h" class="font-serif text-[20px] font-semibold">Estimate a transfer</h3>
-    <p class="mt-1 text-[14px] leading-6 text-ink/70">The rates on this page are examples. Pheral shows the real rate and any fee before you confirm.</p>
-    <div class="mt-4 grid gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
-      <label class="block text-[14px] font-medium">You send
-        <span class="mt-1 flex gap-2"><input type="number" min="0" inputmode="decimal" x-model.number="amount" class="w-full min-w-0 rounded-md border border-ink/30 px-3 py-2.5 text-[16px]"><select x-model="from" aria-label="Currency you send" class="rounded-md border border-ink/30 bg-white px-2 text-[16px]"><template x-for="c in Object.keys(rates)" :key="c"><option x-text="c"></option></template></select></span></label>
-      <button type="button" @click="[from, to] = [to, from]" class="rf rounded-md border border-ink/30 px-3 py-2.5 text-[14px] font-medium hover:bg-tint">Swap</button>
-      <label class="block text-[14px] font-medium">They receive
-        <span class="mt-1 flex gap-2"><output class="block w-full min-w-0 truncate rounded-md border border-line bg-tint px-3 py-2.5 text-[16px] font-semibold" x-text="converted" aria-live="polite"></output><select x-model="to" aria-label="Currency they receive" class="rounded-md border border-ink/30 bg-white px-2 text-[16px]"><template x-for="c in Object.keys(rates)" :key="c"><option x-text="c"></option></template></select></span></label>
+<!-- 2. WHERE IT HELPS (id="try"): before / after, then the transfer estimator -->
+<section id="try" class="border-t border-line bg-tint py-16 md:py-24" aria-labelledby="try-h">
+  <div class="mx-auto max-w-6xl px-5 md:px-8">
+    <div class="max-w-2xl">
+      <p class="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3.5 py-1.5 text-[11px] font-semibold text-brand-700"><span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>Four everyday situations</p>
+      <h2 id="try-h" class="mt-4 font-display text-[30px] font-extrabold leading-[1.08] tracking-tight md:text-[42px]">Where it <span class="text-brand-500">helps</span></h2>
+      <p class="mt-3 max-w-xl text-[15px] leading-7 text-muted">Most people already move money inside conversations. Here is how four common situations go today, and how they go on Pheral.</p>
     </div>
-    <p class="mt-3 text-[13px] text-ink/70" x-text="'1 ' + from + ' is about ' + rate + ' ' + to + '.'"></p>
-  </form>
-</div></section>
 
-<!-- What is in the app -->
-<section id="features" class="border-t border-line py-16 md:py-24"><div class="mx-auto max-w-3xl px-5">
-  <h2 class="font-serif text-[28px] font-semibold leading-tight tracking-tight md:text-[34px]">What is in the app</h2>
-  <dl class="mt-8 divide-y divide-line border-y border-line">
-    <div class="grid gap-2 py-6 md:grid-cols-[11rem_1fr] md:gap-8"><dt class="font-serif text-[19px] font-semibold">Messages</dt><dd class="text-[16px] leading-7 text-ink/80">Direct chats and group chats, with photos, voice notes and files. You can see when a message has been read.</dd></div>
-    <div class="grid gap-2 py-6 md:grid-cols-[11rem_1fr] md:gap-8"><dt class="font-serif text-[19px] font-semibold">Payments</dt><dd class="text-[16px] leading-7 text-ink/80">Send money to another Pheral user from inside the conversation. They are notified at once, and both of you get a receipt.</dd></div>
-    <div class="grid gap-2 py-6 md:grid-cols-[11rem_1fr] md:gap-8"><dt class="font-serif text-[19px] font-semibold">Currencies</dt><dd class="text-[16px] leading-7 text-ink/80">Keep a wallet in each currency you use and convert between your own wallets. You are shown the amount you will receive, fee included, before you confirm.</dd></div>
-    <div class="grid gap-2 py-6 md:grid-cols-[11rem_1fr] md:gap-8"><dt class="font-serif text-[19px] font-semibold">Group wallets</dt><dd class="text-[16px] leading-7 text-ink/80">A shared balance for a class, a family or a team. Members contribute, everyone can see the contributions, and only an admin can withdraw.</dd></div>
-    <div class="grid gap-2 py-6 md:grid-cols-[11rem_1fr] md:gap-8"><dt class="font-serif text-[19px] font-semibold">Hiring</dt><dd class="text-[16px] leading-7 text-ink/80">Post a job or apply to one, agree the price in the chat, and release payment from your wallet when the work is done.</dd></div>
-    <div class="grid gap-2 py-6 md:grid-cols-[11rem_1fr] md:gap-8"><dt class="font-serif text-[19px] font-semibold">Bank withdrawals</dt><dd class="text-[16px] leading-7 text-ink/80">Move money from your wallet to a Nigerian bank account. The transfer stays marked as pending until the bank confirms it.</dd></div>
-  </dl>
-</div></section>
+    <div class="mt-8 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Situations">
+      <template x-for="(c, i) in cases" :key="c.name">
+        <button type="button" role="tab" @click="uc = i" :aria-selected="uc === i"
+                class="rf shrink-0 rounded-full border px-4 py-2 text-[13px] font-semibold transition"
+                :class="uc === i ? 'border-brand-500 bg-brand-500 text-white shadow-lg shadow-brand-500/25' : 'border-line bg-white text-muted hover:text-ink'"
+                x-text="c.name"></button>
+      </template>
+    </div>
 
-<!-- Getting started -->
-<section id="how-it-works" class="border-t border-line py-16 md:py-24"><div class="mx-auto max-w-3xl px-5">
-  <h2 class="font-serif text-[28px] font-semibold leading-tight tracking-tight md:text-[34px]">Getting started</h2>
-  <ol class="mt-8 space-y-7">
-    <li class="flex gap-5"><span class="w-6 shrink-0 font-serif text-[30px] leading-none text-brand-600">1</span><div><h3 class="text-[17px] font-semibold">Sign up with your phone number</h3><p class="mt-1 text-[16px] leading-7 text-ink/80">We text you a code to confirm it. You do not need a BVN to sign up.</p></div></li>
-    <li class="flex gap-5"><span class="w-6 shrink-0 font-serif text-[30px] leading-none text-brand-600">2</span><div><h3 class="text-[17px] font-semibold">Add money to your wallet</h3><p class="mt-1 text-[16px] leading-7 text-ink/80">Top up through Flutterwave, in naira or in any of the other supported currencies.</p></div></li>
-    <li class="flex gap-5"><span class="w-6 shrink-0 font-serif text-[30px] leading-none text-brand-600">3</span><div><h3 class="text-[17px] font-semibold">Start a conversation</h3><p class="mt-1 text-[16px] leading-7 text-ink/80">Message someone, send a payment, or post a job. All of it happens in the same thread.</p></div></li>
-  </ol>
-</div></section>
+    <div x-data="{ caps: [
+      { t: 'Ask, wait for an account number, ask which bank, then copy it into a bank app.', n: 'The friend taps pay inside the chat. The money and the receipt arrive in the same thread.' },
+      { t: 'One person keeps a list and chases screenshots.', n: 'A group wallet shows who has paid and what is left. Everyone sees the same record.' },
+      { t: 'Find their account, compare converters, and hope the fee is what you expected.', n: 'Choose the currency, see exactly what they will receive, then confirm.' },
+      { t: 'Wait for a screenshot, then check the bank app to be sure.', n: 'The payment appears in the chat with a receipt number.' }
+    ] }">
+      <template x-for="c in [cases[uc]]" :key="uc">
+        <div class="pop mt-6 grid gap-4 md:grid-cols-2" role="tabpanel">
 
-<!-- Security and records -->
-<section id="security" class="border-t border-line py-16 md:py-24"><div class="mx-auto max-w-3xl px-5">
-  <h2 class="font-serif text-[28px] font-semibold leading-tight tracking-tight md:text-[34px]">Security and records</h2>
-  <p class="mt-3 text-[16px] leading-7 text-ink/80">Money moves according to a few plain rules.</p>
-  <ul class="mt-6 list-disc space-y-4 pl-5 marker:text-brand-500 text-[16px] leading-7 text-ink/80">
-    <li><b class="text-ink">A balance can only be spent once.</b> A wallet is locked while money is moving, so two requests cannot use the same funds.</li>
-    <li><b class="text-ink">Every move is recorded.</b> Each payment writes a ledger entry. Payments between people also produce a receipt with a reference number.</li>
-    <li><b class="text-ink">Cards and bank payments go through Flutterwave.</b> Card details are handled by the payment provider, not stored by Pheral.</li>
-    <li><b class="text-ink">Unconfirmed transfers are held, not guessed at.</b> If a bank transfer does not return a clear answer, the amount stays on hold until the result is confirmed. It is refunded if the transfer fails.</li>
-  </ul>
-  <h3 class="mt-10 font-serif text-[20px] font-semibold">What a ledger looks like</h3>
-  <div class="mt-3 overflow-x-auto">
-    <table class="w-full min-w-[460px] border-collapse text-left text-[15px] leading-6">
-      <thead><tr class="border-b-2 border-ink text-[13px]"><th class="py-2.5 pr-4 font-semibold">Time</th><th class="py-2.5 pr-4 font-semibold">Entry</th><th class="py-2.5 pr-4 text-right font-semibold">Amount</th><th class="py-2.5 text-right font-semibold">Balance</th></tr></thead>
-      <tbody class="divide-y divide-line tabular-nums">
-        <tr><td class="py-2.5 pr-4">09:14</td><td class="py-2.5 pr-4">Top-up verified</td><td class="py-2.5 pr-4 text-right">+&#8358;20,000</td><td class="py-2.5 text-right">&#8358;20,000</td></tr>
-        <tr><td class="py-2.5 pr-4">09:15</td><td class="py-2.5 pr-4">Sent to a friend</td><td class="py-2.5 pr-4 text-right">&minus;&#8358;5,000</td><td class="py-2.5 text-right">&#8358;15,000</td></tr>
-        <tr><td class="py-2.5 pr-4">09:20</td><td class="py-2.5 pr-4">Bank transfer, pending</td><td class="py-2.5 pr-4 text-right">&minus;&#8358;10,000</td><td class="py-2.5 text-right">&#8358;5,000</td></tr>
-        <tr><td class="py-2.5 pr-4">09:21</td><td class="py-2.5 pr-4">Transfer failed, refunded</td><td class="py-2.5 pr-4 text-right">+&#8358;10,000</td><td class="py-2.5 text-right">&#8358;15,000</td></tr>
-      </tbody>
-    </table>
+          <div class="flex flex-col rounded-2xl border border-line bg-white p-5 shadow-lg shadow-brand-500/5">
+            <span class="w-fit rounded-full bg-ink/10 px-3 py-1 text-[11px] font-bold text-ink/70">Today</span>
+            <div class="mt-4 flex flex-1 flex-col gap-2 rounded-xl bg-tint p-3">
+              <template x-for="(m, i) in c.before" :key="i">
+                <div class="max-w-[85%] rounded-2xl border px-3.5 py-2 text-[13px] leading-5"
+                     :class="m.k === 'me' ? 'self-end rounded-br-md border-transparent bg-ink/10' : 'self-start rounded-bl-md border-line bg-white'" x-text="m.t"></div>
+              </template>
+            </div>
+            <p class="mt-4 text-[14px] leading-6 text-ink/75" x-text="caps[uc].t"></p>
+          </div>
+
+          <div class="flex flex-col rounded-2xl border border-brand-200 bg-white p-5 shadow-lg shadow-brand-500/10">
+            <span class="inline-flex w-fit items-center gap-1.5 rounded-full bg-brand-500 px-3 py-1 text-[11px] font-bold text-white"><span class="h-1.5 w-1.5 rounded-full bg-white"></span>On Pheral</span>
+            <div class="mt-4 flex flex-1 flex-col gap-2 rounded-xl bg-brand-50 p-3">
+              <template x-for="(m, i) in c.after" :key="i">
+                <div class="flex flex-col">
+                  <div x-show="m.k !== 'card'" class="max-w-[85%] rounded-2xl border px-3.5 py-2 text-[13px] leading-5"
+                       :class="m.k === 'me' ? 'self-end rounded-br-md border-transparent bg-brand-500 text-white' : 'self-start rounded-bl-md border-line bg-white'" x-text="m.t"></div>
+                  <div x-show="m.k === 'card'" class="w-full max-w-[75%] self-end rounded-2xl bg-ink p-4 text-white shadow-lg shadow-brand-500/20">
+                    <p class="text-[11px] text-white/60" x-text="m.s"></p>
+                    <p class="mt-0.5 font-display text-[26px] font-extrabold leading-tight" x-text="m.t"></p>
+                    <p class="mt-1 flex items-center gap-1.5 text-[11px] text-white/75"><span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span><span x-text="m.d"></span></p>
+                  </div>
+                </div>
+              </template>
+            </div>
+            <p class="mt-4 text-[14px] leading-6 text-ink/75" x-text="caps[uc].n"></p>
+          </div>
+
+          <p class="flex items-center gap-2 text-[14px] font-semibold text-brand-700 md:col-span-2">
+            <svg viewBox="0 0 20 20" class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 10.5l4 4 8-9"/></svg>
+            <span x-text="c.win"></span>
+            <span class="font-normal text-muted">Illustrative conversation.</span>
+          </p>
+        </div>
+      </template>
+    </div>
+
+    <form class="mt-12 overflow-hidden rounded-3xl border border-line bg-white shadow-lg shadow-brand-500/5" @submit.prevent aria-labelledby="calc-h">
+      <div class="grid md:grid-cols-[.85fr_1.5fr]">
+        <div class="bg-gradient-to-br from-brand-600 to-brand-500 p-6 text-white md:p-8">
+          <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-white/15"><i data-lucide="repeat" class="h-5 w-5"></i></span>
+          <h3 id="calc-h" class="mt-4 font-display text-2xl font-extrabold tracking-tight">Estimate a transfer</h3>
+          <p class="mt-2 text-[14px] leading-6 text-white/85">The rates on this page are examples. Pheral shows the real rate and any fee before you confirm.</p>
+        </div>
+        <div class="p-6 md:p-8">
+          <div class="grid gap-4 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
+            <label class="block text-[13px] font-semibold">You send
+              <span class="mt-1.5 flex gap-2">
+                <input type="number" min="0" inputmode="decimal" x-model.number="amount" class="h-[50px] w-full min-w-0 rounded-xl border border-line bg-white px-4 font-display text-[18px] font-extrabold focus:border-brand-400 focus:outline-none">
+                <select x-model="from" aria-label="Currency you send" class="h-[50px] rounded-xl border border-line bg-white px-2.5 font-semibold focus:border-brand-400 focus:outline-none"><template x-for="c in Object.keys(rates)" :key="c"><option x-text="c"></option></template></select>
+              </span>
+            </label>
+            <button type="button" @click="[from, to] = [to, from]" class="rf mx-auto flex h-[50px] w-[50px] items-center justify-center rounded-full border border-line bg-tint text-brand-600 transition hover:bg-brand-50" aria-label="Swap currencies"><i data-lucide="arrow-left-right" class="h-4 w-4"></i></button>
+            <label class="block text-[13px] font-semibold">They receive
+              <span class="mt-1.5 flex gap-2">
+                <output class="flex h-[50px] w-full min-w-0 items-center truncate rounded-xl border border-line bg-tint px-4 font-display text-[18px] font-extrabold text-brand-700" x-text="converted" aria-live="polite"></output>
+                <select x-model="to" aria-label="Currency they receive" class="h-[50px] rounded-xl border border-line bg-white px-2.5 font-semibold focus:border-brand-400 focus:outline-none"><template x-for="c in Object.keys(rates)" :key="c"><option x-text="c"></option></template></select>
+              </span>
+            </label>
+          </div>
+          <p class="mt-4 text-[13px] text-muted" x-text="'1 ' + from + ' is about ' + rate + ' ' + to + '.'"></p>
+        </div>
+      </div>
+    </form>
   </div>
-  <p class="mt-2 text-[13px] text-ink/70">Figures are examples.</p>
-</div></section>
+</section>
 
-<!-- Founder -->
-<section id="founder" class="border-t border-line py-16 md:py-24"><div class="mx-auto max-w-3xl px-5">
-  <h2 class="font-serif text-[28px] font-semibold leading-tight tracking-tight md:text-[34px]">A note from the founder</h2>
-  <div class="mt-6 space-y-4 font-serif text-[18px] leading-8 text-ink/90">
-    <p>I built the first version of Pheral between Waterlines and Woji in Port Harcourt, mostly at night. I was tired of watching people move money by asking for an account number, then a bank name, then a screenshot, all inside a chat.</p>
-    <p>Money and work already happen in our conversations. Pheral keeps the chat, the payment and the job in one place and records each step. It is an early product and it still has rough edges. If something does not work for you, tell us and we will fix it.</p>
-  </div>
-  <p class="mt-6 text-[15px] leading-6"><span class="font-semibold">Endurance Saviour</span><br><span class="text-ink/70">Founder, Pheral</span></p>
-</div></section>
+<!-- 3. WHAT IS IN THE APP (id="features"): six cards, then a try-it tour -->
+<section id="features" class="border-t border-line bg-white py-16 md:py-24" aria-labelledby="features-h">
+  <div class="mx-auto max-w-6xl px-5 md:px-8">
+    <div class="max-w-2xl">
+      <p class="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3.5 py-1.5 text-[11px] font-semibold text-brand-700"><span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>Features</p>
+      <h2 id="features-h" class="mt-4 font-display text-[30px] font-extrabold leading-[1.08] tracking-tight md:text-[42px]">What is in the <span class="text-brand-500">app</span></h2>
+    </div>
 
-<!-- Questions -->
-<section id="faq" class="border-t border-line py-16 md:py-24"><div class="mx-auto max-w-3xl px-5">
-  <h2 class="font-serif text-[28px] font-semibold leading-tight tracking-tight md:text-[34px]">Common questions</h2>
-  <div class="mt-6 divide-y divide-line border-y border-line">
-    <details class="group py-4"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 text-[16px] font-semibold"><span>Is it free?</span><span class="text-xl leading-none text-brand-600 transition group-open:rotate-45">+</span></summary><p class="mt-3 text-[16px] leading-7 text-ink/80">Joining and chatting cost nothing. If something does cost money, you see the exact amount before you confirm, never after.</p></details>
-    <details class="group py-4"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 text-[16px] font-semibold"><span>Which currencies are supported?</span><span class="text-xl leading-none text-brand-600 transition group-open:rotate-45">+</span></summary><p class="mt-3 text-[16px] leading-7 text-ink/80">NGN, GHS, KES, ZAR, UGX, TZS, RWF, EGP, USD, GBP, EUR, CAD and AUD.</p></details>
-    <details class="group py-4"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 text-[16px] font-semibold"><span>How does paying across currencies work?</span><span class="text-xl leading-none text-brand-600 transition group-open:rotate-45">+</span></summary><p class="mt-3 text-[16px] leading-7 text-ink/80">You send in your currency and the other person receives theirs. We show the amount that will arrive, with the fee already included, and hold that rate briefly so it cannot change while you decide.</p></details>
-    <details class="group py-4"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 text-[16px] font-semibold"><span>Can a balance be spent twice?</span><span class="text-xl leading-none text-brand-600 transition group-open:rotate-45">+</span></summary><p class="mt-3 text-[16px] leading-7 text-ink/80">No. A wallet is locked while money moves, and every move is written to a ledger. If a bank transfer cannot be confirmed, we wait for the real answer before refunding you.</p></details>
-    <details class="group py-4"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 text-[16px] font-semibold"><span>Do I need to install anything?</span><span class="text-xl leading-none text-brand-600 transition group-open:rotate-45">+</span></summary><p class="mt-3 text-[16px] leading-7 text-ink/80">No. Pheral runs in your browser. If you add it to your home screen, it opens full screen like any other app.</p></details>
-    <details class="group py-4"><summary class="flex cursor-pointer list-none items-center justify-between gap-4 text-[16px] font-semibold"><span>Does it work outside Nigeria?</span><span class="text-xl leading-none text-brand-600 transition group-open:rotate-45">+</span></summary><p class="mt-3 text-[16px] leading-7 text-ink/80">Wallets and sign-up work in several countries. Paying out to a bank account is available in Nigeria only for now.</p></details>
-  </div>
-</div></section>
+    <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <article class="rounded-2xl border border-line bg-white p-5 shadow-lg shadow-brand-500/5 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-brand-500/10">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><i data-lucide="message-circle" class="h-5 w-5"></i></span>
+        <h3 class="mt-4 font-display text-lg font-extrabold tracking-tight">Messages</h3>
+        <p class="mt-1.5 text-[14px] leading-6 text-ink/75">Direct chats and group chats, with photos, voice notes and files. You can see when a message has been read.</p>
+      </article>
+      <article class="rounded-2xl border border-line bg-white p-5 shadow-lg shadow-brand-500/5 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-brand-500/10">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><i data-lucide="send" class="h-5 w-5"></i></span>
+        <h3 class="mt-4 font-display text-lg font-extrabold tracking-tight">Payments</h3>
+        <p class="mt-1.5 text-[14px] leading-6 text-ink/75">Send money to another Pheral user from inside the conversation. They are notified at once, and both of you get a receipt.</p>
+      </article>
+      <article class="rounded-2xl border border-line bg-white p-5 shadow-lg shadow-brand-500/5 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-brand-500/10">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><i data-lucide="coins" class="h-5 w-5"></i></span>
+        <h3 class="mt-4 font-display text-lg font-extrabold tracking-tight">Currencies</h3>
+        <p class="mt-1.5 text-[14px] leading-6 text-ink/75">Keep a wallet in each currency you use and convert between your own wallets. You are shown the amount you will receive, fee included, before you confirm.</p>
+      </article>
+      <article class="rounded-2xl border border-line bg-white p-5 shadow-lg shadow-brand-500/5 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-brand-500/10">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><i data-lucide="users" class="h-5 w-5"></i></span>
+        <h3 class="mt-4 font-display text-lg font-extrabold tracking-tight">Group wallets</h3>
+        <p class="mt-1.5 text-[14px] leading-6 text-ink/75">A shared balance for a class, a family or a team. Members contribute, everyone can see the contributions, and only an admin can withdraw.</p>
+      </article>
+      <article class="rounded-2xl border border-line bg-white p-5 shadow-lg shadow-brand-500/5 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-brand-500/10">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><i data-lucide="briefcase" class="h-5 w-5"></i></span>
+        <h3 class="mt-4 font-display text-lg font-extrabold tracking-tight">Hiring</h3>
+        <p class="mt-1.5 text-[14px] leading-6 text-ink/75">Post a job or apply to one, agree the price in the chat, and release payment from your wallet when the work is done.</p>
+      </article>
+      <article class="rounded-2xl border border-line bg-white p-5 shadow-lg shadow-brand-500/5 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-brand-500/10">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><i data-lucide="landmark" class="h-5 w-5"></i></span>
+        <h3 class="mt-4 font-display text-lg font-extrabold tracking-tight">Bank withdrawals</h3>
+        <p class="mt-1.5 text-[14px] leading-6 text-ink/75">Move money from your wallet to a Nigerian bank account. The transfer stays marked as pending until the bank confirms it.</p>
+      </article>
+    </div>
 
-<!-- Create an account -->
-<section id="cta-final" class="border-t border-line py-16 md:py-24"><div class="mx-auto max-w-3xl px-5">
-  <h2 class="font-serif text-[28px] font-semibold leading-tight tracking-tight md:text-[34px]">Create an account</h2>
-  <p class="mt-3 text-[16px] leading-7 text-ink/80">It is free to join and takes about a minute. You will need your phone number.</p>
-  <div class="mt-6 flex flex-wrap gap-3">
-    <a href="{% url 'register' %}" class="rf rounded-md bg-brand-500 px-6 py-3 text-[15px] font-semibold text-white hover:bg-brand-600">Create an account</a>
-    <a href="{% url 'login_view' %}" class="rf rounded-md border border-ink/30 px-6 py-3 text-[15px] font-semibold hover:bg-tint">Log in</a>
+    <!-- Try it: three screens, all sample data -->
+    <div class="mt-16 grid items-center gap-10 md:grid-cols-[1fr_340px] md:gap-14">
+      <div>
+        <h3 class="font-display text-[26px] font-extrabold leading-tight tracking-tight md:text-[32px]">Inside the <span class="text-brand-500">app</span></h3>
+        <p class="mt-2 max-w-md text-[15px] leading-7 text-muted">Pick a screen and try it. Everything here is sample data.</p>
+        <div class="mt-6 space-y-2.5" role="tablist" aria-label="App screens">
+          <button type="button" role="tab" @click="tour = 'group'" :aria-selected="tour === 'group'" class="rf block w-full rounded-2xl border p-4 text-left transition" :class="tour === 'group' ? 'border-brand-500 bg-brand-50' : 'border-line bg-white hover:bg-tint'">
+            <span class="block text-[14px] font-bold">Group wallet</span>
+            <span class="mt-0.5 block text-[13px] leading-5 text-muted">Contribute and watch the total move. Everyone in the group sees the same record.</span>
+          </button>
+          <button type="button" role="tab" @click="tour = 'hire'" :aria-selected="tour === 'hire'" class="rf block w-full rounded-2xl border p-4 text-left transition" :class="tour === 'hire' ? 'border-brand-500 bg-brand-50' : 'border-line bg-white hover:bg-tint'">
+            <span class="block text-[14px] font-bold">Hire board</span>
+            <span class="mt-0.5 block text-[13px] leading-5 text-muted">Browse open jobs, filter by category and apply.</span>
+          </button>
+          <button type="button" role="tab" @click="tour = 'activity'" :aria-selected="tour === 'activity'" class="rf block w-full rounded-2xl border p-4 text-left transition" :class="tour === 'activity' ? 'border-brand-500 bg-brand-50' : 'border-line bg-white hover:bg-tint'">
+            <span class="block text-[14px] font-bold">Activity</span>
+            <span class="mt-0.5 block text-[13px] leading-5 text-muted">Every payment has a reference number. Filter money in and out.</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="mx-auto w-full max-w-[320px]">
+        <div class="rounded-[2.6rem] border-[9px] border-ink bg-ink shadow-2xl shadow-brand-500/25">
+          <div class="relative h-[540px] overflow-hidden rounded-[2rem] bg-white">
+            <div class="absolute left-1/2 top-2 z-10 h-5 w-24 -translate-x-1/2 rounded-full bg-ink"></div>
+
+            <div x-show="tour === 'group'" x-cloak class="pop absolute inset-0 overflow-y-auto px-4 pb-5 pt-11">
+              <p class="text-[11px] font-semibold text-brand-700">Group wallet</p>
+              <p class="font-display text-lg font-extrabold tracking-tight">Class of 2025</p>
+              <p class="text-[11px] text-muted">45 members</p>
+              <div class="mt-4 rounded-2xl bg-ink p-4 text-white">
+                <p class="text-[10px] uppercase tracking-wide text-white/60">Raised so far</p>
+                <p class="mt-1 font-display text-[30px] font-extrabold leading-none" x-text="'₦' + grpTotal.toLocaleString()"></p>
+                <div class="mt-3 h-2 overflow-hidden rounded-full bg-white/15"><div class="h-full rounded-full bg-gradient-to-r from-brand-400 to-fuchsia-400 transition-all duration-500" :style="{ width: pct + '%' }"></div></div>
+                <p class="mt-2 text-[11px] text-white/70" x-text="pct + '% of ₦200,000'"></p>
+              </div>
+              <button type="button" @click="contribute()" :disabled="did" class="rf mt-4 w-full rounded-full bg-brand-500 py-3 text-[13px] font-semibold text-white transition hover:bg-brand-600 disabled:bg-cash-600" x-text="did ? 'Contributed. Thank you!' : 'Contribute ₦5,000'"></button>
+              <ul class="mt-4 space-y-2 text-[12px]">
+                <li x-show="did" x-cloak class="flex justify-between rounded-xl bg-brand-50 px-3 py-2"><span class="font-semibold">You</span><span class="tabular-nums">₦5,000</span></li>
+                <li class="flex justify-between rounded-xl bg-tint px-3 py-2"><span class="font-semibold">Zainab</span><span class="tabular-nums">₦20,000</span></li>
+                <li class="flex justify-between rounded-xl bg-tint px-3 py-2"><span class="font-semibold">Tunde</span><span class="tabular-nums">₦15,000</span></li>
+                <li class="flex justify-between rounded-xl bg-tint px-3 py-2"><span class="font-semibold">Chioma</span><span class="tabular-nums">₦10,000</span></li>
+              </ul>
+            </div>
+
+            <div x-show="tour === 'hire'" x-cloak class="pop absolute inset-0 overflow-y-auto px-4 pb-5 pt-11">
+              <p class="text-[11px] font-semibold text-brand-700">Hire</p>
+              <p class="font-display text-lg font-extrabold tracking-tight">Open jobs</p>
+              <div class="mt-3 flex gap-1.5 overflow-x-auto pb-1">
+                <template x-for="f in ['All', 'Design', 'Dev', 'Content']" :key="f">
+                  <button type="button" @click="filter = f" class="rf shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition" :class="filter === f ? 'bg-brand-500 text-white' : 'bg-tint text-muted'" x-text="f"></button>
+                </template>
+              </div>
+              <div class="mt-3 space-y-2.5">
+                <template x-for="j in shownJobs" :key="j.t">
+                  <div class="rounded-2xl border border-line p-3">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="min-w-0"><p class="truncate text-[13px] font-bold" x-text="j.t"></p><p class="truncate text-[11px] text-muted" x-text="j.o"></p></div>
+                      <span class="shrink-0 rounded-full bg-cash-100 px-2 py-0.5 text-[10px] font-bold text-cash-600">Open</span>
+                    </div>
+                    <div class="mt-2.5 flex items-center justify-between gap-2">
+                      <p class="text-[12px] font-semibold" x-text="j.p"></p>
+                      <button type="button" @click="j.on = !j.on" class="rf rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition" :class="j.on ? 'bg-cash-100 text-cash-600' : 'bg-brand-500 text-white hover:bg-brand-600'" x-text="j.on ? 'Applied' : 'Apply'"></button>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <div x-show="tour === 'activity'" x-cloak class="pop absolute inset-0 overflow-y-auto px-4 pb-5 pt-11">
+              <p class="text-[11px] font-semibold text-brand-700">Wallet</p>
+              <p class="font-display text-lg font-extrabold tracking-tight">Activity</p>
+              <div class="mt-3 flex gap-1.5">
+                <template x-for="f in [['All', 'All'], ['in', 'Money in'], ['out', 'Money out']]" :key="f[0]">
+                  <button type="button" @click="histF = f[0]" class="rf shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-semibold transition" :class="histF === f[0] ? 'bg-brand-500 text-white' : 'bg-tint text-muted'" x-text="f[1]"></button>
+                </template>
+              </div>
+              <div class="mt-3 space-y-2">
+                <template x-for="t in shownHist" :key="t.r">
+                  <button type="button" @click="openTx = openTx === t.r ? '' : t.r" class="rf block w-full rounded-2xl border border-line p-3 text-left transition hover:bg-tint">
+                    <span class="flex items-center justify-between gap-2">
+                      <span class="flex min-w-0 items-center gap-2.5">
+                        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-bold" :class="t.k === 'in' ? 'bg-cash-100 text-cash-600' : 'bg-brand-50 text-brand-600'" x-text="t.k === 'in' ? '↓' : '↑'"></span>
+                        <span class="truncate text-[13px] font-semibold" x-text="t.t"></span>
+                      </span>
+                      <span class="shrink-0 text-[13px] font-bold tabular-nums" :class="t.k === 'in' ? 'text-cash-600' : 'text-ink'" x-text="t.a"></span>
+                    </span>
+                    <span x-show="openTx === t.r" x-cloak class="mt-2 block text-[11px] text-muted" x-text="'Reference ' + t.r + '. Completed.'"></span>
+                  </button>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-</div></section>
+</section>
+
+<!-- 4. GETTING STARTED (id="how-it-works") -->
+<section id="how-it-works" class="border-t border-line bg-tint py-16 md:py-24" aria-labelledby="how-h">
+  <div class="mx-auto max-w-6xl px-5 md:px-8">
+    <div class="max-w-2xl">
+      <p class="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3.5 py-1.5 text-[11px] font-semibold text-brand-700"><span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>Three steps</p>
+      <h2 id="how-h" class="mt-4 font-display text-[30px] font-extrabold leading-[1.08] tracking-tight md:text-[42px]">Getting <span class="text-brand-500">started</span></h2>
+    </div>
+    <ol class="mt-10 grid gap-4 md:grid-cols-3">
+      <li class="rounded-2xl border border-line bg-white p-6 shadow-lg shadow-brand-500/5">
+        <span class="font-display text-[52px] font-extrabold leading-none text-brand-200">1</span>
+        <h3 class="mt-3 font-display text-lg font-extrabold tracking-tight">Sign up with your phone number</h3>
+        <p class="mt-1.5 text-[14px] leading-6 text-ink/75">We text you a code to confirm it. You do not need a BVN to sign up.</p>
+      </li>
+      <li class="rounded-2xl border border-line bg-white p-6 shadow-lg shadow-brand-500/5">
+        <span class="font-display text-[52px] font-extrabold leading-none text-brand-200">2</span>
+        <h3 class="mt-3 font-display text-lg font-extrabold tracking-tight">Add money to your wallet</h3>
+        <p class="mt-1.5 text-[14px] leading-6 text-ink/75">Top up through Flutterwave, in naira or in any of the other supported currencies.</p>
+      </li>
+      <li class="rounded-2xl border border-line bg-white p-6 shadow-lg shadow-brand-500/5">
+        <span class="font-display text-[52px] font-extrabold leading-none text-brand-200">3</span>
+        <h3 class="mt-3 font-display text-lg font-extrabold tracking-tight">Start a conversation</h3>
+        <p class="mt-1.5 text-[14px] leading-6 text-ink/75">Message someone, send a payment, or post a job. All of it happens in the same thread.</p>
+      </li>
+    </ol>
+    <a href="{% url 'register' %}" class="rf mt-8 inline-block rounded-full bg-brand-500 px-7 py-3.5 text-[13px] font-semibold text-white shadow-lg shadow-brand-500/30 transition hover:bg-brand-600">Create your account</a>
+  </div>
+</section>
+
+<!-- 5. SECURITY AND RECORDS (id="security"): the one dark band -->
+<section id="security" class="relative overflow-hidden border-t border-line bg-ink py-16 text-white md:py-24" aria-labelledby="security-h">
+  <div class="pointer-events-none absolute -right-32 -top-32 h-96 w-96 rounded-full bg-brand-500/30 blur-3xl" aria-hidden="true"></div>
+  <div class="pointer-events-none absolute -bottom-40 -left-24 h-96 w-96 rounded-full bg-fuchsia-500/10 blur-3xl" aria-hidden="true"></div>
+  <div class="relative mx-auto max-w-6xl px-5 md:px-8">
+    <div class="max-w-2xl">
+      <p class="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 text-[11px] font-semibold text-brand-200"><span class="h-1.5 w-1.5 rounded-full bg-brand-300"></span>How money is handled</p>
+      <h2 id="security-h" class="mt-4 font-display text-[30px] font-extrabold leading-[1.08] tracking-tight md:text-[42px]">Security and <span class="text-brand-300">records</span></h2>
+      <p class="mt-3 max-w-xl text-[15px] leading-7 text-white/70">Money moves according to a few plain rules.</p>
+    </div>
+
+    <div class="mt-10 grid gap-4 md:grid-cols-2">
+      <article class="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/20 text-brand-200"><i data-lucide="lock" class="h-5 w-5"></i></span>
+        <h3 class="mt-4 font-display text-lg font-extrabold tracking-tight">A balance can only be spent once.</h3>
+        <p class="mt-1.5 text-[14px] leading-6 text-white/70">A wallet is locked while money is moving, so two requests cannot use the same funds.</p>
+      </article>
+      <article class="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/20 text-brand-200"><i data-lucide="receipt" class="h-5 w-5"></i></span>
+        <h3 class="mt-4 font-display text-lg font-extrabold tracking-tight">Every move is recorded.</h3>
+        <p class="mt-1.5 text-[14px] leading-6 text-white/70">Each payment writes a ledger entry. Payments between people also produce a receipt with a reference number.</p>
+      </article>
+      <article class="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/20 text-brand-200"><i data-lucide="credit-card" class="h-5 w-5"></i></span>
+        <h3 class="mt-4 font-display text-lg font-extrabold tracking-tight">Cards and bank payments go through Flutterwave.</h3>
+        <p class="mt-1.5 text-[14px] leading-6 text-white/70">Card details are handled by the payment provider, not stored by Pheral.</p>
+      </article>
+      <article class="rounded-2xl border border-white/10 bg-white/5 p-5">
+        <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/20 text-brand-200"><i data-lucide="clock" class="h-5 w-5"></i></span>
+        <h3 class="mt-4 font-display text-lg font-extrabold tracking-tight">Unconfirmed transfers are held, not guessed at.</h3>
+        <p class="mt-1.5 text-[14px] leading-6 text-white/70">If a bank transfer does not return a clear answer, the amount stays on hold until the result is confirmed. It is refunded if the transfer fails.</p>
+      </article>
+    </div>
+
+    <div class="mt-10 rounded-2xl border border-white/10 bg-white/5 p-5 md:p-6">
+      <h3 class="font-display text-lg font-extrabold tracking-tight">What a ledger looks like</h3>
+      <div class="mt-4 overflow-x-auto">
+        <table class="w-full min-w-[460px] border-collapse text-left text-[14px] leading-6">
+          <thead><tr class="border-b border-white/20 text-[12px] uppercase tracking-wide text-white/50"><th class="py-2.5 pr-4 font-semibold">Time</th><th class="py-2.5 pr-4 font-semibold">Entry</th><th class="py-2.5 pr-4 text-right font-semibold">Amount</th><th class="py-2.5 text-right font-semibold">Balance</th></tr></thead>
+          <tbody class="divide-y divide-white/10 tabular-nums">
+            <tr><td class="py-2.5 pr-4 text-white/60">09:14</td><td class="py-2.5 pr-4">Top-up verified</td><td class="py-2.5 pr-4 text-right text-emerald-300">+&#8358;20,000</td><td class="py-2.5 text-right">&#8358;20,000</td></tr>
+            <tr><td class="py-2.5 pr-4 text-white/60">09:15</td><td class="py-2.5 pr-4">Sent to a friend</td><td class="py-2.5 pr-4 text-right">&minus;&#8358;5,000</td><td class="py-2.5 text-right">&#8358;15,000</td></tr>
+            <tr><td class="py-2.5 pr-4 text-white/60">09:20</td><td class="py-2.5 pr-4">Bank transfer, pending</td><td class="py-2.5 pr-4 text-right">&minus;&#8358;10,000</td><td class="py-2.5 text-right">&#8358;5,000</td></tr>
+            <tr><td class="py-2.5 pr-4 text-white/60">09:21</td><td class="py-2.5 pr-4">Transfer failed, refunded</td><td class="py-2.5 pr-4 text-right text-emerald-300">+&#8358;10,000</td><td class="py-2.5 text-right">&#8358;15,000</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-3 text-[12px] text-white/50">Figures are examples.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 6. FOUNDER (id="founder") -->
+<section id="founder" class="border-t border-line bg-white py-16 md:py-24" aria-labelledby="founder-h">
+  <div class="mx-auto max-w-6xl px-5 md:px-8">
+    <div class="max-w-2xl">
+      <p class="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3.5 py-1.5 text-[11px] font-semibold text-brand-700"><span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>Why it exists</p>
+      <h2 id="founder-h" class="mt-4 font-display text-[30px] font-extrabold leading-[1.08] tracking-tight md:text-[42px]">A note from the <span class="text-brand-500">founder</span></h2>
+    </div>
+    <div class="mt-10 grid gap-8 rounded-3xl border border-line bg-tint p-6 md:grid-cols-[220px_1fr] md:gap-12 md:p-10">
+      <div>
+        <span class="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500 to-fuchsia-400 font-display text-3xl font-extrabold text-white shadow-lg shadow-brand-500/30">ES</span>
+        <p class="mt-4 text-[15px] font-semibold leading-6">Endurance Saviour</p>
+        <p class="text-[13px] text-muted">Founder, Pheral</p>
+        <p class="mt-3 inline-flex items-center gap-1.5 rounded-full border border-line bg-white px-3 py-1 text-[11px] font-semibold text-brand-700">Port Harcourt</p>
+      </div>
+      <div class="space-y-4 font-serif text-[18px] leading-8 text-ink/90 md:text-[19px]">
+        <p>I built the first version of Pheral between Waterlines and Woji in Port Harcourt, mostly at night. I was tired of watching people move money by asking for an account number, then a bank name, then a screenshot, all inside a chat.</p>
+        <p>Money and work already happen in our conversations. Pheral keeps the chat, the payment and the job in one place and records each step. It is an early product and it still has rough edges. If something does not work for you, tell us and we will fix it.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7. FAQ (id="faq") -->
+<section id="faq" class="border-t border-line bg-tint py-16 md:py-24" aria-labelledby="faq-h">
+  <div class="mx-auto grid max-w-6xl gap-10 px-5 md:grid-cols-[.8fr_1.4fr] md:gap-14 md:px-8">
+    <div>
+      <p class="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3.5 py-1.5 text-[11px] font-semibold text-brand-700"><span class="h-1.5 w-1.5 rounded-full bg-brand-500"></span>FAQ</p>
+      <h2 id="faq-h" class="mt-4 font-display text-[30px] font-extrabold leading-[1.08] tracking-tight md:text-[42px]">Common <span class="text-brand-500">questions</span></h2>
+      <p class="mt-3 max-w-xs text-[15px] leading-7 text-muted">Short answers to the things people ask first.</p>
+    </div>
+    <div class="space-y-3">
+      <details open class="group rounded-2xl border border-line bg-white px-5 py-4 shadow-lg shadow-brand-500/5">
+        <summary class="rf flex cursor-pointer list-none items-center justify-between gap-4 text-[15px] font-bold"><span>Is it free?</span><span class="text-xl leading-none text-brand-600 transition group-open:rotate-45" aria-hidden="true">+</span></summary>
+        <p class="mt-3 text-[14px] leading-6 text-ink/75">Joining and chatting cost nothing. If something does cost money, you see the exact amount before you confirm, never after.</p>
+      </details>
+      <details class="group rounded-2xl border border-line bg-white px-5 py-4 shadow-lg shadow-brand-500/5">
+        <summary class="rf flex cursor-pointer list-none items-center justify-between gap-4 text-[15px] font-bold"><span>Which currencies are supported?</span><span class="text-xl leading-none text-brand-600 transition group-open:rotate-45" aria-hidden="true">+</span></summary>
+        <p class="mt-3 text-[14px] leading-6 text-ink/75">NGN, GHS, KES, ZAR, UGX, TZS, RWF, EGP, USD, GBP, EUR, CAD and AUD.</p>
+      </details>
+      <details class="group rounded-2xl border border-line bg-white px-5 py-4 shadow-lg shadow-brand-500/5">
+        <summary class="rf flex cursor-pointer list-none items-center justify-between gap-4 text-[15px] font-bold"><span>How does paying across currencies work?</span><span class="text-xl leading-none text-brand-600 transition group-open:rotate-45" aria-hidden="true">+</span></summary>
+        <p class="mt-3 text-[14px] leading-6 text-ink/75">You send in your currency and the other person receives theirs. We show the amount that will arrive, with the fee already included, and hold that rate briefly so it cannot change while you decide.</p>
+      </details>
+      <details class="group rounded-2xl border border-line bg-white px-5 py-4 shadow-lg shadow-brand-500/5">
+        <summary class="rf flex cursor-pointer list-none items-center justify-between gap-4 text-[15px] font-bold"><span>Can a balance be spent twice?</span><span class="text-xl leading-none text-brand-600 transition group-open:rotate-45" aria-hidden="true">+</span></summary>
+        <p class="mt-3 text-[14px] leading-6 text-ink/75">No. A wallet is locked while money moves, and every move is written to a ledger. If a bank transfer cannot be confirmed, we wait for the real answer before refunding you.</p>
+      </details>
+      <details class="group rounded-2xl border border-line bg-white px-5 py-4 shadow-lg shadow-brand-500/5">
+        <summary class="rf flex cursor-pointer list-none items-center justify-between gap-4 text-[15px] font-bold"><span>Do I need to install anything?</span><span class="text-xl leading-none text-brand-600 transition group-open:rotate-45" aria-hidden="true">+</span></summary>
+        <p class="mt-3 text-[14px] leading-6 text-ink/75">No. Pheral runs in your browser. If you add it to your home screen, it opens full screen like any other app.</p>
+      </details>
+      <details class="group rounded-2xl border border-line bg-white px-5 py-4 shadow-lg shadow-brand-500/5">
+        <summary class="rf flex cursor-pointer list-none items-center justify-between gap-4 text-[15px] font-bold"><span>Does it work outside Nigeria?</span><span class="text-xl leading-none text-brand-600 transition group-open:rotate-45" aria-hidden="true">+</span></summary>
+        <p class="mt-3 text-[14px] leading-6 text-ink/75">Wallets and sign-up work in several countries. Paying out to a bank account is available in Nigeria only for now.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- 8. CREATE AN ACCOUNT (id="cta-final": the sticky mobile button hides itself when this is in view) -->
+<section id="cta-final" class="border-t border-line bg-white py-16 md:py-24">
+  <div class="mx-auto max-w-6xl px-5 md:px-8">
+    <div class="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-brand-700 via-brand-600 to-fuchsia-500 px-6 py-14 text-center text-white shadow-2xl shadow-brand-500/30 md:px-12 md:py-20">
+      <div class="pointer-events-none absolute -left-16 -top-16 h-56 w-56 rounded-full bg-white/10" aria-hidden="true"></div>
+      <div class="pointer-events-none absolute -bottom-20 -right-10 h-64 w-64 rounded-full bg-white/10" aria-hidden="true"></div>
+      <div class="relative">
+        <h2 class="font-display text-[32px] font-extrabold leading-[1.08] tracking-tight md:text-[46px]">Create an account</h2>
+        <p class="mx-auto mt-3 max-w-md text-[15px] leading-7 text-white/85">It is free to join and takes about a minute. You will need your phone number.</p>
+        <div class="mt-8 flex flex-wrap justify-center gap-3">
+          <a href="{% url 'register' %}" class="rf rounded-full bg-white px-7 py-3.5 text-[13px] font-semibold text-brand-700 shadow-lg transition hover:bg-brand-50 focus-visible:outline-white">Create an account</a>
+          <a href="{% url 'login_view' %}" class="rf rounded-full border border-white/40 px-7 py-3.5 text-[13px] font-semibold text-white transition hover:bg-white/10 focus-visible:outline-white">Log in</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 </main>
 
-<footer class="border-t border-line py-12"><div class="mx-auto max-w-6xl px-5 md:px-8">
+<footer class="border-t border-line bg-white py-12"><div class="mx-auto max-w-6xl px-5 md:px-8">
   <div class="grid grid-cols-2 gap-8 md:grid-cols-5">
-    <div class="col-span-2"><a href="#top" class="rf flex items-center gap-2"><img src="{% static 'images/favicon-48.png' %}" alt="" class="h-8 w-8 rounded-lg"><span class="font-display text-lg font-extrabold">Pheral</span></a><p class="mt-3 max-w-xs text-[13px] text-muted">Chat, pay, and hire in one app.</p></div>
-    <div><p class="mb-3 text-[13px] font-semibold">Product</p><div class="flex flex-col gap-2 text-[13px] text-muted"><a href="#features" class="hover:text-brand-600">Features</a><a href="#security" class="hover:text-brand-600">Security</a><a href="#founder" class="hover:text-brand-600">Founder</a><a href="#faq" class="hover:text-brand-600">FAQ</a></div></div>
-    <div><p class="mb-3 text-[13px] font-semibold">Account</p><div class="flex flex-col gap-2 text-[13px] text-muted"><a href="{% url 'register' %}" class="hover:text-brand-600">Sign up</a><a href="{% url 'login_view' %}" class="hover:text-brand-600">Log in</a><a href="{% url 'forgot_password' %}" class="hover:text-brand-600">Reset password</a></div></div>
-    <div><p class="mb-3 text-[13px] font-semibold">Legal</p><div class="flex flex-col gap-2 text-[13px] text-muted"><a href="#" class="hover:text-brand-600">Terms of Service</a><a href="#" class="hover:text-brand-600">Privacy Policy</a></div></div>
+    <div class="col-span-2"><a href="#top" class="rf flex items-center gap-2"><img src="{% static 'images/favicon-48.png' %}" alt="" class="h-8 w-8 rounded-lg"><span class="font-display text-lg font-extrabold tracking-tight">Pheral</span></a><p class="mt-3 max-w-xs text-[13px] leading-6 text-muted">Chat, pay, and hire in one app.</p></div>
+    <div><p class="mb-3 text-[13px] font-bold">Product</p><div class="flex flex-col gap-2 text-[13px] text-muted"><a href="#try" class="hover:text-brand-600">Where it helps</a><a href="#features" class="hover:text-brand-600">Features</a><a href="#security" class="hover:text-brand-600">Security</a><a href="#founder" class="hover:text-brand-600">Founder</a><a href="#faq" class="hover:text-brand-600">FAQ</a></div></div>
+    <div><p class="mb-3 text-[13px] font-bold">Account</p><div class="flex flex-col gap-2 text-[13px] text-muted"><a href="{% url 'register' %}" class="hover:text-brand-600">Sign up</a><a href="{% url 'login_view' %}" class="hover:text-brand-600">Log in</a><a href="{% url 'forgot_password' %}" class="hover:text-brand-600">Reset password</a></div></div>
+    <div><p class="mb-3 text-[13px] font-bold">Legal</p><div class="flex flex-col gap-2 text-[13px] text-muted"><a href="#" class="hover:text-brand-600">Terms of Service</a><a href="#" class="hover:text-brand-600">Privacy Policy</a></div></div>
   </div>
   <div class="mt-10 flex flex-col justify-between gap-2 border-t border-line pt-6 text-[11px] text-muted md:flex-row"><p>&copy; {% now "Y" %} Pheral. All rights reserved.</p><p>Payments are processed by regulated third-party providers.</p></div>
 </div></footer>
@@ -312,7 +720,7 @@ function landingApp() {
   return {
     nav: false, y: false, active: 'top', open: 0,
     progress: 0, cta: false, tl: 0, led: 0, auto: true, seen: {}, agentRan: false, outNum: 0, wi: 0, _tw: 0,
-    words: ['friends who split bills', 'class groups', 'freelancers', 'small businesses', 'teams that hire'],
+    words: ['friends who split bills', 'developers', 'class groups', 'freelancers', 'small businesses', 'teams that hire', 'me', 'you', ],
     pi: 0, lines: [], cur: '', curP: '', wantedTxt: '', caseNo: 'PHR-0417', heroVis: true,
     places: ['Waterlines', 'Peter Odili Road', 'Marine Base', 'Woji'],
     // Edit this to change the story. Each row: place index, prompt, command, comment.
@@ -323,7 +731,7 @@ function landingApp() {
       [3, 'teddy@woji:~$', 'git init pheral', '# chat + pay + hire, one thread'],
       [3, 'teddy@woji:~$', 'git push origin main', '[ok] Pheral is live'],
     ],
-    charges: ["Wanted for building Africa's alternative to WhatsApp.", "Wanted by the FBI for being the first teenager to ship Africa's direct alternative to WeChat.", 'Wanted for breaking up with traditional banking using a three-feature platform.'],
+    charges: ["Wanted for building Africa's alternative to WhatsApp.","Wanted for being a threat to the west .", "Wanted by the FBI for being the first teenager to ship Africa's direct alternative to WeChat.", 'Wanted for destroying traditional banking using a three-feature platform.'],
     ticker: [['NGN','ng','Naira'],['GHS','gh','Cedi'],['KES','ke','Shilling'],['ZAR','za','Rand'],['UGX','ug','Shilling'],['TZS','tz','Shilling'],['RWF','rw','Franc'],['EGP','eg','Pound'],['USD','us','Dollar'],['GBP','gb','Pound'],['EUR','eu','Euro'],['CAD','ca','Dollar'],['AUD','au','Dollar']],
     get rawOut() { return (Number(this.amount) || 0) * this.rates[this.to] / this.rates[this.from]; },
     fmt(n) { return n.toLocaleString(undefined, { maximumFractionDigits: 2 }); },
@@ -572,6 +980,29 @@ function worldMap(cv) {
   document.addEventListener('visibilitychange', start);
   new ResizeObserver(() => { size(); draw(still ? 0 : performance.now()); }).observe(cv);
 }
+</script>
+<script>
+(function () {
+    function hidePreloader() {
+        const loader = document.getElementById("pheral-preloader");
+
+        if (loader) {
+            loader.classList.add("hide");
+
+            setTimeout(() => {
+                loader.remove();
+            }, 1500);
+        }
+    }
+
+    if (document.readyState === "complete") {
+        hidePreloader();
+    } else {
+        window.addEventListener("load", hidePreloader, {
+            once: true
+        });
+    }
+})();
 </script>
 </body>
 </html>

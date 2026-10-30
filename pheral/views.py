@@ -79,7 +79,108 @@ from .models import (
     WalletToken,
     generate_reference,
 )
+# ---------------------------------------------------------------------------
+# 1) Add to the imports at the top of views.py
+#    (pip install babel, and add `babel` to requirements.txt)
+# ---------------------------------------------------------------------------
+from babel import Locale
+from babel.numbers import (
+    get_currency_name,
+    get_currency_precision,
+    get_currency_symbol,
+    get_territory_currencies,
+)
+from .consumers import broadcast_message
 
+
+# ---------------------------------------------------------------------------
+# 2) In "MONEY / WALLET HELPERS": REPLACE your get_default_currency() with these.
+#    No currency list is stored anywhere in the code: Babel ships the full
+#    CLDR dataset (every ISO currency, its name, symbol and decimal places),
+#    and a Currency row is created the first time one is needed.
+# ---------------------------------------------------------------------------
+
+def ensure_currency(code, region=None):
+    """
+    The Currency row for an ISO code (e.g. "GHS", "BWP", "JPY"), created from
+    Babel's data if it doesn't exist yet. Returns None for a code that isn't a
+    real ISO currency. An existing row is returned as-is, so an admin can still
+    rename it or switch it off.
+    """
+    code = (code or "").strip().upper()
+    if not code:
+        return None
+
+    existing = Currency.objects.filter(code__iexact=code).first()
+    if existing:
+        return existing
+
+    if code not in Locale("en").currencies:
+        return None
+
+    symbol = code
+    for loc in ((f"en_{region}" if region else None), "en"):
+        if not loc:
+            continue
+        try:
+            symbol = get_currency_symbol(code, locale=loc)
+            break
+        except Exception:
+            continue
+
+    try:
+        places = get_currency_precision(code)
+    except Exception:
+        places = 2
+
+    currency, _ = Currency.objects.get_or_create(
+        code=code,
+        defaults={
+            "name": get_currency_name(code, locale="en"),
+            "symbol": symbol,
+            "decimal_places": places,
+            "is_active": True,
+        },
+    )
+    return currency
+
+
+def currency_for_region(region):
+    """The active Currency for a country code like "GH", or None."""
+    try:
+        codes = get_territory_currencies(region)
+    except Exception:
+        codes = []
+
+    if not codes:
+        return None
+
+    currency = ensure_currency(codes[0], region)
+    return currency if currency and currency.is_active else None
+
+
+def get_default_currency(user=None):
+    """
+    With a user: the currency of the country their phone number belongs to
+    (+233... -> GHS, +44... -> GBP, +81... -> JPY).
+    Without a user, or if that currency is missing or switched off: NGN,
+    otherwise the first active currency.
+    """
+    if user is not None and getattr(user, "phone_number", ""):
+        currency = currency_for_region(region_for_user(user))
+        if currency:
+            return currency
+
+    currency = Currency.objects.filter(code__iexact="NGN", is_active=True).first()
+    return currency or Currency.objects.filter(is_active=True).first()
+
+
+# ---------------------------------------------------------------------------
+# 3) In _finish_signup(), change one line:
+#        currency = get_default_currency()
+#    to:
+#        currency = get_default_currency(user)
+# ---------------------------------------------------------------------------
 logger = logging.getLogger(__name__)
 
 FLW_API = "https://api.flutterwave.com/v3"
@@ -687,7 +788,7 @@ def _finish_signup(request, user):
     user.save(update_fields=["is_phone_verified"])
 
     get_or_create_wallet_token(user)
-    currency = get_default_currency()
+    currency = get_default_currency(user)
     if currency:
         get_or_create_wallet(user, currency)
 
@@ -1017,8 +1118,101 @@ def profile_edit(request):
 # CHAT (direct conversations; groups use group_chat)
 # ============================================================
 
+import logging
+from datetime import timedelta
+
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+
+# Make sure these are imported at the top of your views.py (most already are):
+# from .models import (
+#     Conversation, ConversationParticipant, Message, MessageRead, User,
+#     get_or_create_direct_conversation,   # or wherever yours lives
+# )
+
+logger = logging.getLogger("pheral")
+
+# The page sends a heartbeat every 60s, so "online" = seen within 2.5 minutes.
+PRESENCE_ONLINE_WINDOW = timedelta(seconds=150)
+
+
+def _presence_for(user):
+    """
+    ADAPT THIS ONE FUNCTION to your presence model.
+    It must return an object with a `.last_seen_at` datetime, or None.
+    Example if you have a UserPresence model with a OneToOne to User:
+        return UserPresence.objects.filter(user=user).first()
+    """
+    try:
+        return user.presence  # assumes related_name="presence"
+    except Exception:
+        return None
+
+
+def _broadcast_read(conversation_id, reader_id, message_id):
+    """Tell the sender's open tabs that their messages were read (live double-ticks)."""
+    layer = get_channel_layer()
+    if layer is None:
+        return
+    try:
+        async_to_sync(layer.group_send)(
+            f"chat_{conversation_id}",
+            {"type": "read_receipt_event", "message_id": message_id, "reader_id": reader_id},
+        )
+    except Exception:
+        logger.exception("read receipt broadcast failed")
+
+import logging
+from datetime import timedelta
+
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+
+
+from .consumers import broadcast_message
+
+logger = logging.getLogger("pheral")
+
+# The page sends a heartbeat every 60s, so "online" = seen within 2.5 minutes.
+PRESENCE_ONLINE_WINDOW = timedelta(seconds=150)
+
+
+def _presence_for(user):
+    """
+    ADAPT THIS ONE FUNCTION to your presence model.
+    It must return an object with a `.last_seen_at` datetime, or None.
+    Example if you have a UserPresence model with a OneToOne to User:
+        return UserPresence.objects.filter(user=user).first()
+    """
+    try:
+        return user.presence  # assumes related_name="presence"
+    except Exception:
+        return None
+
+
+def _broadcast_read(conversation_id, reader_id, message_id):
+    """Tell the sender's open tabs that their messages were read (live double-ticks)."""
+    layer = get_channel_layer()
+    if layer is None:
+        return
+    try:
+        async_to_sync(layer.group_send)(
+            f"chat_{conversation_id}",
+            {"type": "read_receipt_event", "message_id": message_id, "reader_id": reader_id},
+        )
+    except Exception:
+        logger.exception("read receipt broadcast failed")
+
+
 @login_required
 def chat(request, conversation_id=None, username=None):
+    # ------------------------------------------------------------ resolve conversation
     if username:
         other_user = get_object_or_404(User, username__iexact=username)
         if other_user.pk == request.user.pk:
@@ -1047,6 +1241,7 @@ def chat(request, conversation_id=None, username=None):
 
     participant = get_object_or_404(ConversationParticipant, conversation=conversation, user=request.user)
 
+    # ------------------------------------------------------------ send (form POST: files, voice notes, socket fallback)
     if request.method == "POST":
         content = request.POST.get("content", "").strip()
         attachment = request.FILES.get("attachment")
@@ -1076,27 +1271,67 @@ def chat(request, conversation_id=None, username=None):
                 message_type = Message.MessageType.FILE
 
         if content or uploaded_file:
-            Message.objects.create(
+            message = Message.objects.create(
                 conversation=conversation, sender=request.user, message_type=message_type,
                 content=content, attachment=uploaded_file, reply_to=reply_to,
             )
-            conversation.updated_at = timezone.now()
+            now = timezone.now()
+            conversation.updated_at = now
             conversation.save(update_fields=["updated_at"])
-            participant.last_read_at = timezone.now()
+            participant.last_read_at = now
             participant.save(update_fields=["last_read_at"])
+
+            # Live delivery to everyone with this chat open (files, voice notes, fallback text).
+            broadcast_message(message)
 
         return redirect("chat", conversation_id=conversation.pk)
 
+    # ------------------------------------------------------------ load messages
     # Named chat_messages, never `messages`: that name is django.contrib.messages.
-    chat_messages = (
+    chat_messages = list(
         Message.objects.filter(conversation=conversation, is_deleted=False)
         .select_related("sender", "reply_to", "reply_to__sender", "receipt", "transaction")
-        .prefetch_related("read_receipts")
         .order_by("created_at")
     )
 
+    # ------------------------------------------------------------ unread divider
+    # Must be computed BEFORE last_read_at is moved forward below.
+    previous_read = participant.last_read_at
+    incoming = [
+        m for m in chat_messages
+        if m.sender_id != request.user.id and m.message_type != "system"
+    ]
+    unread = [m for m in incoming if previous_read is None or m.created_at > previous_read]
+    first_unread_id = unread[0].id if unread else None
+    unread_count = len(unread)
+
+    # ------------------------------------------------------------ mark incoming as read
+    already_read = set(
+        MessageRead.objects.filter(user=request.user, message__conversation=conversation)
+        .values_list("message_id", flat=True)
+    )
+    to_mark = [m for m in incoming if m.id not in already_read]
+    if to_mark:
+        MessageRead.objects.bulk_create(
+            [MessageRead(message=m, user=request.user) for m in to_mark],
+            ignore_conflicts=True,
+        )
+        _broadcast_read(conversation.pk, request.user.id, to_mark[-1].id)
+
     participant.last_read_at = timezone.now()
     participant.save(update_fields=["last_read_at"])
+
+    # ------------------------------------------------------------ ticks for MY messages
+    read_by_others = set(
+        MessageRead.objects.filter(message__conversation=conversation, message__sender=request.user)
+        .exclude(user=request.user)
+        .values_list("message_id", flat=True)
+    )
+
+    # ------------------------------------------------------------ presence
+    other_presence = _presence_for(other_user)
+    last_seen = getattr(other_presence, "last_seen_at", None)
+    other_online = bool(last_seen and timezone.now() - last_seen < PRESENCE_ONLINE_WINDOW)
 
     participants = (
         ConversationParticipant.objects.filter(conversation=conversation)
@@ -1111,9 +1346,212 @@ def chat(request, conversation_id=None, username=None):
         "is_group": False,
         "chat_messages": chat_messages,
         "current_user": request.user,
+        "first_unread_id": first_unread_id,
+        "unread_count": unread_count,
+        "read_by_others": read_by_others,
+        "other_presence": other_presence,
+        "other_online": other_online,
     })
 
+import logging
+from datetime import timedelta
 
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from django.contrib.auth.decorators import login_required
+from django.http import JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+
+# Make sure these are imported at the top of your views.py (most already are):
+# from .consumers import broadcast_message
+# from .models import (
+#     Conversation, ConversationParticipant, Message, MessageRead, User,
+#     get_or_create_direct_conversation,   # or wherever yours lives
+# )
+
+logger = logging.getLogger("pheral")
+
+# The page sends a heartbeat every 60s, so "online" = seen within 2.5 minutes.
+PRESENCE_ONLINE_WINDOW = timedelta(seconds=150)
+
+
+def _presence_for(user):
+    """
+    ADAPT THIS ONE FUNCTION to your presence model.
+    It must return an object with a `.last_seen_at` datetime, or None.
+    Example if you have a UserPresence model with a OneToOne to User:
+        return UserPresence.objects.filter(user=user).first()
+    """
+    try:
+        return user.presence  # assumes related_name="presence"
+    except Exception:
+        return None
+
+
+def _broadcast_read(conversation_id, reader_id, message_id):
+    """Tell the sender's open tabs that their messages were read (live double-ticks)."""
+    layer = get_channel_layer()
+    if layer is None:
+        return
+    try:
+        async_to_sync(layer.group_send)(
+            f"chat_{conversation_id}",
+            {"type": "read_receipt_event", "message_id": message_id, "reader_id": reader_id},
+        )
+    except Exception:
+        logger.exception("read receipt broadcast failed")
+
+
+@login_required
+def chat(request, conversation_id=None, username=None):
+    # ------------------------------------------------------------ resolve conversation
+    if username:
+        other_user = get_object_or_404(User, username__iexact=username)
+        if other_user.pk == request.user.pk:
+            return redirect("chat_list")
+        conversation = get_or_create_direct_conversation(request.user, other_user)
+
+    elif conversation_id:
+        conversation = get_object_or_404(
+            Conversation.objects.filter(participants__user=request.user, is_active=True).distinct(),
+            pk=conversation_id,
+        )
+        if conversation.conversation_type == Conversation.ConversationType.GROUP:
+            return redirect("group_chat", conversation_id=conversation.pk)
+
+        other_user = (
+            User.objects
+            .filter(conversation_participations__conversation=conversation)
+            .exclude(pk=request.user.pk)
+            .first()
+        )
+        if other_user is None:
+            return redirect("chat_list")
+
+    else:
+        return redirect("chat_list")
+
+    participant = get_object_or_404(ConversationParticipant, conversation=conversation, user=request.user)
+
+    # ------------------------------------------------------------ send (form POST: files, voice notes, socket fallback)
+    if request.method == "POST":
+        content = request.POST.get("content", "").strip()
+        attachment = request.FILES.get("attachment")
+        voice_note = request.FILES.get("voice_note")
+        reply_to_id = request.POST.get("reply_to")
+
+        reply_to = None
+        if reply_to_id:
+            reply_to = Message.objects.filter(
+                pk=reply_to_id, conversation=conversation, is_deleted=False,
+            ).first()
+
+        message_type = Message.MessageType.TEXT
+        uploaded_file = None
+
+        if voice_note:
+            uploaded_file = voice_note
+            message_type = Message.MessageType.VOICE
+        elif attachment:
+            uploaded_file = attachment
+            content_type = (getattr(attachment, "content_type", "") or "").lower()
+            if content_type.startswith("image/"):
+                message_type = Message.MessageType.IMAGE
+            elif content_type.startswith("video/"):
+                message_type = Message.MessageType.VIDEO
+            else:
+                message_type = Message.MessageType.FILE
+
+        message = None
+        if content or uploaded_file:
+            message = Message.objects.create(
+                conversation=conversation, sender=request.user, message_type=message_type,
+                content=content, attachment=uploaded_file, reply_to=reply_to,
+            )
+            now = timezone.now()
+            conversation.updated_at = now
+            conversation.save(update_fields=["updated_at"])
+            participant.last_read_at = now
+            participant.save(update_fields=["last_read_at"])
+
+            # Live delivery to everyone with this chat open (files, voice notes, fallback text).
+            broadcast_message(message)
+
+        # Background upload from the page (fetch): answer with JSON, no redirect/reload.
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            if message is None:
+                return JsonResponse({"ok": False}, status=400)
+            return JsonResponse({"ok": True, "id": message.id})
+
+        return redirect("chat", conversation_id=conversation.pk)
+
+    # ------------------------------------------------------------ load messages
+    # Named chat_messages, never `messages`: that name is django.contrib.messages.
+    chat_messages = list(
+        Message.objects.filter(conversation=conversation, is_deleted=False)
+        .select_related("sender", "reply_to", "reply_to__sender", "receipt", "transaction")
+        .order_by("created_at")
+    )
+
+    # ------------------------------------------------------------ unread divider
+    # Must be computed BEFORE last_read_at is moved forward below.
+    previous_read = participant.last_read_at
+    incoming = [
+        m for m in chat_messages
+        if m.sender_id != request.user.id and m.message_type != "system"
+    ]
+    unread = [m for m in incoming if previous_read is None or m.created_at > previous_read]
+    first_unread_id = unread[0].id if unread else None
+    unread_count = len(unread)
+
+    # ------------------------------------------------------------ mark incoming as read
+    already_read = set(
+        MessageRead.objects.filter(user=request.user, message__conversation=conversation)
+        .values_list("message_id", flat=True)
+    )
+    to_mark = [m for m in incoming if m.id not in already_read]
+    if to_mark:
+        MessageRead.objects.bulk_create(
+            [MessageRead(message=m, user=request.user) for m in to_mark],
+            ignore_conflicts=True,
+        )
+        _broadcast_read(conversation.pk, request.user.id, to_mark[-1].id)
+
+    participant.last_read_at = timezone.now()
+    participant.save(update_fields=["last_read_at"])
+
+    # ------------------------------------------------------------ ticks for MY messages
+    read_by_others = set(
+        MessageRead.objects.filter(message__conversation=conversation, message__sender=request.user)
+        .exclude(user=request.user)
+        .values_list("message_id", flat=True)
+    )
+
+    # ------------------------------------------------------------ presence
+    other_presence = _presence_for(other_user)
+    last_seen = getattr(other_presence, "last_seen_at", None)
+    other_online = bool(last_seen and timezone.now() - last_seen < PRESENCE_ONLINE_WINDOW)
+
+    participants = (
+        ConversationParticipant.objects.filter(conversation=conversation)
+        .select_related("user").order_by("joined_at")
+    )
+
+    return render(request, "chat.html", {
+        "conversation": conversation,
+        "other_user": other_user,
+        "participants": participants,
+        "participant": participant,
+        "is_group": False,
+        "chat_messages": chat_messages,
+        "current_user": request.user,
+        "first_unread_id": first_unread_id,
+        "unread_count": unread_count,
+        "read_by_others": read_by_others,
+        "other_presence": other_presence,
+        "other_online": other_online,
+    })
 @login_required
 def start_chat(request, username):
     other_user = get_object_or_404(User, username__iexact=username)

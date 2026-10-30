@@ -81,11 +81,21 @@ INSTALLED_APPS = [
     "channels",
 ]
 
-CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels.layers.InMemoryChannelLayer",
-    },
-}
+REDIS_URL = os.environ.get("REDIS_URL")
+
+if REDIS_URL:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels_redis.core.RedisChannelLayer",
+            "CONFIG": {"hosts": [REDIS_URL]},
+        }
+    }
+else:
+    CHANNEL_LAYERS = {
+        "default": {
+            "BACKEND": "channels.layers.InMemoryChannelLayer",
+        }
+    }
 # ============================================================
 # MIDDLEWARE
 # ============================================================
@@ -168,10 +178,17 @@ if DATABASE_URL:
     DATABASES = {
         "default": dj_database_url.parse(
             DATABASE_URL,
-            conn_max_age=600,
+            conn_max_age=0,           # was 600: no long-lived connections
+            conn_health_checks=True,  # drop dead connections before reuse
             ssl_require=True,
         )
     }
+    DATABASES["default"].setdefault("OPTIONS", {}).update({
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 5,
+    })
 else:
     DATABASES = {
         "default": {
@@ -179,7 +196,6 @@ else:
             "NAME": BASE_DIR / "db.sqlite3",
         }
     }
-
 
 # ============================================================
 # PASSWORD VALIDATION
