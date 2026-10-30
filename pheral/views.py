@@ -84,15 +84,21 @@ from .models import (
 #    (pip install babel, and add `babel` to requirements.txt)
 # ---------------------------------------------------------------------------
 from babel import Locale
-from babel.numbers import (
-    get_currency_name,
-    get_currency_precision,
-    get_currency_symbol,
-    get_territory_currencies,
+
+DEFAULT_REGION = "NG"
+
+_territory_names = Locale("en").territories
+
+# Every country the phone-number library can validate, with its English name.
+# Nigeria stays first (it's the default); the rest are alphabetical.
+SUPPORTED_REGIONS = [("NG", _territory_names.get("NG", "Nigeria"))] + sorted(
+    (
+        (code, _territory_names[code])
+        for code in phonenumbers.SUPPORTED_REGIONS
+        if code in _territory_names and code != "NG"
+    ),
+    key=lambda item: item[1],
 )
-from .consumers import broadcast_message
-
-
 # ---------------------------------------------------------------------------
 # 2) In "MONEY / WALLET HELPERS": REPLACE your get_default_currency() with these.
 #    No currency list is stored anywhere in the code: Babel ships the full
@@ -190,22 +196,6 @@ FLW_API = "https://api.flutterwave.com/v3"
 # PHONE HELPERS
 # ============================================================
 
-SUPPORTED_REGIONS = [
-    ("NG", "Nigeria"),
-    ("GH", "Ghana"),
-    ("KE", "Kenya"),
-    ("ZA", "South Africa"),
-    ("UG", "Uganda"),
-    ("TZ", "Tanzania"),
-    ("RW", "Rwanda"),
-    ("EG", "Egypt"),
-    ("US", "United States"),
-    ("GB", "United Kingdom"),
-    ("CA", "Canada"),
-    ("AU", "Australia"),
-]
-
-DEFAULT_REGION = "NG"
 
 
 def region_dial_code(region):
@@ -5107,6 +5097,49 @@ def validate_phone(raw, region):
 
     return phonenumbers.format_number(num, Fmt.E164), None, region
 
+# urls.py
+#   path("check-phone/", views.check_phone, name="check_phone"),
+#
+# In your register POST handler:
+#   e164, reason, _ = validate_phone(request.POST["phone_number"], request.POST["region"])
+#   if reason or User.objects.filter(phone_number=e164).exists():
+#       messages.error(request, "That phone number doesn't match the country you selected.")
+#       -> re-render the form, and save e164 (not the raw text) on success.
+
+# Replace check_phone() at the bottom of views.py with these two functions.
+# (get_territory_currencies, get_currency_name and get_currency_symbol are
+#  already imported from the currency helpers step.)
+
+
+def currency_preview(region):
+    """
+    The wallet currency a user from `region` will get, for display on the
+    register page. Read-only: it never creates a Currency row. It follows the
+    same rules as get_default_currency(), so the preview matches the real wallet.
+    """
+    try:
+        codes = get_territory_currencies(region)
+    except Exception:
+        codes = []
+
+    code = codes[0] if codes else None
+    row = Currency.objects.filter(code__iexact=code).first() if code else None
+
+    if code and (row is None or row.is_active):
+        if row:
+            return {"code": row.code, "name": row.name, "symbol": row.symbol}
+        try:
+            symbol = get_currency_symbol(code, locale=f"en_{region}")
+        except Exception:
+            symbol = code
+        return {"code": code, "name": get_currency_name(code, locale="en"), "symbol": symbol}
+
+    # Their country's currency is missing from Babel or switched off in the admin.
+    fallback = Currency.objects.filter(code__iexact="NGN", is_active=True).first()
+    if fallback:
+        return {"code": fallback.code, "name": fallback.name, "symbol": fallback.symbol}
+    return None
+
 
 @require_GET
 def check_phone(request):
@@ -5116,15 +5149,10 @@ def check_phone(request):
     if reason:
         return JsonResponse({"valid": False, "reason": reason, "detected_region": detected})
     pretty = phonenumbers.format_number(phonenumbers.parse(e164), Fmt.INTERNATIONAL)
-    taken = User.objects.filter(phone_number=e164).exists()  # <- your field name
-    return JsonResponse({"valid": True, "available": not taken, "formatted": pretty})
-
-
-# urls.py
-#   path("check-phone/", views.check_phone, name="check_phone"),
-#
-# In your register POST handler:
-#   e164, reason, _ = validate_phone(request.POST["phone_number"], request.POST["region"])
-#   if reason or User.objects.filter(phone_number=e164).exists():
-#       messages.error(request, "That phone number doesn't match the country you selected.")
-#       -> re-render the form, and save e164 (not the raw text) on success.
+    taken = User.objects.filter(phone_number=e164).exists()
+    return JsonResponse({
+        "valid": True,
+        "available": not taken,
+        "formatted": pretty,
+        "currency": currency_preview(region.upper()),
+    })

@@ -45,7 +45,8 @@ tailwind.config = { theme: { extend: {
 </style>
 </head>
 
-<body class="min-h-full bg-white font-sans text-ink antialiased" x-data="registerWizard()" x-init="init()">
+{# No x-init here: Alpine calls init() on its own, and x-init="init()" would run it twice. #}
+<body class="min-h-full bg-white font-sans text-ink antialiased" x-data="registerWizard()">
 <div class="grid min-h-screen lg:grid-cols-[.9fr_1.1fr]">
 
   <!-- Brand panel (desktop) -->
@@ -62,7 +63,7 @@ tailwind.config = { theme: { extend: {
       </div>
     </div>
     <ul class="space-y-2 text-sm text-muted">
-      <li>Sign up with just your phone number</li><li>No card needed to get started</li><li>13 currencies across Africa and beyond</li>
+      <li>Sign up with just your phone number</li><li>No card needed to get started</li><li>A wallet in your own currency, wherever you are</li>
     </ul>
   </aside>
 
@@ -141,17 +142,41 @@ tailwind.config = { theme: { extend: {
           <div x-show="step === 2" x-cloak class="pop">
             <h1 class="font-display text-3xl font-extrabold tracking-tight">Where are you?</h1>
             <p class="mb-6 mt-1 text-muted">We'll send your verification code to this number.</p>
+
+            <!-- Country: searchable list of every supported country -->
             <div>
               <label class="lbl" for="region">Country</label>
-              <select id="region" name="region" x-model="region" @change="onPhoneInput()" class="fld">
-                {% for code, name in regions %}<option value="{{ code }}" {% if code == selected_region %}selected{% endif %}>{{ name }}</option>{% endfor %}
-              </select>
+              <div class="relative" @click.outside="countryOpen = false" @keydown.escape="countryOpen = false">
+                <input type="hidden" name="region" :value="region">
+                <button type="button" id="region" @click="toggleCountry()" aria-haspopup="listbox" :aria-expanded="countryOpen" class="fld flex items-center justify-between gap-2 text-left">
+                  <span class="truncate" x-text="regionName(region)"></span>
+                  <svg class="h-4 w-4 shrink-0 text-muted transition" :class="countryOpen ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <div x-show="countryOpen" x-cloak x-transition.opacity class="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-line bg-white shadow-xl">
+                  <div class="border-b border-line p-2">
+                    <input type="text" x-ref="countrySearch" x-model="countryQuery" @input="countryIndex = 0"
+                           @keydown.arrow-down.prevent="moveCountry(1)" @keydown.arrow-up.prevent="moveCountry(-1)" @keydown.enter.stop.prevent="pickHighlighted()"
+                           placeholder="Search countries" autocomplete="off" aria-label="Search countries" class="fld !py-2 !text-sm">
+                  </div>
+                  <ul x-ref="countryList" role="listbox" class="max-h-60 overflow-y-auto py-1">
+                    <template x-for="(c, i) in filteredCountries" :key="c.code">
+                      <li role="option" :aria-selected="c.code === region" :data-idx="i" @click="pickCountry(c.code)" @mouseenter="countryIndex = i"
+                          class="flex cursor-pointer items-center justify-between gap-2 px-4 py-2 text-sm" :class="i === countryIndex ? 'bg-brand-50' : ''">
+                        <span class="truncate" :class="c.code === region ? 'font-semibold text-brand-700' : ''" x-text="c.name"></span>
+                        <svg x-show="c.code === region" class="h-4 w-4 shrink-0 text-brand-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                      </li>
+                    </template>
+                    <li x-show="!filteredCountries.length" class="px-4 py-3 text-sm text-muted">No country found.</li>
+                  </ul>
+                </div>
+              </div>
             </div>
+
             <div class="mt-4">
               <label class="lbl" for="phone_number">Phone number</label>
               <div class="flex items-center gap-2 rounded-xl border bg-white px-4 py-3 transition focus-within:ring-4"
                    :class="phoneStatus === 'invalid' || phoneStatus === 'taken' ? 'border-red-300 focus-within:ring-red-100' : phoneStatus === 'valid' ? 'border-cash-500 focus-within:ring-cash-100' : 'border-line focus-within:border-brand-400 focus-within:ring-brand-100'">
-                <input id="phone_number" type="tel" name="phone_number" x-model="phone" @input="onPhoneInput()" maxlength="30" autocomplete="tel" inputmode="tel" placeholder="e.g. 0801 234 5678"
+                <input id="phone_number" type="tel" name="phone_number" x-model="phone" @input="onPhoneInput()" maxlength="30" autocomplete="tel" inputmode="tel" :placeholder="phoneExample"
                        :aria-invalid="phoneStatus === 'invalid' || phoneStatus === 'taken'" aria-describedby="phone_msg" class="w-full bg-transparent text-[15px] outline-none placeholder:text-muted/60">
                 <svg x-show="phoneChecking" x-cloak class="h-4 w-4 shrink-0 animate-spin text-muted" viewBox="0 0 24 24" fill="none"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
                 <svg x-show="!phoneChecking && phoneStatus === 'valid'" x-cloak class="h-5 w-5 shrink-0 text-cash-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>
@@ -159,10 +184,20 @@ tailwind.config = { theme: { extend: {
               </div>
               <p id="phone_msg" class="hint" aria-live="polite" :class="phoneStatus === 'invalid' || phoneStatus === 'taken' ? '!text-red-600 font-semibold' : phoneStatus === 'valid' ? '!text-cash-600 font-semibold' : ''">
                 <span x-text="phoneMessage || phoneHint"></span>
-                <button type="button" x-show="detectedRegion && $root.querySelector('#region option[value=' + detectedRegion + ']')" x-cloak @click="region = detectedRegion; onPhoneInput()" class="underline" x-text="'Switch country to ' + regionName(detectedRegion)"></button>
+                <button type="button" x-show="detectedRegion && hasCountry(detectedRegion)" x-cloak @click="pickCountry(detectedRegion)" class="underline" x-text="'Switch country to ' + regionName(detectedRegion)"></button>
                 <a x-show="phoneStatus === 'taken'" x-cloak href="{% url 'login_view' %}" class="underline">Log in instead</a>
               </p>
+
+              <!-- Which wallet they'll get, worked out from the number's country -->
+              <div x-show="phoneStatus === 'valid' && phoneCurrency" x-cloak class="mt-3 flex items-center gap-3 rounded-xl border border-brand-100 bg-brand-50 px-4 py-3">
+                <span class="flex h-9 min-w-9 items-center justify-center rounded-full bg-brand-500 px-2 text-sm font-bold text-white" x-text="phoneCurrency ? phoneCurrency.symbol : ''"></span>
+                <div class="min-w-0 text-sm">
+                  <p class="font-semibold text-ink">Your wallet will be in <span x-text="phoneCurrency ? phoneCurrency.code : ''"></span></p>
+                  <p class="truncate text-xs text-muted" x-text="phoneCurrency ? phoneCurrency.name : ''"></p>
+                </div>
+              </div>
             </div>
+
             <div class="mt-4">
               <label class="lbl" for="referral_code">Referral code <span class="font-normal text-muted">(optional)</span></label>
               <input id="referral_code" type="text" name="referral_code" x-model="referralCode" maxlength="20" autocomplete="off" autocapitalize="characters" placeholder="e.g. PHR-ABC123" class="fld">
@@ -247,6 +282,8 @@ tailwind.config = { theme: { extend: {
   </div>
 </div>
 
+{{ regions|json_script:"regions-data" }}
+
 <script>
 function registerWizard() {
   return {
@@ -257,14 +294,45 @@ function registerWizard() {
     password: '', passwordConfirm: '', showPassword: false, showConfirm: false,
     passwordScore: 0, strengthLabel: '', strengthColor: 'bg-line',
     termsAccepted: false, marketingOptIn: false,
-    phoneStatus: null, phoneMessage: '', phoneChecking: false, phoneFormatted: '', detectedRegion: '', _pdeb: null, _pseq: 0,
+    phoneStatus: null, phoneMessage: '', phoneChecking: false, phoneFormatted: '', phoneCurrency: null, detectedRegion: '', _pdeb: null, _pseq: 0,
+
+    // Every country the server supports, as [code, name] pairs.
+    countries: JSON.parse(document.getElementById('regions-data').textContent).map(([code, name]) => ({ code, name })),
+    countryOpen: false, countryQuery: '', countryIndex: 0,
+
+    regionName(code) { const c = this.countries.find(x => x.code === code); return c ? c.name : code; },
+    hasCountry(code) { return this.countries.some(x => x.code === code); },
+    get filteredCountries() {
+      const q = this.countryQuery.trim().toLowerCase();
+      return q ? this.countries.filter(c => c.name.toLowerCase().includes(q) || c.code.toLowerCase() === q) : this.countries;
+    },
+    toggleCountry() {
+      this.countryOpen = !this.countryOpen;
+      if (!this.countryOpen) return;
+      this.countryQuery = '';
+      this.countryIndex = Math.max(0, this.countries.findIndex(c => c.code === this.region));
+      this.$nextTick(() => { this.$refs.countrySearch.focus(); this.scrollToIndex(); });
+    },
+    moveCountry(step) {
+      const n = this.filteredCountries.length;
+      if (!n) return;
+      this.countryIndex = (this.countryIndex + step + n) % n;
+      this.scrollToIndex();
+    },
+    scrollToIndex() {
+      this.$nextTick(() => {
+        const el = this.$refs.countryList.querySelector('[data-idx="' + this.countryIndex + '"]');
+        if (el) el.scrollIntoView({ block: 'nearest' });
+      });
+    },
+    pickHighlighted() { const c = this.filteredCountries[this.countryIndex]; if (c) this.pickCountry(c.code); },
+    pickCountry(code) { this.region = code; this.countryOpen = false; this.onPhoneInput(); },
 
     // Rejects the number as soon as it is clearly wrong, then asks the server
     // whether it is a real number for the chosen country and not already registered.
-    regionName(code) { const o = document.querySelector('#region option[value="' + code + '"]'); return o ? o.textContent.trim() : code; },
     onPhoneInput() {
       clearTimeout(this._pdeb);
-      this.phoneStatus = null; this.phoneMessage = ''; this.phoneFormatted = ''; this.phoneChecking = false; this.detectedRegion = '';
+      this.phoneStatus = null; this.phoneMessage = ''; this.phoneFormatted = ''; this.phoneCurrency = null; this.phoneChecking = false; this.detectedRegion = '';
       const raw = this.phone.trim();
       if (!raw) return;
       if (/[^\d\s()+\-.]/.test(raw)) { this.phoneStatus = 'invalid'; this.phoneMessage = 'Use digits only. Letters and symbols are not allowed.'; return; }
@@ -278,7 +346,10 @@ function registerWizard() {
           const res = await fetch('{% url 'check_phone' %}?region=' + encodeURIComponent(region) + '&phone=' + encodeURIComponent(raw));
           const d = await res.json();
           if (seq !== this._pseq) return; // a newer edit superseded this answer
-          if (d.valid && d.available) { this.phoneStatus = 'valid'; this.phoneFormatted = d.formatted || ''; this.phoneMessage = 'Looks good. We\'ll text a code to ' + (d.formatted || 'this number') + '.'; }
+          if (d.valid && d.available) {
+            this.phoneStatus = 'valid'; this.phoneFormatted = d.formatted || ''; this.phoneCurrency = d.currency || null;
+            this.phoneMessage = 'Looks good. We\'ll text a code to ' + (d.formatted || 'this number') + '.';
+          }
           else if (d.valid) { this.phoneStatus = 'taken'; this.phoneMessage = 'This number is already registered.'; }
           else {
             this.phoneStatus = 'invalid';
@@ -295,14 +366,16 @@ function registerWizard() {
       }, 450);
     },
 
-    // Example number for each country, so the hint matches the chosen country.
+    // Example number for each country, so the placeholder and hint match the chosen country.
     phoneHints: { {% for code, hint in phone_hints.items %}'{{ code }}': '{{ hint|escapejs }}',{% endfor %} },
     get phoneHint() { return this.phoneHints[this.region] || "Enter it the way you'd dial it locally. We'll match it to the country above."; },
+    get phoneExample() { return (this.phoneHints[this.region] || '').replace(/ \(\d+ digits\)$/, '') || 'Phone number'; },
 
     init() {
       // Prefill a referral code from a shared link like /register/?ref=PHR-ABC123
       const ref = new URLSearchParams(location.search).get('ref');
       if (ref && !this.referralCode) this.referralCode = ref.slice(0, 20);
+      if (this.phone) this.onPhoneInput();
     },
 
     get rules() {
@@ -317,7 +390,9 @@ function registerWizard() {
       return [
         { label: 'Name', value: (this.firstName + ' ' + this.lastName).trim(), step: 1 },
         { label: 'Username', value: this.username ? '@' + this.username : '', step: 1 },
+        { label: 'Country', value: this.regionName(this.region), step: 2 },
         { label: 'Phone', value: this.phoneFormatted || this.phone.trim(), step: 2 },
+        { label: 'Wallet currency', value: this.phoneCurrency ? this.phoneCurrency.symbol + ' ' + this.phoneCurrency.code : '', step: 2 },
         { label: 'Referral', value: this.referralCode.trim(), step: 2 },
       ];
     },
@@ -334,7 +409,7 @@ function registerWizard() {
     goTo(n) { if (n < this.step) this.move(n); },
     move(n) {
       this.step = n;
-      this.$nextTick(() => { window.scrollTo({ top: 0 }); const f = document.querySelector('[x-show="step === ' + n + '"] input, [x-show="step === ' + n + '"] select'); if (f) f.focus({ preventScroll: true }); });
+      this.$nextTick(() => { window.scrollTo({ top: 0 }); const f = document.querySelector('[x-show="step === ' + n + '"] input:not([type=hidden]), [x-show="step === ' + n + '"] select'); if (f) f.focus({ preventScroll: true }); });
     },
 
     onUsernameInput() {
