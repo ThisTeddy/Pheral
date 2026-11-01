@@ -85,7 +85,7 @@ from .models import (
 # ---------------------------------------------------------------------------
 from babel import Locale
 
-DEFAULT_REGION = "NG"
+DEFAULT_REGION = "USA"
 
 _territory_names = Locale("en").territories
 
@@ -293,11 +293,6 @@ def get_or_create_wallet(user, currency):
     )
     return wallet_obj
 
-
-def get_default_currency():
-    """NGN for the Nigerian MVP, otherwise the first active currency."""
-    currency = Currency.objects.filter(code__iexact="NGN", is_active=True).first()
-    return currency or Currency.objects.filter(is_active=True).first()
 
 
 def get_or_create_wallet_token(user):
@@ -5156,3 +5151,24 @@ def check_phone(request):
         "formatted": pretty,
         "currency": currency_preview(region.upper()),
     })
+
+
+
+
+def get_default_currency(user=None):
+    """
+    With a user: the currency of their phone number's country
+    (+233 -> GHS, +44 -> GBP, +81 -> JPY).
+    Without a user, or if that currency is unknown or switched off:
+    NGN, then any active currency.
+    """
+    if user is not None and getattr(user, "phone_number", ""):
+        try:
+            currency = currency_for_region(region_for_user(user))
+        except Exception:
+            currency = None
+        if currency:
+            return currency
+
+    currency = Currency.objects.filter(code__iexact="NGN", is_active=True).first()
+    return currency or Currency.objects.filter(is_active=True).first()
