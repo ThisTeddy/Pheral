@@ -5,26 +5,36 @@
 
 {% block extra_head %}
 <style>
-    [x-cloak] { display: none !important; }
     .scrollbar-none { scrollbar-width: none; }
     .scrollbar-none::-webkit-scrollbar { display: none; }
     .chat-row { min-width: 0; }
+    .row-link { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+    /* Show the row menu button on hover only where a real pointer exists; on touch it is always visible. */
+    @media (hover: hover) {
+        .chat-row .row-menu-btn { opacity: 0; }
+        .chat-row:hover .row-menu-btn,
+        .chat-row .row-menu-btn:focus-visible,
+        .chat-row .row-menu-btn[aria-expanded="true"] { opacity: 1; }
+    }
     @media (max-width: 359px) {
         .chat-avatar { width: 2.5rem; height: 2.5rem; }
-        .chat-name { font-size: 12px; }
-        .chat-preview { font-size: 10px; }
+        .chat-name { font-size: 13px; }
+        .chat-preview { font-size: 11px; }
     }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="mx-auto w-full max-w-2xl lg:max-w-3xl"
-     x-data="chatListPage()" x-init="init()" @keydown.window="onGlobalKey($event)">
+{% now "Y-m-d" as today_str %}
+
+{# No x-init here: Alpine calls init() itself. x-init="init()" made it run twice. #}
+<div class="mx-auto w-full max-w-2xl lg:max-w-3xl" x-data="chatListPage()" @keydown.window="onGlobalKey($event)">
 
     <div class="flex items-center justify-between px-4 pt-3 lg:px-7 lg:pt-6">
-        <h1 class="text-lg font-bold tracking-tight text-ink lg:hidden">Chats</h1>
+        {# The page's <h1> comes from base.html; this is only the visible title on small screens. #}
+        <p class="text-lg font-bold tracking-tight text-ink lg:hidden" aria-hidden="true">Chats</p>
         <div class="ml-auto flex items-center gap-1">
-            <button type="button" @click="selectMode = !selectMode; selected = []"
+            <button type="button" @click="selectMode = !selectMode; selected = []; bulkError = ''"
                     class="focus-ring rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink"
                     aria-label="Select chats" :aria-pressed="selectMode.toString()">
                 <i data-lucide="check-square" class="h-[18px] w-[18px]"></i>
@@ -32,7 +42,7 @@
             <a href="{% url 'group_create' %}" class="focus-ring rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink" aria-label="New group">
                 <i data-lucide="users" class="h-[18px] w-[18px]"></i>
             </a>
-            <a href="{% url 'contacts' %}" class="focus-ring rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink" aria-label="New chat">
+            <a href="{% url 'contacts' %}" class="focus-ring hidden rounded-full p-2 text-muted transition hover:bg-surface hover:text-ink lg:inline-flex" aria-label="New chat">
                 <i data-lucide="square-pen" class="h-[18px] w-[18px]"></i>
             </a>
         </div>
@@ -41,7 +51,8 @@
     <!-- Status strip -->
     <div class="flex gap-3 overflow-x-auto px-4 pb-3 pt-2 scrollbar-none lg:px-7">
         <a href="{% if my_status %}{% url 'status_detail' status_id=my_status.latest.id %}{% else %}{% url 'create_status' %}{% endif %}"
-           class="focus-ring flex shrink-0 flex-col items-center gap-1">
+           class="focus-ring flex shrink-0 flex-col items-center gap-1 rounded-xl"
+           aria-label="{% if my_status %}View my status{% else %}Add to my status{% endif %}">
             <span class="relative block h-14 w-14">
                 <span class="block h-14 w-14 overflow-hidden rounded-full {% if my_status %}ring-2 ring-accent-500{% endif %}">
                     {% if my_status.thumbnail_url %}
@@ -56,10 +67,11 @@
                 </span>
                 {% if not my_status %}<span class="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-accent-500 text-white ring-2 ring-white"><i data-lucide="plus" class="h-3 w-3"></i></span>{% endif %}
             </span>
-            <span class="max-w-[60px] truncate text-[10px] font-medium text-ink">My status</span>
+            <span class="max-w-[64px] truncate text-[11px] font-medium text-ink">My status</span>
         </a>
         {% for entry in story_others %}
-        <a href="{% url 'status_detail' status_id=entry.latest.id %}" class="focus-ring flex shrink-0 flex-col items-center gap-1">
+        <a href="{% url 'status_detail' status_id=entry.latest.id %}" class="focus-ring flex shrink-0 flex-col items-center gap-1 rounded-xl"
+           aria-label="View {{ entry.user.first_name|default:entry.user.username }}'s status{% if not entry.all_viewed %}, new{% endif %}">
             <span class="relative block h-14 w-14">
                 <span class="block h-14 w-14 overflow-hidden rounded-full ring-2 {% if entry.all_viewed %}ring-line{% else %}ring-accent-500{% endif %}">
                     {% if entry.thumbnail_url %}
@@ -72,11 +84,11 @@
                     {% if entry.user.avatar %}
                         <img src="{{ entry.user.avatar.url }}" alt="" class="h-full w-full object-cover" loading="lazy">
                     {% else %}
-                        <span class="flex h-full w-full items-center justify-center bg-accent-100 text-[8px] font-semibold text-accent-700">{{ entry.user.username|first|upper }}</span>
+                        <span class="flex h-full w-full items-center justify-center bg-accent-100 text-[9px] font-semibold text-accent-700">{{ entry.user.username|first|upper }}</span>
                     {% endif %}
                 </span>
             </span>
-            <span class="max-w-[60px] truncate text-[10px] font-medium text-ink">{{ entry.user.first_name|default:entry.user.username }}</span>
+            <span class="max-w-[64px] truncate text-[11px] font-medium text-ink">{{ entry.user.first_name|default:entry.user.username }}</span>
         </a>
         {% endfor %}
     </div>
@@ -86,11 +98,11 @@
         <div class="relative mb-3">
             <div class="flex h-10 items-center gap-2 rounded-xl bg-surface px-3">
                 <i data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></i>
-                <input type="text" x-model="q" x-ref="searchInput"
+                <input type="text" x-model="q" x-ref="searchInput" aria-label="Search chats"
                        @focus="searchFocused = true" @blur="setTimeout(() => searchFocused = false, 150)"
                        @keydown.enter="commitSearch()" @input="committedQ = q.trim()"
-                       placeholder="Search chats (press /)" autocomplete="off"
-                       class="w-full min-w-0 bg-transparent text-[12px] text-ink placeholder-muted focus:outline-none">
+                       placeholder="Search chats" autocomplete="off"
+                       class="w-full min-w-0 bg-transparent text-[13px] text-ink placeholder-muted focus:outline-none">
                 <button type="button" x-show="q" x-cloak @click="q = ''; committedQ = ''; $refs.searchInput.focus()"
                         class="focus-ring shrink-0 rounded-full p-1 text-muted" aria-label="Clear search">
                     <i data-lucide="x" class="h-3.5 w-3.5"></i>
@@ -98,10 +110,10 @@
             </div>
             <div x-show="searchFocused && !q && recentSearches.length" x-cloak x-transition
                  class="absolute left-0 right-0 top-full z-20 mt-1 rounded-xl border border-line bg-white py-1.5 shadow-popover">
-                <p class="px-3 pb-1 text-[9px] font-semibold uppercase tracking-wide text-muted">Recent searches</p>
+                <p class="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">Recent searches</p>
                 <template x-for="term in recentSearches" :key="term">
                     <button type="button" @mousedown.prevent="q = term; committedQ = term; commitSearch()"
-                            class="focus-ring flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-ink hover:bg-surface">
+                            class="focus-ring flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-ink hover:bg-surface">
                         <i data-lucide="clock" class="h-3 w-3 text-muted"></i><span x-text="term"></span>
                     </button>
                 </template>
@@ -111,44 +123,48 @@
         <!-- Filters and sorting -->
         <div class="mb-2 flex min-w-0 items-center justify-between gap-2">
             <div class="flex min-w-0 items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none" role="group" aria-label="Filter chats">
-                <button type="button" @click="tab = 'all'" :aria-pressed="(tab === 'all').toString()" :class="tab === 'all' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-medium transition">All</button>
-                <button type="button" @click="tab = 'unread'" :aria-pressed="(tab === 'unread').toString()" :class="tab === 'unread' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-medium transition">Unread</button>
-                <button type="button" @click="tab = 'groups'" :aria-pressed="(tab === 'groups').toString()" :class="tab === 'groups' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-medium transition">Groups</button>
-                <button type="button" @click="tab = 'muted'" :aria-pressed="(tab === 'muted').toString()" :class="tab === 'muted' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-medium transition">Muted</button>
-                <button type="button" @click="tab = 'archived'" :aria-pressed="(tab === 'archived').toString()" :class="tab === 'archived' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1.5 text-[11px] font-medium transition">Archived</button>
+                <template x-for="t in tabs" :key="t.id">
+                    <button type="button" @click="tab = t.id" :aria-pressed="(tab === t.id).toString()"
+                            :class="tab === t.id ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'"
+                            class="focus-ring shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-medium transition" x-text="t.label"></button>
+                </template>
             </div>
             <div class="relative shrink-0" @click.outside="sortOpen = false">
-                <button type="button" @click="sortOpen = !sortOpen" class="focus-ring flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-2 text-[10px] font-medium text-muted hover:text-ink" aria-label="Sort chats" :aria-expanded="sortOpen.toString()">
+                <button type="button" @click="sortOpen = !sortOpen" class="focus-ring flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-2 text-[11px] font-medium text-muted hover:text-ink" aria-label="Sort chats" aria-haspopup="menu" :aria-expanded="sortOpen.toString()">
                     <i data-lucide="arrow-up-down" class="h-3.5 w-3.5"></i><span class="hidden sm:inline" x-text="sortLabel"></span>
                 </button>
-                <div x-show="sortOpen" x-cloak x-transition class="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-popover">
-                    <button type="button" @click="sortBy = 'recent'; sortOpen = false" class="focus-ring flex w-full items-center justify-between px-3 py-2.5 text-left text-[11px] text-ink hover:bg-surface">Most recent <i x-show="sortBy === 'recent'" data-lucide="check" class="h-3 w-3 text-accent-600"></i></button>
-                    <button type="button" @click="sortBy = 'unread'; sortOpen = false" class="focus-ring flex w-full items-center justify-between px-3 py-2.5 text-left text-[11px] text-ink hover:bg-surface">Most unread <i x-show="sortBy === 'unread'" data-lucide="check" class="h-3 w-3 text-accent-600"></i></button>
-                    <button type="button" @click="sortBy = 'name'; sortOpen = false" class="focus-ring flex w-full items-center justify-between px-3 py-2.5 text-left text-[11px] text-ink hover:bg-surface">Name (A–Z) <i x-show="sortBy === 'name'" data-lucide="check" class="h-3 w-3 text-accent-600"></i></button>
+                <div x-show="sortOpen" x-cloak x-transition role="menu" class="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-popover">
+                    <button type="button" role="menuitemradio" :aria-checked="(sortBy === 'recent').toString()" @click="sortBy = 'recent'; sortOpen = false" class="focus-ring flex w-full items-center justify-between px-3 py-2.5 text-left text-[12px] text-ink hover:bg-surface">Most recent <span x-show="sortBy === 'recent'" x-cloak><i data-lucide="check" class="h-3 w-3 text-accent-600"></i></span></button>
+                    <button type="button" role="menuitemradio" :aria-checked="(sortBy === 'unread').toString()" @click="sortBy = 'unread'; sortOpen = false" class="focus-ring flex w-full items-center justify-between px-3 py-2.5 text-left text-[12px] text-ink hover:bg-surface">Most unread <span x-show="sortBy === 'unread'" x-cloak><i data-lucide="check" class="h-3 w-3 text-accent-600"></i></span></button>
+                    <button type="button" role="menuitemradio" :aria-checked="(sortBy === 'name').toString()" @click="sortBy = 'name'; sortOpen = false" class="focus-ring flex w-full items-center justify-between px-3 py-2.5 text-left text-[12px] text-ink hover:bg-surface">Name (A–Z) <span x-show="sortBy === 'name'" x-cloak><i data-lucide="check" class="h-3 w-3 text-accent-600"></i></span></button>
                 </div>
             </div>
         </div>
 
         <!-- Bulk actions -->
-        <div x-show="selectMode" x-cloak x-transition class="mb-2 flex items-center justify-between rounded-xl bg-accent-50 px-3 py-2">
-            <span class="text-[11px] font-medium text-accent-700" x-text="selected.length ? selected.length + ' selected' : 'Select chats' "></span>
-            <div class="flex items-center gap-1">
-                <button type="button" @click="bulkAction('read')" :disabled="!selected.length" class="focus-ring rounded-full p-2 text-accent-600 hover:bg-accent-100 disabled:opacity-40" aria-label="Mark read"><i data-lucide="check-check" class="h-4 w-4"></i></button>
-                <button type="button" @click="bulkAction('mute')" :disabled="!selected.length" class="focus-ring rounded-full p-2 text-accent-600 hover:bg-accent-100 disabled:opacity-40" aria-label="Mute"><i data-lucide="bell-off" class="h-4 w-4"></i></button>
-                <button type="button" @click="bulkAction('archive')" :disabled="!selected.length" class="focus-ring rounded-full p-2 text-accent-600 hover:bg-accent-100 disabled:opacity-40" aria-label="Archive"><i data-lucide="archive" class="h-4 w-4"></i></button>
-                <button type="button" @click="selectMode = false; selected = []" class="focus-ring rounded-full p-2 text-muted hover:bg-white" aria-label="Cancel selection"><i data-lucide="x" class="h-4 w-4"></i></button>
+        <div x-show="selectMode" x-cloak x-transition class="mb-2 rounded-xl bg-accent-50 px-3 py-2">
+            <div class="flex items-center justify-between">
+                <span class="text-[12px] font-medium text-accent-700" x-text="selected.length ? selected.length + ' selected' : 'Select chats'"></span>
+                <div class="flex items-center gap-1">
+                    <button type="button" @click="bulkAction('read')" :disabled="!selected.length" class="focus-ring rounded-full p-2 text-accent-600 hover:bg-accent-100 disabled:opacity-40" aria-label="Mark as read" title="Mark as read"><i data-lucide="check-check" class="h-4 w-4"></i></button>
+                    <button type="button" @click="bulkAction(tab === 'muted' ? 'unmute' : 'mute')" :disabled="!selected.length" class="focus-ring rounded-full p-2 text-accent-600 hover:bg-accent-100 disabled:opacity-40" :aria-label="tab === 'muted' ? 'Unmute' : 'Mute'" :title="tab === 'muted' ? 'Unmute' : 'Mute'"><i data-lucide="bell-off" class="h-4 w-4"></i></button>
+                    <button type="button" @click="bulkAction(tab === 'archived' ? 'unarchive' : 'archive')" :disabled="!selected.length" class="focus-ring rounded-full p-2 text-accent-600 hover:bg-accent-100 disabled:opacity-40" :aria-label="tab === 'archived' ? 'Unarchive' : 'Archive'" :title="tab === 'archived' ? 'Unarchive' : 'Archive'"><i data-lucide="archive" class="h-4 w-4"></i></button>
+                    <button type="button" @click="selectMode = false; selected = []; bulkError = ''" class="focus-ring rounded-full p-2 text-muted hover:bg-white" aria-label="Cancel selection"><i data-lucide="x" class="h-4 w-4"></i></button>
+                </div>
             </div>
+            <p x-show="bulkError" x-cloak class="mt-1 text-[12px] font-medium text-red-600" role="alert" x-text="bulkError"></p>
         </div>
 
         {% if chat_items %}
-        <div class="divide-y divide-line lg:divide-y-0 lg:space-y-0.5" x-ref="chatRows">
+        {# Rows are ordered with CSS `order`, so sorting never moves DOM nodes or re-runs Alpine. #}
+        <div class="flex flex-col lg:space-y-0.5" x-ref="chatRows">
             {% for item in chat_items %}
-                {% now "Y-m-d" as today_str %}
-                <div class="chat-row"
+                <div class="chat-row border-b border-line/70 lg:border-0"
                      data-chat-row
-                     data-sort-name="{{ item.display_name|escape }}"
+                     data-sort-name="{{ item.display_name }}"
                      data-sort-timestamp="{{ item.latest_activity|date:'U'|default:'0' }}"
                      data-sort-unread="{{ item.unread_count|default:0 }}"
+                     x-cloak
                      x-data="{
                         id: '{{ item.conversation_id|escapejs }}',
                         archived: {{ item.is_archived|yesno:'true,false' }},
@@ -157,53 +173,58 @@
                         unread: {{ item.unread_count|default:0 }},
                         isGroup: {{ item.is_group|yesno:'true,false' }},
                         name: '{{ item.display_name|escapejs|lower }}',
-                        timestamp: {{ item.latest_activity|date:'U'|default:'0' }},
+                        preview: '{{ item.last_message_preview|escapejs|lower }}',
                         menuOpen: false,
-                        touchTimer: null
+                        touchTimer: null,
+                        longPressed: false
                      }"
-                     x-show="(tab === 'all' ? !archived : tab === 'unread' ? (unread > 0 && !archived) : tab === 'groups' ? (isGroup && !archived) : tab === 'muted' ? (muted && !archived) : archived) && (committedQ === '' || name.includes(committedQ.toLowerCase()))"
-                     x-effect="applySort()">
-                    <div class="group relative -mx-1 flex min-w-0 items-center gap-1.5 rounded-xl px-1 py-2 transition hover:bg-surface sm:gap-2 lg:px-3 lg:py-2.5"
-                         :class="unread > 0 ? 'bg-accent-50/40' : ''"
+                     x-show="(tab === 'all' ? !archived : tab === 'unread' ? (unread > 0 && !archived) : tab === 'groups' ? (isGroup && !archived) : tab === 'muted' ? (muted && !archived) : archived) && (committedQ === '' || name.includes(committedQ.toLowerCase()) || preview.includes(committedQ.toLowerCase()))"
+                     @keydown.escape.window="menuOpen = false">
+                    <div class="group relative -mx-1 flex min-w-0 items-center gap-1.5 rounded-xl px-1 py-2.5 transition hover:bg-surface sm:gap-2 lg:px-3"
+                         :class="unread > 0 && !muted ? 'bg-accent-50/40' : ''"
                          @contextmenu.prevent="menuOpen = true"
-                         @touchstart="touchTimer = setTimeout(() => menuOpen = true, 550)"
+                         @touchstart.passive="longPressed = false; touchTimer = setTimeout(() => { longPressed = true; menuOpen = true; if (navigator.vibrate) navigator.vibrate(10) }, 500)"
+                         @touchmove.passive="clearTimeout(touchTimer)"
                          @touchend="clearTimeout(touchTimer)" @touchcancel="clearTimeout(touchTimer)">
-                        <input x-show="selectMode" x-cloak type="checkbox" :checked="selected.includes(id)" @change="toggleSelect(id, $event.target.checked)" class="focus-ring ml-1 h-4 w-4 shrink-0 rounded border-line text-accent-500" :aria-label="'Select ' + name">
+                        <input x-show="selectMode" x-cloak type="checkbox" :checked="selected.includes(id)" @change="toggleSelect(id, $event.target.checked)" class="focus-ring ml-1 h-4 w-4 shrink-0 rounded border-line text-accent-500" aria-label="Select {{ item.display_name }}">
                         <a href="{% if item.is_group %}{% url 'group_chat' conversation_id=item.conversation_id %}{% elif item.other_user %}{% url 'chat_user' username=item.other_user.username %}{% else %}{% url 'contacts' %}{% endif %}"
-                           @click="if (selectMode) { $event.preventDefault(); toggleSelect(id, !selected.includes(id)); }"
-                           class="focus-ring flex min-w-0 flex-1 items-center gap-2.5">
+                           @click="if (longPressed) { $event.preventDefault(); longPressed = false } else if (selectMode) { $event.preventDefault(); toggleSelect(id, !selected.includes(id)) }"
+                           class="row-link focus-ring flex min-w-0 flex-1 items-center gap-3 rounded-xl">
                             <div class="relative shrink-0">
                                 {% if item.avatar_url %}
-                                    <img src="{{ item.avatar_url }}" alt="" class="chat-avatar h-11 w-11 rounded-full object-cover" loading="lazy">
+                                    <img src="{{ item.avatar_url }}" alt="" class="chat-avatar h-12 w-12 rounded-full object-cover" loading="lazy">
                                 {% else %}
-                                    <div class="chat-avatar flex h-11 w-11 items-center justify-center rounded-full bg-accent-100 text-accent-700">
-                                        {% if item.is_group %}<i data-lucide="users" class="h-5 w-5"></i>{% else %}<span class="text-sm font-semibold">{{ item.display_name|first|upper }}</span>{% endif %}
+                                    <div class="chat-avatar flex h-12 w-12 items-center justify-center rounded-full bg-accent-100 text-accent-700">
+                                        {% if item.is_group %}<i data-lucide="users" class="h-5 w-5"></i>{% else %}<span class="text-base font-semibold">{{ item.display_name|first|upper }}</span>{% endif %}
                                     </div>
                                 {% endif %}
-                                {% if not item.is_group and item.is_online %}<span class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white"></span>{% endif %}
+                                {% if not item.is_group and item.is_online %}<span class="absolute bottom-0 right-0 h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-white" title="Online"></span>{% endif %}
                             </div>
                             <div class="min-w-0 flex-1">
                                 <div class="flex min-w-0 items-center gap-1">
-                                    <i x-show="pinned" x-cloak data-lucide="pin" class="h-3 w-3 shrink-0 text-accent-500"></i>
-                                    <p class="chat-name truncate text-[13px] font-semibold leading-5 text-ink">{{ item.display_name }}</p>
+                                    <span x-show="pinned" x-cloak class="shrink-0"><i data-lucide="pin" class="h-3 w-3 text-accent-500"></i></span>
+                                    <p class="chat-name truncate text-[14px] font-semibold leading-5 text-ink">{{ item.display_name }}</p>
                                 </div>
                                 <div class="flex min-w-0 items-center gap-1.5">
-                                    <p class="chat-preview min-w-0 flex-1 truncate text-[11px] leading-4 text-muted">
-                                        <i x-show="muted" x-cloak data-lucide="bell-off" class="mr-0.5 inline h-3 w-3 align-[-2px]"></i>
+                                    <p class="chat-preview min-w-0 flex-1 truncate text-[12px] leading-4 text-muted">
+                                        <span x-show="muted" x-cloak class="mr-0.5 inline-block align-[-2px]"><i data-lucide="bell-off" class="h-3 w-3"></i></span>
                                         {% if item.last_message_prefix %}<span>{{ item.last_message_prefix }}</span>{% endif %}{{ item.last_message_preview|default:"No messages yet" }}
                                     </p>
-                                    {% if item.unread_count %}<span class="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-accent-500 px-1 text-[9px] font-bold text-white">{{ item.unread_count }}</span>{% endif %}
+                                    <span x-show="unread > 0" x-cloak
+                                          class="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white"
+                                          :class="muted ? 'bg-muted/60' : 'bg-accent-500'"
+                                          x-text="unread > 99 ? '99+' : unread"></span>
                                 </div>
                             </div>
-                            <span class="shrink-0 whitespace-nowrap pl-1 text-[10px] {% if item.unread_count %}font-semibold text-accent-600{% else %}text-muted{% endif %}">
-                                {% if item.latest_activity|date:"Y-m-d" == today_str %}{{ item.latest_activity|date:"H:i" }}{% else %}{{ item.latest_activity|date:"d M" }}{% endif %}
+                            <span class="shrink-0 whitespace-nowrap pl-1 text-[11px] {% if item.unread_count %}font-semibold text-accent-600{% else %}text-muted{% endif %}">
+                                {% if item.latest_activity|date:"Y-m-d" == today_str %}{{ item.latest_activity|date:"g:i A" }}{% else %}{{ item.latest_activity|date:"d M" }}{% endif %}
                             </span>
                         </a>
-                        <button type="button" @click.stop="menuOpen = !menuOpen" class="focus-ring shrink-0 rounded-full p-1.5 text-muted opacity-100 hover:bg-white hover:text-ink sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100" aria-label="Chat options" :aria-expanded="menuOpen.toString()"><i data-lucide="ellipsis" class="h-4 w-4"></i></button>
-                        <div x-show="menuOpen" x-cloak x-transition @click.outside="menuOpen = false" @click.stop class="absolute right-1 top-full z-30 mt-1 w-44 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-popover">
-                            <button type="button" @click="toggleFlag(id, 'pin', () => pinned = !pinned); menuOpen = false" class="focus-ring flex w-full items-center gap-2 px-3 py-2.5 text-left text-[11px] text-ink hover:bg-surface"><i data-lucide="pin" class="h-3.5 w-3.5"></i><span x-text="pinned ? 'Unpin chat' : 'Pin chat'"></span></button>
-                            <button type="button" @click="toggleFlag(id, 'mute', () => muted = !muted); menuOpen = false" class="focus-ring flex w-full items-center gap-2 px-3 py-2.5 text-left text-[11px] text-ink hover:bg-surface"><i data-lucide="bell-off" class="h-3.5 w-3.5"></i><span x-text="muted ? 'Unmute chat' : 'Mute chat'"></span></button>
-                            <button type="button" @click="toggleFlag(id, 'archive', () => archived = !archived); menuOpen = false" class="focus-ring flex w-full items-center gap-2 px-3 py-2.5 text-left text-[11px] text-ink hover:bg-surface"><i data-lucide="archive" class="h-3.5 w-3.5"></i><span x-text="archived ? 'Unarchive chat' : 'Archive chat'"></span></button>
+                        <button type="button" @click.stop="menuOpen = !menuOpen" class="row-menu-btn focus-ring shrink-0 rounded-full p-2 text-muted hover:bg-white hover:text-ink" aria-label="Options for {{ item.display_name }}" aria-haspopup="menu" :aria-expanded="menuOpen.toString()"><i data-lucide="ellipsis" class="h-4 w-4"></i></button>
+                        <div x-show="menuOpen" x-cloak x-transition role="menu" @click.outside="menuOpen = false" @click.stop class="absolute right-1 top-full z-30 mt-1 w-44 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-popover">
+                            <button type="button" role="menuitem" @click="toggleFlag(id, 'pin', () => pinned = !pinned); menuOpen = false" class="focus-ring flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-ink hover:bg-surface"><i data-lucide="pin" class="h-3.5 w-3.5"></i><span x-text="pinned ? 'Unpin chat' : 'Pin chat'"></span></button>
+                            <button type="button" role="menuitem" @click="toggleFlag(id, 'mute', () => muted = !muted); menuOpen = false" class="focus-ring flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-ink hover:bg-surface"><i data-lucide="bell-off" class="h-3.5 w-3.5"></i><span x-text="muted ? 'Unmute chat' : 'Mute chat'"></span></button>
+                            <button type="button" role="menuitem" @click="toggleFlag(id, 'archive', () => archived = !archived); menuOpen = false" class="focus-ring flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-ink hover:bg-surface"><i data-lucide="archive" class="h-3.5 w-3.5"></i><span x-text="archived ? 'Unarchive chat' : 'Archive chat'"></span></button>
                         </div>
                     </div>
                 </div>
@@ -211,24 +232,25 @@
         </div>
         <div x-show="visibleCount === 0" x-cloak class="flex flex-col items-center gap-2 py-12 text-center">
             <div class="flex h-12 w-12 items-center justify-center rounded-full bg-accent-50 text-accent-500"><i data-lucide="search-x" class="h-5 w-5"></i></div>
-            <p class="text-[13px] font-semibold text-ink">No matching chats</p>
-            <p class="text-[11px] text-muted">Try another search or filter.</p>
-            <button type="button" @click="q = ''; committedQ = ''; tab = 'all'" class="focus-ring mt-1 rounded-full px-3 py-2 text-[11px] font-semibold text-accent-600 hover:bg-accent-50">Clear filters</button>
+            <p class="text-[14px] font-semibold text-ink" x-text="emptyTitle"></p>
+            <p class="text-[12px] text-muted" x-text="emptyHint"></p>
+            <button type="button" x-show="committedQ || tab !== 'all'" x-cloak @click="q = ''; committedQ = ''; tab = 'all'" class="focus-ring mt-1 rounded-full px-3 py-2 text-[12px] font-semibold text-accent-600 hover:bg-accent-50">Clear filters</button>
         </div>
         {% else %}
         <div class="flex flex-col items-center gap-2 py-16 text-center">
             <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50 text-accent-500"><i data-lucide="message-circle" class="h-6 w-6"></i></div>
-            <p class="text-[13px] font-semibold text-ink">No chats yet</p>
-            <p class="max-w-xs text-[11px] leading-5 text-muted">Start a conversation with someone in your contacts.</p>
-            <a href="{% url 'contacts' %}" class="focus-ring mt-1 rounded-full bg-accent-500 px-4 py-2.5 text-[11px] font-semibold text-white transition hover:bg-accent-600">Find people</a>
+            <p class="text-[14px] font-semibold text-ink">No chats yet</p>
+            <p class="max-w-xs text-[12px] leading-5 text-muted">Start a conversation with someone in your contacts.</p>
+            <a href="{% url 'contacts' %}" class="focus-ring mt-1 rounded-full bg-accent-500 px-4 py-2.5 text-[12px] font-semibold text-white transition hover:bg-accent-600">Find people</a>
         </div>
         {% endif %}
     </div>
-</div>
 
-<a href="{% url 'contacts' %}" class="focus-ring fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-white shadow-lg transition hover:bg-accent-600 lg:hidden" aria-label="New chat">
-    <i data-lucide="message-square-plus" class="h-5 w-5"></i>
-</a>
+    {# Inside the component so it can hide itself while selecting chats. #}
+    <a href="{% url 'contacts' %}" x-show="!selectMode" class="focus-ring fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-white shadow-lg transition hover:bg-accent-600 lg:hidden" aria-label="New chat">
+        <i data-lucide="message-square-plus" class="h-5 w-5"></i>
+    </a>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -237,27 +259,36 @@ function chatListPage() {
     return {
         tab: 'all', q: '', committedQ: '', searchFocused: false,
         sortBy: 'recent', sortOpen: false,
-        selectMode: false, selected: [], recentSearches: [],
-        visibleCount: 0, _sortScheduled: false,
+        selectMode: false, selected: [], recentSearches: [], bulkError: '',
+        visibleCount: 0,
+        tabs: [
+            { id: 'all', label: 'All' }, { id: 'unread', label: 'Unread' }, { id: 'groups', label: 'Groups' },
+            { id: 'muted', label: 'Muted' }, { id: 'archived', label: 'Archived' },
+        ],
 
         get sortLabel() {
             return this.sortBy === 'unread' ? 'Unread' : this.sortBy === 'name' ? 'Name' : 'Recent';
         },
+        get emptyTitle() {
+            if (this.committedQ) return 'No matching chats';
+            return { unread: "You're all caught up", groups: 'No group chats', muted: 'No muted chats', archived: 'No archived chats' }[this.tab] || 'No chats';
+        },
+        get emptyHint() {
+            if (this.committedQ) return 'Try another search.';
+            return { unread: 'New messages will show up here.', groups: 'Groups you join will show up here.', muted: 'Chats you mute will show up here.', archived: 'Chats you archive will show up here.' }[this.tab] || '';
+        },
 
+        // Alpine runs init() by itself; do not also put x-init="init()" on the element.
         init() {
             try {
                 const saved = JSON.parse(localStorage.getItem('pheral_recent_searches') || '[]');
                 this.recentSearches = Array.isArray(saved) ? saved.filter(x => typeof x === 'string').slice(0, 5) : [];
             } catch (error) { this.recentSearches = []; }
-            this.$nextTick(() => { this.applySort(); this.refreshIcons(); });
-            this.$watch('sortBy', () => this.$nextTick(() => this.applySort()));
-            this.$watch('tab', () => this.$nextTick(() => this.countVisible()));
-            this.$watch('committedQ', () => this.$nextTick(() => this.countVisible()));
-            this.$watch('selectMode', () => this.$nextTick(() => this.refreshIcons()));
-        },
 
-        refreshIcons() {
-            if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+            this.$nextTick(() => this.applySort());
+            this.$watch('sortBy', () => this.applySort());
+            this.$watch('tab', () => this.countVisible());
+            this.$watch('committedQ', () => this.countVisible());
         },
 
         onGlobalKey(event) {
@@ -281,33 +312,34 @@ function chatListPage() {
                 try { localStorage.setItem('pheral_recent_searches', JSON.stringify(this.recentSearches)); } catch (error) { /* Storage may be disabled. */ }
             }
             if (this.$refs.searchInput) this.$refs.searchInput.blur();
-            this.$nextTick(() => this.countVisible());
         },
 
+        // Count what Alpine is actually showing, after it has finished updating.
         countVisible() {
-            const rows = this.$refs.chatRows ? [...this.$refs.chatRows.querySelectorAll('[data-chat-row]')] : [];
-            this.visibleCount = rows.filter(row => row.style.display !== 'none' && !row.hasAttribute('hidden')).length;
+            this.$nextTick(() => {
+                const container = this.$refs.chatRows;
+                const rows = container ? [...container.querySelectorAll('[data-chat-row]')] : [];
+                this.visibleCount = rows.filter(row => row.style.display !== 'none').length;
+            });
         },
 
+        // Pinned chats first, then the chosen order. Uses CSS `order`, so no elements are moved.
         applySort() {
-            if (this._sortScheduled) return;
-            this._sortScheduled = true;
-            this.$nextTick(() => {
-                this._sortScheduled = false;
-                const container = this.$refs.chatRows;
-                if (!container) return;
-                const rows = [...container.querySelectorAll(':scope > [data-chat-row]')];
-                rows.sort((a, b) => {
-                    const aPinned = a.querySelector('[x-data]')?._x_dataStack?.[0]?.pinned ? 1 : 0;
-                    const bPinned = b.querySelector('[x-data]')?._x_dataStack?.[0]?.pinned ? 1 : 0;
-                    if (aPinned !== bPinned) return bPinned - aPinned;
-                    if (this.sortBy === 'name') return (a.dataset.sortName || '').localeCompare(b.dataset.sortName || '');
-                    if (this.sortBy === 'unread') return Number(b.dataset.sortUnread || 0) - Number(a.dataset.sortUnread || 0) || Number(b.dataset.sortTimestamp || 0) - Number(a.dataset.sortTimestamp || 0);
-                    return Number(b.dataset.sortTimestamp || 0) - Number(a.dataset.sortTimestamp || 0);
-                });
-                rows.forEach(row => container.appendChild(row));
-                this.countVisible();
+            const container = this.$refs.chatRows;
+            if (!container) return;
+            const rows = [...container.querySelectorAll('[data-chat-row]')];
+            const isPinned = row => (window.Alpine && Alpine.$data(row) && Alpine.$data(row).pinned ? 1 : 0);
+            const num = (row, key) => Number(row.dataset[key] || 0);
+
+            rows.sort((a, b) => {
+                const pin = isPinned(b) - isPinned(a);
+                if (pin) return pin;
+                if (this.sortBy === 'name') return (a.dataset.sortName || '').localeCompare(b.dataset.sortName || '');
+                if (this.sortBy === 'unread') return num(b, 'sortUnread') - num(a, 'sortUnread') || num(b, 'sortTimestamp') - num(a, 'sortTimestamp');
+                return num(b, 'sortTimestamp') - num(a, 'sortTimestamp');
             });
+            rows.forEach((row, index) => { row.style.order = String(index); });
+            this.countVisible();
         },
 
         toggleSelect(id, checked) {
@@ -322,7 +354,7 @@ function chatListPage() {
 
         async toggleFlag(conversationId, flag, applyLocally) {
             applyLocally();
-            this.$nextTick(() => { this.applySort(); this.countVisible(); });
+            this.$nextTick(() => this.applySort());
             try {
                 const response = await fetch('/chat/' + encodeURIComponent(conversationId) + '/toggle/' + encodeURIComponent(flag) + '/', {
                     method: 'POST',
@@ -330,15 +362,16 @@ function chatListPage() {
                     credentials: 'same-origin'
                 });
                 if (!response.ok) throw new Error('Request failed: ' + response.status);
-                this.$nextTick(() => { this.applySort(); this.countVisible(); });
             } catch (error) {
-                applyLocally();
+                applyLocally();                      // put it back the way it was
+                this.$nextTick(() => this.applySort());
                 console.error('Could not update chat setting:', error);
             }
         },
 
         async bulkAction(action) {
             if (!this.selected.length) return;
+            this.bulkError = '';
             const body = new URLSearchParams();
             body.append('action', action);
             this.selected.forEach(id => body.append('conversation_ids[]', id));
@@ -357,17 +390,10 @@ function chatListPage() {
                 window.location.reload();
             } catch (error) {
                 console.error('Could not complete bulk chat action:', error);
-                alert('Could not update the selected chats. Please try again.');
+                this.bulkError = 'Could not update those chats. Check your connection and try again.';
             }
         }
     };
 }
-
-document.addEventListener('DOMContentLoaded', () => {
-    if (window.lucide) window.lucide.createIcons();
-});
-document.addEventListener('alpine:initialized', () => {
-    if (window.lucide) window.lucide.createIcons();
-});
 </script>
 {% endblock %}

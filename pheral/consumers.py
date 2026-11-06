@@ -30,9 +30,8 @@ _PREVIEWS = {
 
 def serialize_message(message):
     """
-    One place that turns a Message into the JSON the browser expects.
-    Sync-only (touches the ORM). Used by the consumer AND by HTTP views
-    that save attachments, so every client renders the same payload.
+    The ONE place a Message becomes the JSON the browser expects.
+    Sync-only (touches the ORM). Used by the consumer and by HTTP views.
     """
     sender = message.sender
     reply_to = message.reply_to
@@ -70,7 +69,6 @@ def serialize_message(message):
         "attachment_url": attachment_url,
         "file_name": file_name,
         "receipt_url": receipt_url,
-        # Local time (Africa/Lagos), not UTC.
         "created_at": timezone.localtime(message.created_at).strftime("%I:%M %p").lstrip("0"),
         "reply_to_id": reply_to.id if reply_to else None,
         "reply_to_preview": reply_preview,
@@ -81,11 +79,8 @@ def serialize_message(message):
 
 def broadcast_message(message):
     """
-    Call this from any normal (sync) Django view after saving a Message,
-    e.g. the HTTP POST that handles attachments / voice notes / payments:
-
-        from .consumers import broadcast_message
-        broadcast_message(message)
+    Call from any sync Django view after saving a Message. Prefer views.push_message(),
+    which defers this until the surrounding DB transaction has committed.
     """
     layer = get_channel_layer()
     if layer is None:
@@ -99,22 +94,33 @@ def broadcast_message(message):
         logger.exception("broadcast_message failed for message %s", message.pk)
 
 
+def broadcast_read(conversation_id, reader_id, message_id):
+    """Tell the sender's open tabs their messages were read (live double ticks)."""
+    layer = get_channel_layer()
+    if layer is None:
+        return
+    try:
+        async_to_sync(layer.group_send)(
+            f"chat_{conversation_id}",
+            {"type": "read_receipt_event", "message_id": message_id, "reader_id": reader_id},
+        )
+    except Exception:
+        logger.exception("broadcast_read failed")
+
+
 # ----------------------------------------------------------------
 # Consumer
 # ----------------------------------------------------------------
 
 class ChatConsumer(AsyncWebsocketConsumer):
     """
-    Handles three inbound client events (chat_message, typing, read_receipt)
-    and fans them out to everyone in the conversation group.
+    Inbound client events: chat_message, typing, read_receipt.
+    Text goes over the socket. Files / voice notes / payments are saved by HTTP
+    views, which call broadcast_message().
 
-    Text messages go over the socket. Files / voice notes are saved by the
-    HTTP view, which then calls broadcast_message().
-
-    connect() accepts the socket FIRST and validates afterwards, so a slow
-    database can never leave the browser stuck in "handshaking". Rejected
-    clients are closed with 4001 (not logged in) or 4003 (not a participant);
-    the page does not retry on codes >= 4000.
+    connect() accepts first and validates afterwards so a slow DB can never leave
+    the browser stuck "handshaking". Close codes: 4001 not logged in, 4003 not a
+    participant (the page does not retry on >= 4000), 1011 transient (page retries).
     """
 
     async def connect(self):
@@ -135,7 +141,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             allowed = await self.user_is_participant(user.id, self.conversation_id)
         except Exception:
             logger.exception("Participant check failed")
-            await self.close(code=1011)  # transient: the page will retry
+            await self.close(code=1011)
             return
 
         if not allowed:
@@ -152,7 +158,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
         self.joined = False
         try:
-            # Clear the "typing…" indicator if the tab closes mid-type.
             await self.channel_layer.group_send(
                 self.group_name,
                 {"type": "typing_event", "user_id": self.user_id, "username": self.username, "typing": False},
@@ -180,7 +185,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             elif kind == "read_receipt":
                 await self.handle_read_receipt(data)
         except Exception:
-            # Never let one bad event kill the socket.
             logger.exception("Error handling websocket event %r", data.get("type"))
 
     # ---------------- inbound ----------------
@@ -196,7 +200,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if payload is None:
             return
 
-        # Sent from here (not from a signal), so each message is broadcast exactly once.
         await self.channel_layer.group_send(
             self.group_name, {"type": "chat_message_event", **payload}
         )
@@ -218,15 +221,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         except (TypeError, ValueError):
             return
 
-        # Always broadcast: reading N means everything up to N is read, and
-        # the sender may have missed the first receipt.
-        await self.mark_read(message_id, self.user_id)
+        valid = await self.mark_read(message_id, self.user_id)
+        if not valid:
+            return
+
+        # Always broadcast: reading N means everything up to N is read, and the
+        # sender may have missed an earlier receipt.
         await self.channel_layer.group_send(
             self.group_name,
             {"type": "read_receipt_event", "message_id": message_id, "reader_id": self.user_id},
         )
 
-    # ---------------- outbound (called by Channels per group_send) ----------------
+    # ---------------- outbound (one handler per group_send "type") ----------------
 
     async def chat_message_event(self, event):
         await self.send(text_data=json.dumps(event))
@@ -272,17 +278,46 @@ class ChatConsumer(AsyncWebsocketConsumer):
             reply_to=reply_to,
         )
 
-        conversation.updated_at = timezone.now()
+        now = timezone.now()
+        conversation.updated_at = now
         conversation.save(update_fields=["updated_at"])
+        # Sending implies the sender has read everything so far.
+        ConversationParticipant.objects.filter(
+            conversation_id=conversation_id, user_id=user_id
+        ).update(last_read_at=now)
 
         return serialize_message(message)
 
     @database_sync_to_async
     def mark_read(self, message_id, user_id):
-        message = Message.objects.filter(
-            pk=message_id, conversation_id=self.conversation_id
-        ).first()
-        if message is None or message.sender_id == user_id:
+        """
+        Marks EVERY incoming message up to message_id as read (not just the newest),
+        so ticks and unread counts stay correct after a reload.
+        Returns False if the message isn't in this conversation.
+        """
+        if not Message.objects.filter(pk=message_id, conversation_id=self.conversation_id).exists():
             return False
-        _, created = MessageRead.objects.get_or_create(message=message, user_id=user_id)
-        return created
+
+        ids = list(
+            Message.objects.filter(
+                conversation_id=self.conversation_id, id__lte=message_id, is_deleted=False,
+            )
+            .exclude(sender_id=user_id)
+            .exclude(message_type="system")
+            .values_list("id", flat=True)
+        )
+
+        if ids:
+            already = set(
+                MessageRead.objects.filter(user_id=user_id, message_id__in=ids)
+                .values_list("message_id", flat=True)
+            )
+            MessageRead.objects.bulk_create(
+                [MessageRead(message_id=i, user_id=user_id) for i in ids if i not in already],
+                ignore_conflicts=True,
+            )
+
+        ConversationParticipant.objects.filter(
+            conversation_id=self.conversation_id, user_id=user_id
+        ).update(last_read_at=timezone.now())
+        return True

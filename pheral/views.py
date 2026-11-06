@@ -1,7 +1,7 @@
 """
 Pheral views.
 
-Consolidated: every view / helper is defined exactly once.
+Every view / helper is defined exactly once.
 Money movement rules used throughout:
   * every balance change happens inside transaction.atomic() with select_for_update()
   * every balance change writes a LedgerEntry
@@ -9,6 +9,8 @@ Money movement rules used throughout:
     recorded as PENDING, and a refund only happens when the provider gave a
     definite "no". A timeout / 5xx leaves the transaction PENDING for the webhook
     or the sync endpoint to settle.
+Live chat: every Message that should reach an open chat goes through push_message(),
+which broadcasts over Django Channels once the DB transaction has committed.
 """
 import base64
 import hashlib
@@ -23,6 +25,13 @@ from decimal import Decimal, InvalidOperation
 
 import phonenumbers
 import requests
+from babel import Locale
+from babel.numbers import (
+    get_currency_name,
+    get_currency_precision,
+    get_currency_symbol,
+    get_territory_currencies,
+)
 from phonenumbers import NumberParseException, PhoneNumberFormat
 
 from django.conf import settings
@@ -31,8 +40,8 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.password_validation import validate_password
 from django.core.cache import cache
-from django.core.paginator import Paginator
 from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Exists, OuterRef, Prefetch, Q
 from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
@@ -40,8 +49,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
+from .consumers import broadcast_message, broadcast_read
 from .models import (
     AgentActivity,
     AgentCommand,
@@ -79,18 +89,38 @@ from .models import (
     WalletToken,
     generate_reference,
 )
-# ---------------------------------------------------------------------------
-# 1) Add to the imports at the top of views.py
-#    (pip install babel, and add `babel` to requirements.txt)
-# ---------------------------------------------------------------------------
-from babel import Locale
 
-DEFAULT_REGION = "USA"
+logger = logging.getLogger("pheral")
+
+FLW_API = "https://api.flutterwave.com/v3"
+
+# The page sends a heartbeat every 60s, so "online" = seen within 2.5 minutes.
+PRESENCE_ONLINE_WINDOW = timedelta(seconds=150)
+
+
+# ============================================================
+# LIVE CHAT PUSH
+# ============================================================
+
+def push_message(message):
+    """
+    Broadcast a saved Message to everyone with that chat open. Deferred with
+    on_commit so a client never receives a message whose row isn't visible yet,
+    or one from a payment that later rolled back. Outside a transaction it runs now.
+    """
+    transaction.on_commit(lambda: broadcast_message(message))
+
+
+# ============================================================
+# PHONE / REGION HELPERS
+# ============================================================
+
+DEFAULT_REGION = "NG"
 
 _territory_names = Locale("en").territories
 
-# Every country the phone-number library can validate, with its English name.
-# Nigeria stays first (it's the default); the rest are alphabetical.
+# Every country phonenumbers can validate, with its English name.
+# Nigeria first (default); the rest alphabetical.
 SUPPORTED_REGIONS = [("NG", _territory_names.get("NG", "Nigeria"))] + sorted(
     (
         (code, _territory_names[code])
@@ -99,19 +129,96 @@ SUPPORTED_REGIONS = [("NG", _territory_names.get("NG", "Nigeria"))] + sorted(
     ),
     key=lambda item: item[1],
 )
-# ---------------------------------------------------------------------------
-# 2) In "MONEY / WALLET HELPERS": REPLACE your get_default_currency() with these.
-#    No currency list is stored anywhere in the code: Babel ships the full
-#    CLDR dataset (every ISO currency, its name, symbol and decimal places),
-#    and a Currency row is created the first time one is needed.
-# ---------------------------------------------------------------------------
+
+
+def region_dial_code(region):
+    try:
+        return "+" + str(phonenumbers.country_code_for_region(region))
+    except Exception:
+        return ""
+
+
+def normalize_phone_number(phone, region=DEFAULT_REGION):
+    """E.164 (+2348012345678) or "" if the number isn't valid."""
+    if not phone:
+        return ""
+
+    raw = str(phone).strip()
+    if raw.startswith("00"):
+        raw = "+" + raw[2:]
+
+    try:
+        parsed = phonenumbers.parse(raw, region)
+    except NumberParseException:
+        return ""
+
+    if not phonenumbers.is_valid_number(parsed):
+        return ""
+
+    return phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
+
+
+def phone_format_hint(region):
+    """A real example number for the region, e.g. "e.g. 0801 234 5678 (10 digits)"."""
+    try:
+        example = phonenumbers.example_number(region)
+    except Exception:
+        example = None
+
+    if not example:
+        return ""
+
+    national = phonenumbers.format_number(example, PhoneNumberFormat.NATIONAL)
+    digit_count = len(str(example.national_number))
+    return f"e.g. {national} ({digit_count} digits)"
+
+
+# Computed once at import time, not per request.
+PHONE_HINTS_BY_REGION = {code: phone_format_hint(code) for code, _ in SUPPORTED_REGIONS}
+
+
+def region_for_user(user):
+    try:
+        parsed = phonenumbers.parse(user.phone_number, None)
+        return phonenumbers.region_code_for_number(parsed) or DEFAULT_REGION
+    except NumberParseException:
+        return DEFAULT_REGION
+
+
+def validate_phone(raw, region):
+    """
+    Single source of truth for "is this number valid for the selected country".
+    Returns (e164, reason, detected_region); reason is None when valid.
+    """
+    region = (region or "").upper()
+    try:
+        num = phonenumbers.parse(raw, region)
+    except phonenumbers.NumberParseException:
+        return None, "invalid", None
+
+    if phonenumbers.is_valid_number(num) and not phonenumbers.is_valid_number_for_region(num, region):
+        return None, "wrong_country", phonenumbers.region_code_for_number(num)
+
+    if not phonenumbers.is_valid_number_for_region(num, region):
+        why = phonenumbers.is_possible_number_with_reason(num)
+        if why == phonenumbers.ValidationResult.TOO_SHORT:
+            return None, "too_short", None
+        if why == phonenumbers.ValidationResult.TOO_LONG:
+            return None, "too_long", None
+        return None, "invalid", None
+
+    return phonenumbers.format_number(num, PhoneNumberFormat.E164), None, region
+
+
+# ============================================================
+# CURRENCY HELPERS (Babel ships the ISO currency data)
+# ============================================================
 
 def ensure_currency(code, region=None):
     """
-    The Currency row for an ISO code (e.g. "GHS", "BWP", "JPY"), created from
-    Babel's data if it doesn't exist yet. Returns None for a code that isn't a
-    real ISO currency. An existing row is returned as-is, so an admin can still
-    rename it or switch it off.
+    The Currency row for an ISO code, created from Babel's data if missing.
+    None for a code that isn't a real ISO currency. An existing row is returned
+    as-is, so an admin can still rename or disable it.
     """
     code = (code or "").strip().upper()
     if not code:
@@ -167,13 +274,16 @@ def currency_for_region(region):
 
 def get_default_currency(user=None):
     """
-    With a user: the currency of the country their phone number belongs to
-    (+233... -> GHS, +44... -> GBP, +81... -> JPY).
-    Without a user, or if that currency is missing or switched off: NGN,
-    otherwise the first active currency.
+    With a user: the currency of their phone number's country
+    (+233 -> GHS, +44 -> GBP, +81 -> JPY).
+    Without a user, or if that currency is unknown or switched off: NGN,
+    then any active currency.
     """
     if user is not None and getattr(user, "phone_number", ""):
-        currency = currency_for_region(region_for_user(user))
+        try:
+            currency = currency_for_region(region_for_user(user))
+        except Exception:
+            currency = None
         if currency:
             return currency
 
@@ -181,85 +291,29 @@ def get_default_currency(user=None):
     return currency or Currency.objects.filter(is_active=True).first()
 
 
-# ---------------------------------------------------------------------------
-# 3) In _finish_signup(), change one line:
-#        currency = get_default_currency()
-#    to:
-#        currency = get_default_currency(user)
-# ---------------------------------------------------------------------------
-logger = logging.getLogger(__name__)
-
-FLW_API = "https://api.flutterwave.com/v3"
-
-
-# ============================================================
-# PHONE HELPERS
-# ============================================================
-
-
-
-def region_dial_code(region):
+def currency_preview(region):
+    """The wallet currency a user from `region` will get (read-only, creates nothing)."""
     try:
-        return "+" + str(phonenumbers.country_code_for_region(region))
+        codes = get_territory_currencies(region)
     except Exception:
-        return ""
+        codes = []
 
+    code = codes[0] if codes else None
+    row = Currency.objects.filter(code__iexact=code).first() if code else None
 
-def normalize_phone_number(phone, region=DEFAULT_REGION):
-    """E.164 (+2348012345678) or "" if the number isn't valid."""
-    if not phone:
-        return ""
+    if code and (row is None or row.is_active):
+        if row:
+            return {"code": row.code, "name": row.name, "symbol": row.symbol}
+        try:
+            symbol = get_currency_symbol(code, locale=f"en_{region}")
+        except Exception:
+            symbol = code
+        return {"code": code, "name": get_currency_name(code, locale="en"), "symbol": symbol}
 
-    raw = str(phone).strip()
-    if raw.startswith("00"):
-        raw = "+" + raw[2:]
-
-    try:
-        parsed = phonenumbers.parse(raw, region)
-    except NumberParseException:
-        return ""
-
-    if not phonenumbers.is_valid_number(parsed):
-        return ""
-
-    return phonenumbers.format_number(parsed, PhoneNumberFormat.E164)
-
-
-def phone_format_hint(region):
-    """
-    A real example number for this region — e.g. "e.g. 0801 234 5678 (10 digits)"
-    — pulled from phonenumbers' own metadata rather than a hand-maintained
-    table per country, so it can't silently drift out of date. Used both in
-    validation error messages and as always-visible helper text under a
-    phone field. Returns "" if the library has no example for that region.
-    """
-    try:
-        example = phonenumbers.example_number(region)
-    except Exception:
-        example = None
-
-    if not example:
-        return ""
-
-    national = phonenumbers.format_number(example, PhoneNumberFormat.NATIONAL)
-    digit_count = len(str(example.national_number))
-    return f"e.g. {national} ({digit_count} digits)"
-
-
-# Computed once at import time, not per-request: it's the same 12 lookups
-# every time (one per supported region), so there's no reason to re-run
-# phonenumbers' metadata lookup on every page load. register.html/login.html/
-# forgot_password.html use this to show the expected format live, as soon as
-# someone picks a country — not just after they get a validation error.
-PHONE_HINTS_BY_REGION = {code: phone_format_hint(code) for code, _ in SUPPORTED_REGIONS}
-
-
-def region_for_user(user):
-    try:
-        parsed = phonenumbers.parse(user.phone_number, None)
-        return phonenumbers.region_code_for_number(parsed) or DEFAULT_REGION
-    except NumberParseException:
-        return DEFAULT_REGION
+    fallback = Currency.objects.filter(code__iexact="NGN", is_active=True).first()
+    if fallback:
+        return {"code": fallback.code, "name": fallback.name, "symbol": fallback.symbol}
+    return None
 
 
 # ============================================================
@@ -292,7 +346,6 @@ def get_or_create_wallet(user, currency):
         user=user, currency=currency, defaults={"balance": Decimal("0.00")}
     )
     return wallet_obj
-
 
 
 def get_or_create_wallet_token(user):
@@ -357,13 +410,10 @@ class InsufficientBalance(Exception):
 def send_wallet_payment(sender, recipient, currency, amount, description="", transaction_type=None):
     """
     The ONE place a wallet-to-wallet payment happens (pay page, transfer page,
-    agent command, hire payments). Locks both wallets in pk order (no
-    deadlocks), moves the money, writes ledger entries, receipt, chat message
-    and notification.
+    agent command, hire payments). Locks both wallets in pk order (no deadlocks),
+    moves the money, writes ledger entries, receipt, chat message and notification.
 
-    transaction_type defaults to TRANSFER; pass PheralTransaction.TransactionType.HIRE_PAYMENT
-    (etc.) so the ledger and wallet history record what the money was actually for.
-
+    The chat message is pushed live after the transaction commits.
     Raises InsufficientBalance. Returns (transaction, conversation).
     """
     transaction_type = transaction_type or PheralTransaction.TransactionType.TRANSFER
@@ -420,12 +470,13 @@ def send_wallet_payment(sender, recipient, currency, amount, description="", tra
 
         conversation = get_or_create_direct_conversation(sender, recipient)
 
-        Message.objects.create(
+        message = Message.objects.create(
             conversation=conversation, sender=sender,
             message_type=Message.MessageType.PAYMENT,
             content=f"{currency.symbol}{amount:,.2f} sent",
             transaction=txn, receipt=receipt,
         )
+        push_message(message)
 
         Notification.objects.create(
             user=recipient,
@@ -449,10 +500,10 @@ def get_fx_margin_rate():
 
 def build_fx_quote(user, source_currency, target_currency, amount):
     """
-    Price a conversion between two of the user's own wallets. `amount` is what
-    leaves the source wallet, unchanged. The margin is taken out of the
-    mid-market converted amount, so what's quoted as "you get" is already net
-    of Pheral's fee. Raises ValueError("no_rate") or ValueError("too_small").
+    Price a conversion between two of the user's own wallets. `amount` leaves the
+    source wallet unchanged; the margin is taken out of the mid-market converted
+    amount, so "you get" is already net of Pheral's fee.
+    Raises ValueError("no_rate") or ValueError("too_small").
     Returns (receive_amount, margin_amount).
     """
     mid_converted = convert_amount(amount, source_currency, target_currency)
@@ -471,14 +522,10 @@ def build_fx_quote(user, source_currency, target_currency, amount):
 
 def execute_fx_conversion(user, source_currency, target_currency, amount, receive_amount, margin_amount):
     """
-    Move `amount` out of the user's source wallet and `receive_amount` into
-    their target wallet. The amounts are exactly what a quote already fixed
-    (see build_fx_quote / fx_quote / fx_convert) — this never recalculates the
-    rate, so what the user confirmed is exactly what moves. Records the
-    margin as Pheral's revenue.
-
-    Raises InsufficientBalance if the source wallet can't cover `amount`.
-    Returns the PheralTransaction.
+    Move `amount` out of the source wallet and `receive_amount` into the target
+    wallet. Amounts are exactly what a quote already fixed; the rate is never
+    recalculated. Records the margin as revenue.
+    Raises InsufficientBalance. Returns the PheralTransaction.
     """
     source_wallet = get_or_create_wallet(user, source_currency)
     target_wallet = get_or_create_wallet(user, target_currency)
@@ -509,12 +556,9 @@ def execute_fx_conversion(user, source_currency, target_currency, amount, receiv
             sender_wallet=locked_source, recipient_wallet=locked_target,
             transaction_type=PheralTransaction.TransactionType.FX,
             amount=amount, currency=source_currency,
-            # NOTE: no `fee=margin_amount` here — margin_amount is denominated in
-            # target_currency, but this transaction's `currency` FK is source_currency.
-            # Storing it as `fee` would print the wrong currency symbol anywhere fee
-            # is rendered (e.g. wallet.html's "+ {{ txn.currency.symbol }}{{ txn.fee }}").
-            # The margin is recorded correctly below, on RevenueRecord, which has its
-            # own currency field, and is kept here in metadata for reference.
+            # No `fee=margin_amount`: the margin is in target_currency but this row's
+            # currency FK is source_currency, so it would print the wrong symbol.
+            # The margin lives on RevenueRecord (own currency) and in metadata.
             status=PheralTransaction.Status.COMPLETED, completed_at=timezone.now(),
             description=f"Converted to {target_currency.code}",
             metadata={
@@ -585,10 +629,20 @@ def get_or_create_direct_conversation(user1, user2):
 
 
 def create_system_message(conversation, content):
-    return Message.objects.create(
+    message = Message.objects.create(
         conversation=conversation, sender=None,
         message_type=Message.MessageType.SYSTEM, content=content,
     )
+    push_message(message)
+    return message
+
+
+def _presence_for(user):
+    """The user's UserPresence row (related_name="presence"), or None."""
+    try:
+        return user.presence
+    except Exception:
+        return None
 
 
 # ============================================================
@@ -688,7 +742,7 @@ USERNAME_RE = re.compile(r"^[A-Za-z0-9_.]{3,30}$")
 
 def register(request):
     if request.user.is_authenticated:
-        return redirect("chat")
+        return redirect("chat_list")
 
     if request.method != "POST":
         return render(request, "register.html", {
@@ -713,10 +767,7 @@ def register(request):
         messages.error(request, message)
         return render(request, "register.html", context)
 
-    # Reject outright rather than silently treating it as Nigeria — that silent
-    # fallback was the actual bug: a Botswana (or any unsupported-country)
-    # number would get validated as if it were Nigerian, and either fail in a
-    # confusing way or, worse, pass by coincidence and register wrong.
+    # Reject outright rather than silently treating an unknown country as Nigeria.
     if region not in dict(SUPPORTED_REGIONS):
         return fail("We don't support that country yet. Please choose a supported country.")
 
@@ -727,10 +778,13 @@ def register(request):
     if not phone_raw:
         return fail("Phone number is required.")
 
-    phone_number = normalize_phone_number(phone_raw, region)
-    if not phone_number:
+    phone_number, reason, _detected = validate_phone(phone_raw, region)
+    if reason:
         hint = phone_format_hint(region)
-        message = "Incorrect number for the selected country."
+        message = (
+            "That phone number doesn't match the country you selected."
+            if reason == "wrong_country" else "Incorrect number for the selected country."
+        )
         if hint:
             message += f" {hint}"
         return fail(message)
@@ -779,7 +833,7 @@ def _finish_signup(request, user):
 
     login(request, user)
     request.session.pop("otp_user_id", None)
-    return redirect("chat")
+    return redirect("chat_list")
 
 
 def verify_otp(request):
@@ -970,6 +1024,25 @@ def check_username(request):
     return JsonResponse({"available": not exists, "reason": "taken" if exists else None})
 
 
+@require_GET
+def check_phone(request):
+    """Live phone check for the register form (same rules as register())."""
+    region = request.GET.get("region", "")
+    raw = request.GET.get("phone", "").strip()
+    e164, reason, detected = validate_phone(raw, region)
+    if reason:
+        return JsonResponse({"valid": False, "reason": reason, "detected_region": detected})
+
+    pretty = phonenumbers.format_number(phonenumbers.parse(e164), PhoneNumberFormat.INTERNATIONAL)
+    taken = User.objects.filter(phone_number=e164).exists()
+    return JsonResponse({
+        "valid": True,
+        "available": not taken,
+        "formatted": pretty,
+        "currency": currency_preview(region.upper()),
+    })
+
+
 def lookup_account(request):
     """
     Preview (first name + avatar) for the 2-step login. Same response shape
@@ -997,7 +1070,7 @@ def lookup_account(request):
 
 def login_view(request):
     if request.user.is_authenticated:
-        return redirect("chat")
+        return redirect("chat_list")
 
     if request.method != "POST":
         return render(request, "login.html", {
@@ -1054,13 +1127,17 @@ def login_view(request):
     user.save(update_fields=["last_seen"])
 
     request.session.set_expiry(60 * 60 * 24 * 30 if remember_me else 0)
-    return redirect("chat")
+    return redirect("chat_list")
 
 
 def logout_view(request):
     if request.user.is_authenticated:
         request.user.last_seen = timezone.now()
         request.user.save(update_fields=["last_seen"])
+        try:
+            set_user_offline(request.user)
+        except Exception:
+            logger.exception("Could not mark user offline")
     logout(request)
     return redirect("landing")
 
@@ -1102,291 +1179,6 @@ def profile_edit(request):
 # ============================================================
 # CHAT (direct conversations; groups use group_chat)
 # ============================================================
-
-import logging
-from datetime import timedelta
-
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import get_object_or_404, redirect, render
-from django.utils import timezone
-
-# Make sure these are imported at the top of your views.py (most already are):
-# from .models import (
-#     Conversation, ConversationParticipant, Message, MessageRead, User,
-#     get_or_create_direct_conversation,   # or wherever yours lives
-# )
-
-logger = logging.getLogger("pheral")
-
-# The page sends a heartbeat every 60s, so "online" = seen within 2.5 minutes.
-PRESENCE_ONLINE_WINDOW = timedelta(seconds=150)
-
-
-def _presence_for(user):
-    """
-    ADAPT THIS ONE FUNCTION to your presence model.
-    It must return an object with a `.last_seen_at` datetime, or None.
-    Example if you have a UserPresence model with a OneToOne to User:
-        return UserPresence.objects.filter(user=user).first()
-    """
-    try:
-        return user.presence  # assumes related_name="presence"
-    except Exception:
-        return None
-
-
-def _broadcast_read(conversation_id, reader_id, message_id):
-    """Tell the sender's open tabs that their messages were read (live double-ticks)."""
-    layer = get_channel_layer()
-    if layer is None:
-        return
-    try:
-        async_to_sync(layer.group_send)(
-            f"chat_{conversation_id}",
-            {"type": "read_receipt_event", "message_id": message_id, "reader_id": reader_id},
-        )
-    except Exception:
-        logger.exception("read receipt broadcast failed")
-
-import logging
-from datetime import timedelta
-
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import get_object_or_404, redirect, render
-from django.utils import timezone
-
-
-from .consumers import broadcast_message
-
-logger = logging.getLogger("pheral")
-
-# The page sends a heartbeat every 60s, so "online" = seen within 2.5 minutes.
-PRESENCE_ONLINE_WINDOW = timedelta(seconds=150)
-
-
-def _presence_for(user):
-    """
-    ADAPT THIS ONE FUNCTION to your presence model.
-    It must return an object with a `.last_seen_at` datetime, or None.
-    Example if you have a UserPresence model with a OneToOne to User:
-        return UserPresence.objects.filter(user=user).first()
-    """
-    try:
-        return user.presence  # assumes related_name="presence"
-    except Exception:
-        return None
-
-
-def _broadcast_read(conversation_id, reader_id, message_id):
-    """Tell the sender's open tabs that their messages were read (live double-ticks)."""
-    layer = get_channel_layer()
-    if layer is None:
-        return
-    try:
-        async_to_sync(layer.group_send)(
-            f"chat_{conversation_id}",
-            {"type": "read_receipt_event", "message_id": message_id, "reader_id": reader_id},
-        )
-    except Exception:
-        logger.exception("read receipt broadcast failed")
-
-
-@login_required
-def chat(request, conversation_id=None, username=None):
-    # ------------------------------------------------------------ resolve conversation
-    if username:
-        other_user = get_object_or_404(User, username__iexact=username)
-        if other_user.pk == request.user.pk:
-            return redirect("chat_list")
-        conversation = get_or_create_direct_conversation(request.user, other_user)
-
-    elif conversation_id:
-        conversation = get_object_or_404(
-            Conversation.objects.filter(participants__user=request.user, is_active=True).distinct(),
-            pk=conversation_id,
-        )
-        if conversation.conversation_type == Conversation.ConversationType.GROUP:
-            return redirect("group_chat", conversation_id=conversation.pk)
-
-        other_user = (
-            User.objects
-            .filter(conversation_participations__conversation=conversation)
-            .exclude(pk=request.user.pk)
-            .first()
-        )
-        if other_user is None:
-            return redirect("chat_list")
-
-    else:
-        return redirect("chat_list")
-
-    participant = get_object_or_404(ConversationParticipant, conversation=conversation, user=request.user)
-
-    # ------------------------------------------------------------ send (form POST: files, voice notes, socket fallback)
-    if request.method == "POST":
-        content = request.POST.get("content", "").strip()
-        attachment = request.FILES.get("attachment")
-        voice_note = request.FILES.get("voice_note")
-        reply_to_id = request.POST.get("reply_to")
-
-        reply_to = None
-        if reply_to_id:
-            reply_to = Message.objects.filter(
-                pk=reply_to_id, conversation=conversation, is_deleted=False,
-            ).first()
-
-        message_type = Message.MessageType.TEXT
-        uploaded_file = None
-
-        if voice_note:
-            uploaded_file = voice_note
-            message_type = Message.MessageType.VOICE
-        elif attachment:
-            uploaded_file = attachment
-            content_type = (getattr(attachment, "content_type", "") or "").lower()
-            if content_type.startswith("image/"):
-                message_type = Message.MessageType.IMAGE
-            elif content_type.startswith("video/"):
-                message_type = Message.MessageType.VIDEO
-            else:
-                message_type = Message.MessageType.FILE
-
-        if content or uploaded_file:
-            message = Message.objects.create(
-                conversation=conversation, sender=request.user, message_type=message_type,
-                content=content, attachment=uploaded_file, reply_to=reply_to,
-            )
-            now = timezone.now()
-            conversation.updated_at = now
-            conversation.save(update_fields=["updated_at"])
-            participant.last_read_at = now
-            participant.save(update_fields=["last_read_at"])
-
-            # Live delivery to everyone with this chat open (files, voice notes, fallback text).
-            broadcast_message(message)
-
-        return redirect("chat", conversation_id=conversation.pk)
-
-    # ------------------------------------------------------------ load messages
-    # Named chat_messages, never `messages`: that name is django.contrib.messages.
-    chat_messages = list(
-        Message.objects.filter(conversation=conversation, is_deleted=False)
-        .select_related("sender", "reply_to", "reply_to__sender", "receipt", "transaction")
-        .order_by("created_at")
-    )
-
-    # ------------------------------------------------------------ unread divider
-    # Must be computed BEFORE last_read_at is moved forward below.
-    previous_read = participant.last_read_at
-    incoming = [
-        m for m in chat_messages
-        if m.sender_id != request.user.id and m.message_type != "system"
-    ]
-    unread = [m for m in incoming if previous_read is None or m.created_at > previous_read]
-    first_unread_id = unread[0].id if unread else None
-    unread_count = len(unread)
-
-    # ------------------------------------------------------------ mark incoming as read
-    already_read = set(
-        MessageRead.objects.filter(user=request.user, message__conversation=conversation)
-        .values_list("message_id", flat=True)
-    )
-    to_mark = [m for m in incoming if m.id not in already_read]
-    if to_mark:
-        MessageRead.objects.bulk_create(
-            [MessageRead(message=m, user=request.user) for m in to_mark],
-            ignore_conflicts=True,
-        )
-        _broadcast_read(conversation.pk, request.user.id, to_mark[-1].id)
-
-    participant.last_read_at = timezone.now()
-    participant.save(update_fields=["last_read_at"])
-
-    # ------------------------------------------------------------ ticks for MY messages
-    read_by_others = set(
-        MessageRead.objects.filter(message__conversation=conversation, message__sender=request.user)
-        .exclude(user=request.user)
-        .values_list("message_id", flat=True)
-    )
-
-    # ------------------------------------------------------------ presence
-    other_presence = _presence_for(other_user)
-    last_seen = getattr(other_presence, "last_seen_at", None)
-    other_online = bool(last_seen and timezone.now() - last_seen < PRESENCE_ONLINE_WINDOW)
-
-    participants = (
-        ConversationParticipant.objects.filter(conversation=conversation)
-        .select_related("user").order_by("joined_at")
-    )
-
-    return render(request, "chat.html", {
-        "conversation": conversation,
-        "other_user": other_user,
-        "participants": participants,
-        "participant": participant,
-        "is_group": False,
-        "chat_messages": chat_messages,
-        "current_user": request.user,
-        "first_unread_id": first_unread_id,
-        "unread_count": unread_count,
-        "read_by_others": read_by_others,
-        "other_presence": other_presence,
-        "other_online": other_online,
-    })
-
-import logging
-from datetime import timedelta
-
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
-from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, redirect, render
-from django.utils import timezone
-
-# Make sure these are imported at the top of your views.py (most already are):
-# from .consumers import broadcast_message
-# from .models import (
-#     Conversation, ConversationParticipant, Message, MessageRead, User,
-#     get_or_create_direct_conversation,   # or wherever yours lives
-# )
-
-logger = logging.getLogger("pheral")
-
-# The page sends a heartbeat every 60s, so "online" = seen within 2.5 minutes.
-PRESENCE_ONLINE_WINDOW = timedelta(seconds=150)
-
-
-def _presence_for(user):
-    """
-    ADAPT THIS ONE FUNCTION to your presence model.
-    It must return an object with a `.last_seen_at` datetime, or None.
-    Example if you have a UserPresence model with a OneToOne to User:
-        return UserPresence.objects.filter(user=user).first()
-    """
-    try:
-        return user.presence  # assumes related_name="presence"
-    except Exception:
-        return None
-
-
-def _broadcast_read(conversation_id, reader_id, message_id):
-    """Tell the sender's open tabs that their messages were read (live double-ticks)."""
-    layer = get_channel_layer()
-    if layer is None:
-        return
-    try:
-        async_to_sync(layer.group_send)(
-            f"chat_{conversation_id}",
-            {"type": "read_receipt_event", "message_id": message_id, "reader_id": reader_id},
-        )
-    except Exception:
-        logger.exception("read receipt broadcast failed")
-
 
 @login_required
 def chat(request, conversation_id=None, username=None):
@@ -1461,7 +1253,7 @@ def chat(request, conversation_id=None, username=None):
             participant.save(update_fields=["last_read_at"])
 
             # Live delivery to everyone with this chat open (files, voice notes, fallback text).
-            broadcast_message(message)
+            push_message(message)
 
         # Background upload from the page (fetch): answer with JSON, no redirect/reload.
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -1501,7 +1293,7 @@ def chat(request, conversation_id=None, username=None):
             [MessageRead(message=m, user=request.user) for m in to_mark],
             ignore_conflicts=True,
         )
-        _broadcast_read(conversation.pk, request.user.id, to_mark[-1].id)
+        broadcast_read(conversation.pk, request.user.id, to_mark[-1].id)
 
     participant.last_read_at = timezone.now()
     participant.save(update_fields=["last_read_at"])
@@ -1537,6 +1329,8 @@ def chat(request, conversation_id=None, username=None):
         "other_presence": other_presence,
         "other_online": other_online,
     })
+
+
 @login_required
 def start_chat(request, username):
     other_user = get_object_or_404(User, username__iexact=username)
@@ -1570,7 +1364,7 @@ def mark_chat_read(request, conversation_id):
 
 @login_required
 def chat_typing(request, conversation_id):
-    """Typing state lives in the cache (a session is per-user, so it can never reach the other side)."""
+    """HTTP fallback for typing state (used only while the socket is down). Lives in the cache."""
     conversation = get_object_or_404(
         Conversation, id=conversation_id, participants__user=request.user, is_active=True,
     )
@@ -1602,16 +1396,12 @@ def presence_heartbeat(request):
     })
 
 
-@login_required
 def _status_thumbnail_url(status):
     """
-    Best-effort preview image for a status's latest post, for the small
-    circle in the chat list's status strip. Images use the media URL as-is.
-    Videos have no separate thumbnail field, so this relies on Cloudinary's
-    own convention of serving an auto-generated frame when the same public
-    ID is requested with a .jpg extension instead of the video's own
-    extension. Text-only statuses have no media and return None — the
-    template falls back to a plain colored swatch for those.
+    Best-effort preview image for a status, for the chat list's status strip.
+    Images use the media URL as-is. Videos rely on Cloudinary serving a frame
+    when the same public ID is requested with a .jpg extension. Text-only
+    statuses return None (the template shows a colored swatch).
     """
     if not status.media or status.status_type == Status.StatusType.TEXT:
         return None
@@ -1619,18 +1409,14 @@ def _status_thumbnail_url(status):
     if status.status_type == Status.StatusType.IMAGE:
         return status.media.url
 
-    # VIDEO: swap the extension for Cloudinary's frame-grab convention.
     url = status.media.url
-    root, dot, ext = url.rpartition(".")
+    root, dot, _ext = url.rpartition(".")
     return f"{root}.jpg" if dot else None
 
 
+@login_required
 def chat_list(request):
-    # Status strip: your own status plus your contacts' active statuses — not
-    # every user on the platform. A chat list showing strangers' statuses next
-    # to your actual conversations would be both a privacy miss and visual
-    # noise, so this scopes to Contact rows the same way the rest of the chat
-    # UI already does (group member search, etc).
+    # Status strip: your own status plus your contacts' active statuses.
     now = timezone.now()
     contact_ids = Contact.objects.filter(owner=request.user).values_list("contact_user_id", flat=True)
 
@@ -1743,6 +1529,8 @@ def chat_list(request):
             avatar_url = other_user.avatar.url
 
         presence = getattr(other_user, "presence", None) if other_user else None
+        last_seen = getattr(presence, "last_seen_at", None)
+        is_online = bool(last_seen and now - last_seen < PRESENCE_ONLINE_WINDOW)
 
         chat_items.append({
             "conversation": conversation,
@@ -1760,8 +1548,8 @@ def chat_list(request):
             "is_pinned": current_participant.is_pinned,
             "is_archived": current_participant.is_archived,
             "is_group": is_group,
-            "is_online": bool(presence and presence.is_online),
-            "last_seen_at": presence.last_seen_at if presence else None,
+            "is_online": is_online,
+            "last_seen_at": last_seen,
             "latest_activity": last_message.created_at if last_message else conversation.created_at,
         })
 
@@ -1853,7 +1641,7 @@ def group_create(request):
         )
         ConversationParticipant.objects.create(conversation=conversation, user=request.user, is_admin=True)
 
-        currency = get_default_currency()
+        currency = get_default_currency(request.user)
         if currency:
             GroupLedger.objects.create(conversation=conversation, currency=currency)
 
@@ -1873,18 +1661,19 @@ def group_chat(request, conversation_id):
         content = request.POST.get("content", "").strip()
 
         if content:
-            Message.objects.create(
+            message = Message.objects.create(
                 conversation=conversation, sender=request.user,
                 message_type=Message.MessageType.TEXT, content=content,
             )
             conversation.updated_at = timezone.now()
             conversation.save(update_fields=["updated_at"])
+            push_message(message)
 
         return redirect("group_chat", conversation_id=conversation.pk)
 
     ledger = GroupLedger.objects.filter(conversation=conversation).first()
     if ledger is None:
-        currency = get_default_currency()
+        currency = get_default_currency(request.user)
         if currency:
             ledger = GroupLedger.objects.create(conversation=conversation, currency=currency)
 
@@ -2036,12 +1825,13 @@ def group_contribute(request, conversation_id):
             description=f"@{request.user.username} contributed",
         )
 
-        Message.objects.create(
+        message = Message.objects.create(
             conversation=conversation, sender=request.user,
             message_type=Message.MessageType.PAYMENT,
             content=f"{locked_ledger.currency.symbol}{amount:,.2f} contributed to the group",
             transaction=txn,
         )
+        push_message(message)
 
         conversation.updated_at = timezone.now()
         conversation.save(update_fields=["updated_at"])
@@ -2115,12 +1905,13 @@ def group_withdraw(request, conversation_id):
                 description="Withdrawal fee",
             )
 
-        Message.objects.create(
+        message = Message.objects.create(
             conversation=conversation, sender=request.user,
             message_type=Message.MessageType.PAYMENT,
             content=f"{locked_ledger.currency.symbol}{net_amount:,.2f} withdrawn from the group",
             transaction=txn,
         )
+        push_message(message)
 
         conversation.updated_at = timezone.now()
         conversation.save(update_fields=["updated_at"])
@@ -2211,7 +2002,7 @@ def group_leave(request, conversation_id):
 
 
 # ============================================================
-# CONTACTS
+# CONTACTS / SEARCH
 # ============================================================
 
 MAX_SYNC_CONTACTS = 2000
@@ -2413,7 +2204,7 @@ def pay_user(request, username):
         messages.error(request, "No active currency is configured.")
         return redirect("profile_user", username=recipient.username)
 
-    default = get_default_currency()
+    default = get_default_currency(request.user)
     currency = default if default and default.is_active else currencies[0]
 
     def page(selected=None):
@@ -2470,10 +2261,7 @@ def global_pay(request):
 
 @login_required
 def currency_converter(request):
-    """
-    Renders the page only. The actual quote/convert flow is two JSON calls:
-    fx_quote() prices it, fx_convert() executes a previously-priced quote.
-    """
+    """Renders the page only. fx_quote() prices, fx_convert() executes a priced quote."""
     currencies = list(Currency.objects.filter(is_active=True).order_by("code"))
     return render(request, "currency_converter.html", {
         "wallet_data": wallet_snapshot(request.user, currencies),
@@ -2485,10 +2273,8 @@ def currency_converter(request):
 def fx_quote(request):
     """
     Price a conversion between two of the user's own wallets and hold it for
-    FX_QUOTE_TTL_SECONDS. Nothing moves yet — fx_convert() executes the quote
-    this returns. The quote (source/target ids and the exact amounts) is kept
-    server-side, keyed by an opaque token, so the browser can't alter the
-    numbers between pricing and confirming.
+    FX_QUOTE_TTL_SECONDS. Nothing moves yet. The quote is kept server-side under
+    an opaque token, so the browser can't alter the numbers before confirming.
     """
     from_code = (request.POST.get("from") or "").strip().upper()
     to_code = (request.POST.get("to") or "").strip().upper()
@@ -2549,8 +2335,7 @@ def fx_quote(request):
 def fx_convert(request):
     """
     Execute a quote from fx_quote(). The quote is consumed on first use; a
-    resubmit of the same token (e.g. a retried request after a dropped
-    response) returns the original result instead of converting twice.
+    resubmit of the same token returns the original result instead of converting twice.
     """
     token = (request.POST.get("quote") or "").strip()
     if not token:
@@ -2570,7 +2355,7 @@ def fx_convert(request):
             "error": "That rate expired. Tap Get rate to refresh it.",
         }, status=400)
 
-    # Consume immediately so a second, concurrent request can't reuse it.
+    # Consume immediately so a concurrent request can't reuse it.
     cache.delete(cache_key)
 
     if quote["user_id"] != request.user.pk:
@@ -2606,7 +2391,6 @@ def fx_convert(request):
         "target_balance": float(target_wallet.balance),
     }
 
-    # Held for a few minutes so a retried confirm reports success instead of erroring.
     cache.set(done_key, {"user_id": request.user.pk, "result": result}, 300)
 
     return JsonResponse({"success": True, **result})
@@ -2654,9 +2438,8 @@ def wallet(request):
 
 def _complete_top_up(pheral_transaction):
     """
-    Idempotently credit a pending top-up. Safe from the webhook, the callback
-    and verify_top_up in any order: only the first call that finds the
-    transaction still PENDING moves money.
+    Idempotently credit a pending top-up. Safe from the webhook, the callback and
+    verify_top_up in any order: only the first call that finds it PENDING moves money.
     """
     with transaction.atomic():
         locked_txn = PheralTransaction.objects.select_for_update().get(pk=pheral_transaction.pk)
@@ -2737,7 +2520,7 @@ def top_up(request):
         messages.error(request, "No wallet currencies are configured.")
         return redirect("wallet")
 
-    default = get_default_currency()
+    default = get_default_currency(request.user)
     currency = default if default and default.is_active else currencies[0]
 
     return render(request, "top_up.html", {
@@ -2928,11 +2711,9 @@ def bank_accounts(request):
 
 def _flw_resolve_account(account_number, bank_code):
     """
-    Ask Flutterwave who owns this account. Returns (account_name, error_message) —
-    exactly one of the two is set. The ONLY place this HTTP call is made: both the
-    AJAX preview (resolve_bank_account) and the actual save/transfer path
-    (get_or_create_verified_bank_account) go through this, so a name is never
-    trusted from anywhere but Flutterwave itself.
+    Ask Flutterwave who owns this account. Returns (account_name, error_message),
+    exactly one set. The ONLY place this call is made, so a name is never trusted
+    from anywhere but Flutterwave itself.
     """
     if not settings.FLW_SECRET_KEY:
         return None, "Bank verification is not configured yet."
@@ -2961,10 +2742,9 @@ def _flw_resolve_account(account_number, bank_code):
 def get_or_create_verified_bank_account(user, account_number, bank_code, bank_name_hint=""):
     """
     Resolve account_number+bank_code with Flutterwave and save (or refresh) a
-    BankAccount row carrying the verified name. Used both by the standalone
-    "add bank account" form and by transfer()'s inline "new account" path, so
-    typing a fresh account straight into a transfer saves it for next time too.
-    Returns (bank_account, error_message) — exactly one is set.
+    BankAccount carrying the verified name. Used by the "add bank account" form
+    and by transfer()'s inline "new account" path.
+    Returns (bank_account, error_message), exactly one set.
     """
     account_name, error = _flw_resolve_account(account_number, bank_code)
     if error:
@@ -3053,9 +2833,9 @@ def _status_label(status):
 
 def settle_withdrawal(reference, flw_status, transfer_id=""):
     """
-    The only place a bank transfer leaves PENDING. Idempotent and safe to call
-    from the view, the sync endpoint and the webhook, in any order, any number
-    of times. Returns "completed" / "failed" / "pending", or None if unknown.
+    The only place a bank transfer leaves PENDING. Idempotent; safe to call from
+    the view, the sync endpoint and the webhook in any order, any number of times.
+    Returns "completed" / "failed" / "pending", or None if unknown.
     """
     flw_status = (flw_status or "").upper()
 
@@ -3224,7 +3004,7 @@ def initiate_bank_transfer(user, bank_account, amount, currency, description):
 
 
 def _bank_page_context(user):
-    currency = get_default_currency()
+    currency = get_default_currency()  # no user: NGN, the only currency bank transfers support
     return {
         "accounts": BankAccount.objects.filter(user=user, is_active=True).order_by("-created_at"),
         "fee": get_withdrawal_fee(),
@@ -3333,11 +3113,9 @@ def transfer(request):
         if blocked:
             return blocked
 
-        # A saved account (radio button) wins if one was picked. Otherwise, if the
-        # person typed a fresh account number + picked a bank, resolve and save
-        # that instead — so a first-time recipient never needs a separate trip to
-        # "Add bank account" first. The account name is always re-verified with
-        # Flutterwave here, never trusted from the form.
+        # A saved account (radio button) wins. Otherwise a typed account number +
+        # bank is resolved and saved, so a first-time recipient needs no separate
+        # "Add bank account" trip. The name is always re-verified with Flutterwave.
         bank_account = context["accounts"].filter(pk=request.POST.get("bank_account")).first()
 
         if not bank_account:
@@ -3460,7 +3238,7 @@ def _valid_webhook_signature(request):
 def _credit_virtual_account_deposit(data):
     """
     Money sent to a user's permanent virtual account arrives as a charge.completed
-    event with a tx_ref that is not one of our top-up references. We re-verify with
+    event whose tx_ref is not one of our top-up references. We re-verify with
     Flutterwave, match the account, and credit exactly once (keyed on Flutterwave's
     transaction id). Test in the Flutterwave sandbox before relying on it.
     """
@@ -3798,7 +3576,7 @@ def airtime_purchase(request):
     if not network:
         return fail("Select a network.")
 
-    # Needs `flutterwave_airtime_item_code` on NetworkProvider (see notes).
+    # Needs `flutterwave_airtime_item_code` on NetworkProvider.
     item_code = getattr(network, "flutterwave_airtime_item_code", "")
     if not (network.flutterwave_airtime_biller_code and item_code):
         return fail("Airtime isn't set up for this network yet.")
@@ -3936,7 +3714,7 @@ def data_plans_api(request, network_id):
 
 @login_required
 def cards_and_accounts(request):
-    currency = get_default_currency()
+    currency = get_default_currency(request.user)
     usd_currency = Currency.objects.filter(code="USD", is_active=True).first()
 
     return render(request, "cards_and_accounts.html", {
@@ -4150,12 +3928,20 @@ def reveal_card_details(request, card_id):
     })
 
 
+_SANDBOX_VA_MESSAGE = (
+    "Flutterwave's test mode reuses one demo account number for every "
+    "merchant, so only one Pheral account can hold it at a time in "
+    "sandbox. This is a test-mode-only limitation and won't happen "
+    "with a live Flutterwave key."
+)
+
+
 @login_required
 @require_POST
 def create_virtual_account(request):
     """Permanent virtual account via Flutterwave. Nigerian accounts legally require a BVN."""
     bvn = request.POST.get("bvn", "").strip()
-    currency = get_default_currency()
+    currency = get_default_currency(request.user)
 
     if not currency:
         return JsonResponse({"success": False, "error": "No wallet currency is configured."}, status=400)
@@ -4197,22 +3983,10 @@ def create_virtual_account(request):
     va_data = data.get("data") or {}
     account_number = va_data.get("account_number", "")
 
-    # Flutterwave's TEST mode hands back the same demo account number to every
-    # merchant, regardless of who asks. account_number is (correctly) globally
-    # unique on this model, since in LIVE mode two real people must never share
-    # a real bank account number — so this collision only ever happens in
-    # sandbox, and only lets one Pheral account hold the shared test number at
-    # a time. Explain that plainly instead of letting the IntegrityError 500.
+    # Flutterwave TEST mode hands every merchant the same demo account number, and
+    # account_number is (correctly) globally unique here. Explain instead of 500ing.
     if VirtualAccount.objects.filter(account_number=account_number).exclude(user=request.user).exists():
-        return JsonResponse({
-            "success": False,
-            "error": (
-                "Flutterwave's test mode reuses one demo account number for every "
-                "merchant, so only one Pheral account can hold it at a time in "
-                "sandbox. This is a test-mode-only limitation and won't happen "
-                "with a live Flutterwave key."
-            ),
-        }, status=409)
+        return JsonResponse({"success": False, "error": _SANDBOX_VA_MESSAGE}, status=409)
 
     try:
         account = VirtualAccount.objects.create(
@@ -4221,21 +3995,10 @@ def create_virtual_account(request):
             bank_name=va_data.get("bank_name", ""),
             account_name=va_data.get("account_name") or f"{request.user.first_name} {request.user.last_name}".strip(),
             flw_reference=va_data.get("flw_ref", tx_ref),
-            order_ref=tx_ref,  # our tx_ref: deposits arrive tagged with it, see _credit_virtual_account_deposit
+            order_ref=tx_ref,  # deposits arrive tagged with it, see _credit_virtual_account_deposit
         )
     except IntegrityError:
-        # Someone else's request for the same shared sandbox number landed in
-        # the gap between the check above and this insert. Same sandbox-only
-        # cause, same message — not a second bug.
-        return JsonResponse({
-            "success": False,
-            "error": (
-                "Flutterwave's test mode reuses one demo account number for every "
-                "merchant, so only one Pheral account can hold it at a time in "
-                "sandbox. This is a test-mode-only limitation and won't happen "
-                "with a live Flutterwave key."
-            ),
-        }, status=409)
+        return JsonResponse({"success": False, "error": _SANDBOX_VA_MESSAGE}, status=409)
 
     return JsonResponse({
         "success": True,
@@ -4334,10 +4097,8 @@ def status_detail(request, status_id):
 @require_POST
 def reply_to_status(request, status_id):
     """
-    Sends a plain direct message to the status owner — the closest equivalent
-    to WhatsApp's reply bar this app's Message model supports (there's no
-    "replied to a status" quote/reference field, so this lands as an ordinary
-    text message in their DM, not a quoted-status bubble).
+    Sends a plain direct message to the status owner (the Message model has no
+    "replied to a status" reference, so it lands as an ordinary text message).
     """
     status_obj = get_object_or_404(
         Status.objects.select_related("user"), id=status_id, is_active=True, expires_at__gt=timezone.now(),
@@ -4352,12 +4113,13 @@ def reply_to_status(request, status_id):
 
     conversation = get_or_create_direct_conversation(request.user, status_obj.user)
 
-    Message.objects.create(
+    message = Message.objects.create(
         conversation=conversation, sender=request.user,
         message_type=Message.MessageType.TEXT, content=text,
     )
     conversation.updated_at = timezone.now()
     conversation.save(update_fields=["updated_at"])
+    push_message(message)
 
     return JsonResponse({"success": True})
 
@@ -4464,19 +4226,13 @@ def comment_post(request, post_id):
 #
 # A HireRequest connects an "offer" between a job's employer and a worker.
 # Either side can start it:
-#   - the employer searches for someone and sends a request to them
-#     (requester == employer, worker == the person being offered the job), or
-#   - a worker applies to an open job themselves
-#     (requester == worker == the applicant).
-# Whichever side did NOT start it is the one who has to accept or decline —
-# see _hire_responder(). That one rule covers both directions without any
-# extra field on the model.
+#   - the employer sends a request to someone (requester == employer), or
+#   - a worker applies to an open job (requester == worker == the applicant).
+# Whichever side did NOT start it must accept or decline: see _hire_responder().
 #
-# Once a request is accepted, every other still-pending request on that job
-# is auto-declined and the job moves to IN_PROGRESS — this is a one-hire-per-
-# job model, matching HirePayment's one-to-one link to a HireRequest. Payment
-# happens explicitly via complete_hire_request(), which is the only place
-# money actually moves for a job.
+# Accepting auto-declines every other pending request on that job and moves the
+# job to IN_PROGRESS (one hire per job, matching HirePayment's one-to-one link).
+# Payment happens only in complete_hire_request().
 # ============================================================
 
 HIRE_JOBS_PER_PAGE = 24
@@ -4550,8 +4306,7 @@ def hire_job_detail(request, job_id):
         .order_by("-created_at")
     )
 
-    # Attach per-request, view-only flags so the template never has to
-    # re-derive the responder rule or re-check permissions itself.
+    # Per-request, view-only flags so the template never re-derives permissions.
     my_request = None
     for hr in hire_requests:
         hr.responder = _hire_responder(hr)
@@ -4653,10 +4408,11 @@ def send_hire_request(request, job_id, username):
 
         conversation = get_or_create_direct_conversation(request.user, worker)
 
-        Message.objects.create(
+        message = Message.objects.create(
             conversation=conversation, sender=request.user,
             message_type=Message.MessageType.HIRE, content=f"Hire request: {job.title}",
         )
+        push_message(message)
 
         Notification.objects.create(
             user=worker, notification_type=Notification.NotificationType.HIRE,
@@ -4757,10 +4513,9 @@ def cancel_hire_request(request, request_id):
 @require_POST
 def complete_hire_request(request, request_id):
     """
-    Employer pays the accepted worker and closes out the job. The only place
-    money moves for a hire — uses send_wallet_payment() for the same locking,
-    ledger and receipt discipline as every other payment, tagged as a
-    HIRE_PAYMENT, with a HirePayment row linking it back to this request.
+    Employer pays the accepted worker and closes out the job. The only place money
+    moves for a hire: uses send_wallet_payment() for the same locking, ledger and
+    receipt discipline as every other payment, tagged HIRE_PAYMENT.
     """
     hire_request = get_object_or_404(
         HireRequest.objects.select_related("job", "job__employer", "job__currency", "worker"), pk=request_id,
@@ -4893,10 +4648,14 @@ def _run_agent_command(command):
 
             if recipient and recipient != user and text:
                 conversation = get_or_create_direct_conversation(user, recipient)
-                Message.objects.create(
+                message = Message.objects.create(
                     conversation=conversation, sender=user,
                     message_type=Message.MessageType.AGENT, content=text,
                 )
+                conversation.updated_at = timezone.now()
+                conversation.save(update_fields=["updated_at"])
+                push_message(message)
+
                 AgentActivity.objects.create(
                     user=user, command=command, conversation=conversation, action="send_message",
                     details={"recipient": recipient.username, "message": text},
@@ -4911,7 +4670,7 @@ def _run_agent_command(command):
         if len(parts) >= 4:
             recipient = User.objects.filter(username__iexact=parts[2].lstrip("@"), is_active=True).first()
             amount = parse_amount(parts[3])
-            currency = get_default_currency()
+            currency = get_default_currency(user)
 
             if recipient and recipient != user and amount and currency:
                 try:
@@ -5003,9 +4762,9 @@ def pwa_manifest(request):
         "background_color": "#080716",
         "theme_color": "#080716",
         "icons": [
-            {"src": "/static/images/pheral-logo-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-            {"src": "/static/images/pheral-logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
-            {"src": "/static/images/pheral-logo.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+            {"src": "/static/images/favicon-48.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+            {"src": "/static/images/favicon-48.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+            {"src": "/static/images/favicon-48.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
         ],
     }
     response = JsonResponse(manifest)
@@ -5014,161 +4773,66 @@ def pwa_manifest(request):
 
 
 def service_worker(request):
+    """
+    Offline support that is safe on a shared phone:
+      * Pages (wallet, chats, receipts) always come from the network and are never
+        stored, so the next person to use the device can't see someone else's data.
+      * Only /static/ files are cached, so the app loads fast.
+      * If the network is down, a plain "You're offline" page is shown.
+    WebSocket traffic is not a fetch event, so the worker never touches it.
+    The cache name is v2, so installing this deletes the old v1 cache of pages.
+    """
     javascript = """
-const CACHE_NAME = "pheral-v1";
-const APP_SHELL = ["/"];
+const STATIC_CACHE = "pheral-static-v2";
 
-self.addEventListener("install", event => {
-    event.waitUntil(
-        caches.open(CACHE_NAME)
-            .then(cache => cache.addAll(APP_SHELL))
-            .then(() => self.skipWaiting())
-    );
-});
+const OFFLINE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Offline · Pheral</title><style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;background:#fff;color:#1C1730;text-align:center;padding:24px}h1{font-size:20px;margin:0 0 8px}p{margin:0 0 20px;color:#6B6485}button{background:#7C3AED;color:#fff;border:0;border-radius:999px;padding:12px 24px;font-size:14px;font-weight:600}</style></head><body><div><h1>You're offline</h1><p>Check your connection and try again.</p><button onclick="location.reload()">Try again</button></div></body></html>`;
+
+self.addEventListener("install", () => self.skipWaiting());
 
 self.addEventListener("activate", event => {
     event.waitUntil(
-        caches.keys().then(keys =>
-            Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))
-        ).then(() => self.clients.claim())
+        caches.keys()
+            .then(keys => Promise.all(keys.filter(key => key !== STATIC_CACHE).map(key => caches.delete(key))))
+            .then(() => self.clients.claim())
     );
 });
 
 self.addEventListener("fetch", event => {
-    if (event.request.method !== "GET") return;
+    const request = event.request;
+    if (request.method !== "GET") return;
 
-    event.respondWith(
-        fetch(event.request)
-            .then(response => {
-                const responseClone = response.clone();
-                caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseClone));
-                return response;
-            })
-            .catch(() => caches.match(event.request))
-    );
+    const url = new URL(request.url);
+    if (url.origin !== self.location.origin) return;
+
+    // Pages: network only, never stored.
+    if (request.mode === "navigate") {
+        event.respondWith(
+            fetch(request).catch(() => new Response(OFFLINE_HTML, {
+                status: 503,
+                headers: { "Content-Type": "text/html; charset=utf-8" },
+            }))
+        );
+        return;
+    }
+
+    // Static files: serve the stored copy at once, refresh it in the background.
+    if (url.pathname.startsWith("/static/")) {
+        event.respondWith(
+            caches.open(STATIC_CACHE).then(cache =>
+                cache.match(request).then(cached => {
+                    const network = fetch(request)
+                        .then(response => {
+                            if (response.ok) cache.put(request, response.clone());
+                            return response;
+                        })
+                        .catch(() => cached || Response.error());
+                    return cached || network;
+                })
+            )
+        );
+    }
 });
 """
     response = HttpResponse(javascript, content_type="application/javascript")
     response["Cache-Control"] = "no-cache"
     return response
-
-
-# views.py  (adjust the User import / phone field name to match your project)
-import phonenumbers
-from phonenumbers import PhoneNumberFormat as Fmt
-from django.contrib.auth import get_user_model
-from django.http import JsonResponse
-from django.views.decorators.http import require_GET
-
-User = get_user_model()
-
-
-def validate_phone(raw, region):
-    """Single source of truth. Call it from the check endpoint AND from your
-    register POST handler, so a number that doesn't belong to the selected
-    country is rejected even if someone bypasses the JavaScript.
-
-    Returns (e164, reason, detected_region).
-    reason is None when the number is valid for `region`.
-    """
-    region = (region or "").upper()
-    try:
-        num = phonenumbers.parse(raw, region)
-    except phonenumbers.NumberParseException:
-        return None, "invalid", None
-
-    # A valid number for some country, but NOT the selected one
-    # (e.g. +234 8012345678 while Ghana is selected).
-    if phonenumbers.is_valid_number(num) and not phonenumbers.is_valid_number_for_region(num, region):
-        return None, "wrong_country", phonenumbers.region_code_for_number(num)
-
-    if not phonenumbers.is_valid_number_for_region(num, region):
-        why = phonenumbers.is_possible_number_with_reason(num)
-        if why == phonenumbers.ValidationResult.TOO_SHORT:
-            return None, "too_short", None
-        if why == phonenumbers.ValidationResult.TOO_LONG:
-            return None, "too_long", None
-        return None, "invalid", None
-
-    return phonenumbers.format_number(num, Fmt.E164), None, region
-
-# urls.py
-#   path("check-phone/", views.check_phone, name="check_phone"),
-#
-# In your register POST handler:
-#   e164, reason, _ = validate_phone(request.POST["phone_number"], request.POST["region"])
-#   if reason or User.objects.filter(phone_number=e164).exists():
-#       messages.error(request, "That phone number doesn't match the country you selected.")
-#       -> re-render the form, and save e164 (not the raw text) on success.
-
-# Replace check_phone() at the bottom of views.py with these two functions.
-# (get_territory_currencies, get_currency_name and get_currency_symbol are
-#  already imported from the currency helpers step.)
-
-
-def currency_preview(region):
-    """
-    The wallet currency a user from `region` will get, for display on the
-    register page. Read-only: it never creates a Currency row. It follows the
-    same rules as get_default_currency(), so the preview matches the real wallet.
-    """
-    try:
-        codes = get_territory_currencies(region)
-    except Exception:
-        codes = []
-
-    code = codes[0] if codes else None
-    row = Currency.objects.filter(code__iexact=code).first() if code else None
-
-    if code and (row is None or row.is_active):
-        if row:
-            return {"code": row.code, "name": row.name, "symbol": row.symbol}
-        try:
-            symbol = get_currency_symbol(code, locale=f"en_{region}")
-        except Exception:
-            symbol = code
-        return {"code": code, "name": get_currency_name(code, locale="en"), "symbol": symbol}
-
-    # Their country's currency is missing from Babel or switched off in the admin.
-    fallback = Currency.objects.filter(code__iexact="NGN", is_active=True).first()
-    if fallback:
-        return {"code": fallback.code, "name": fallback.name, "symbol": fallback.symbol}
-    return None
-
-
-@require_GET
-def check_phone(request):
-    region = request.GET.get("region", "")
-    raw = request.GET.get("phone", "").strip()
-    e164, reason, detected = validate_phone(raw, region)
-    if reason:
-        return JsonResponse({"valid": False, "reason": reason, "detected_region": detected})
-    pretty = phonenumbers.format_number(phonenumbers.parse(e164), Fmt.INTERNATIONAL)
-    taken = User.objects.filter(phone_number=e164).exists()
-    return JsonResponse({
-        "valid": True,
-        "available": not taken,
-        "formatted": pretty,
-        "currency": currency_preview(region.upper()),
-    })
-
-
-
-
-def get_default_currency(user=None):
-    """
-    With a user: the currency of their phone number's country
-    (+233 -> GHS, +44 -> GBP, +81 -> JPY).
-    Without a user, or if that currency is unknown or switched off:
-    NGN, then any active currency.
-    """
-    if user is not None and getattr(user, "phone_number", ""):
-        try:
-            currency = currency_for_region(region_for_user(user))
-        except Exception:
-            currency = None
-        if currency:
-            return currency
-
-    currency = Currency.objects.filter(code__iexact="NGN", is_active=True).first()
-    return currency or Currency.objects.filter(is_active=True).first()
