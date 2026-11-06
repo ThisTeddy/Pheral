@@ -61,7 +61,7 @@ ALLOWED_HOSTS = [
     "pheral.pxxlspace.cv",
     "pheral-1.onrender.com"
 ] + env_list("DJANGO_ALLOWED_HOSTS")
-g
+
 CSRF_TRUSTED_ORIGINS = [
     "https://pheral.onrender.com",
     "https://pheral-o94i.onrender.com",
