@@ -4836,3 +4836,124 @@ self.addEventListener("fetch", event => {
     response = HttpResponse(javascript, content_type="application/javascript")
     response["Cache-Control"] = "no-cache"
     return response
+
+
+
+
+
+def _save_posted_message(request, conversation, participant):
+    """Saves a chat form POST (text, file or voice note, optional reply) and pushes it live."""
+    content = request.POST.get("content", "").strip()
+    attachment = request.FILES.get("attachment")
+    voice_note = request.FILES.get("voice_note")
+    reply_to_id = request.POST.get("reply_to")
+
+    reply_to = None
+    if reply_to_id:
+        reply_to = Message.objects.filter(
+            pk=reply_to_id, conversation=conversation, is_deleted=False,
+        ).first()
+
+    message_type = Message.MessageType.TEXT
+    uploaded_file = None
+
+    if voice_note:
+        uploaded_file = voice_note
+        message_type = Message.MessageType.VOICE
+    elif attachment:
+        uploaded_file = attachment
+        content_type = (getattr(attachment, "content_type", "") or "").lower()
+        if content_type.startswith("image/"):
+            message_type = Message.MessageType.IMAGE
+        elif content_type.startswith("video/"):
+            message_type = Message.MessageType.VIDEO
+        else:
+            message_type = Message.MessageType.FILE
+
+    if not (content or uploaded_file):
+        return None
+
+    message = Message.objects.create(
+        conversation=conversation, sender=request.user, message_type=message_type,
+        content=content, attachment=uploaded_file, reply_to=reply_to,
+    )
+    now = timezone.now()
+    conversation.updated_at = now
+    conversation.save(update_fields=["updated_at"])
+    participant.last_read_at = now
+    participant.save(update_fields=["last_read_at"])
+    push_message(message)
+    return message
+
+
+@login_required
+def group_chat(request, conversation_id):
+    conversation = get_object_or_404(
+        Conversation.objects.filter(participants__user=request.user, is_active=True).distinct(),
+        pk=conversation_id,
+        conversation_type=Conversation.ConversationType.GROUP,
+    )
+    participant = get_object_or_404(ConversationParticipant, conversation=conversation, user=request.user)
+
+    if request.method == "POST":
+        message = _save_posted_message(request, conversation, participant)
+
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            if message is None:
+                return JsonResponse({"ok": False}, status=400)
+            return JsonResponse({"ok": True, "id": message.id})
+
+        return redirect("group_chat", conversation_id=conversation.pk)
+
+    ledger = GroupLedger.objects.select_related("currency").filter(conversation=conversation).first()
+    if ledger is None:
+        currency = get_default_currency(request.user)
+        if currency:
+            ledger = GroupLedger.objects.create(conversation=conversation, currency=currency)
+
+    chat_messages = list(
+        Message.objects.filter(conversation=conversation, is_deleted=False)
+        .select_related("sender", "reply_to", "reply_to__sender", "receipt", "transaction")
+        .order_by("created_at")
+    )
+
+    previous_read = participant.last_read_at
+    incoming = [
+        m for m in chat_messages
+        if m.sender_id != request.user.id and m.message_type != "system"
+    ]
+    unread = [m for m in incoming if previous_read is None or m.created_at > previous_read]
+    first_unread_id = unread[0].id if unread else None
+    unread_count = len(unread)
+
+    already_read = set(
+        MessageRead.objects.filter(user=request.user, message__conversation=conversation)
+        .values_list("message_id", flat=True)
+    )
+    to_mark = [m for m in incoming if m.id not in already_read]
+    if to_mark:
+        MessageRead.objects.bulk_create(
+            [MessageRead(message=m, user=request.user) for m in to_mark],
+            ignore_conflicts=True,
+        )
+        broadcast_read(conversation.pk, request.user.id, to_mark[-1].id)
+
+    participant.last_read_at = timezone.now()
+    participant.save(update_fields=["last_read_at"])
+
+    return render(request, "chat.html", {
+        "conversation": conversation,
+        "is_group": True,
+        "other_user": None,
+        "other_presence": None,
+        "other_online": False,
+        "participant": participant,
+        "participant_count": conversation.participants.count(),
+        "is_admin": participant.is_admin,
+        "ledger": ledger,
+        "chat_messages": chat_messages,
+        "current_user": request.user,
+        "first_unread_id": first_unread_id,
+        "unread_count": unread_count,
+        "read_by_others": set(),
+    })
