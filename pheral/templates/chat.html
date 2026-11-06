@@ -1,14 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}{{ other_user.display_name|default:other_user.username }} · Pheral{% endblock %}
-{% block page_title %}{{ other_user.display_name|default:other_user.username }}{% endblock %}
+{% block title %}{% if is_group %}{{ conversation.name|default:"Group" }}{% else %}{{ other_user.display_name|default:other_user.username }}{% endif %} · Pheral{% endblock %}
+{% block page_title %}{% if is_group %}{{ conversation.name|default:"Group" }}{% else %}{{ other_user.display_name|default:other_user.username }}{% endif %}{% endblock %}
 
 {% block extra_head %}
 <style>
-    /* Chat owns the whole viewport: base header + mobile tab bar are hidden here. */
+    /* Chat owns the whole viewport: base header + bottom nav are hidden here. */
     body.chat-open nav.fixed.bottom-0,
     body.chat-open header.sticky { display: none !important; }
     body.chat-open main { padding-bottom: 0 !important; min-height: 0 !important; }
+    /* The page itself never scrolls: only the message list does, so the chat header stays put. */
+    body.chat-open { overflow: hidden; overscroll-behavior: none; }
     .chat-shell { height: 100dvh; }
 
     .chat-wallpaper {
@@ -52,18 +54,61 @@
 
 {# NOTE: no x-init here. Alpine calls init() automatically; adding x-init="init()" ran it twice (two sockets, duplicate bubbles). #}
 <div x-data="pheralChat()"
-     data-presence="{% if other_online %}online{% elif other_presence.last_seen_at %}last seen {% if other_presence.last_seen_at|date:'Y-m-d' == today_str %}today at {{ other_presence.last_seen_at|date:'g:i A' }}{% else %}{{ other_presence.last_seen_at|date:'j M' }}{% endif %}{% endif %}"
+     data-presence="{% if is_group %}{{ participant_count }} members{% elif other_online %}online{% elif other_presence.last_seen_at %}last seen {% if other_presence.last_seen_at|date:'Y-m-d' == today_str %}today at {{ other_presence.last_seen_at|date:'g:i A' }}{% else %}{{ other_presence.last_seen_at|date:'j M' }}{% endif %}{% endif %}"
      class="chat-shell flex flex-col bg-white">
 
-    <!-- ============================================================ HEADER -->
-    <div class="border-b border-line bg-white">
+    <!-- ============================================================ HEADER (sticky) -->
+    {# A div, not <header>: base.html's CSS hides `header.sticky` inside chats. #}
+    <div class="sticky top-0 z-30 shrink-0 border-b border-line bg-white" style="padding-top: env(safe-area-inset-top);">
         <div class="mx-auto flex max-w-3xl items-center gap-2 px-2 py-2 lg:px-4">
 
             <a href="{% url 'chat_list' %}" class="focus-ring rounded-full p-2 text-ink transition hover:bg-surface lg:hidden" aria-label="Back to chats">
                 <i data-lucide="arrow-left" class="h-5 w-5"></i>
             </a>
 
-            {% if other_user %}
+            {% if is_group %}
+                <a href="{% url 'group_profile' conversation.id %}" class="focus-ring flex min-w-0 flex-1 items-center gap-3">
+                    {% if conversation.avatar %}
+                        <img src="{{ conversation.avatar.url }}" alt="" class="h-10 w-10 shrink-0 rounded-full object-cover">
+                    {% else %}
+                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-100 text-accent-700">
+                            <i data-lucide="users" class="h-5 w-5"></i>
+                        </div>
+                    {% endif %}
+                    <div class="min-w-0">
+                        <p class="truncate text-[15px] font-semibold leading-5 text-ink">{{ conversation.name|default:"Group" }}</p>
+                        <p class="truncate text-[11.5px] leading-4" :class="typing ? 'font-medium text-accent-600' : 'text-muted'"
+                           x-text="typing ? (typingUser ? typingUser + ' is typing…' : 'typing…') : presenceText"></p>
+                    </div>
+                </a>
+
+                <div class="relative" @click.outside="menuOpen = false">
+                    <button type="button" @click="menuOpen = !menuOpen" class="focus-ring rounded-full p-2 text-ink transition hover:bg-surface" aria-label="Menu">
+                        <i data-lucide="more-vertical" class="h-5 w-5"></i>
+                    </button>
+                    <div x-show="menuOpen" x-cloak x-transition class="absolute right-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-xl border border-line bg-white py-1 shadow-popover">
+                        <a href="{% url 'group_profile' conversation.id %}" class="flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-ink hover:bg-surface">
+                            <i data-lucide="info" class="h-4 w-4"></i> Group info
+                        </a>
+                        {% if is_admin %}
+                            <a href="{% url 'group_add_member' conversation.id %}" class="flex items-center gap-2.5 px-3.5 py-2.5 text-[13px] text-ink hover:bg-surface">
+                                <i data-lucide="user-plus" class="h-4 w-4"></i> Add member
+                            </a>
+                        {% endif %}
+                        {% if ledger %}
+                            <button type="button" @click="menuOpen = false; fund.mode = 'contribute'; fund.open = true" class="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-ink hover:bg-surface">
+                                <i data-lucide="piggy-bank" class="h-4 w-4"></i> Contribute
+                            </button>
+                            {% if is_admin %}
+                                <button type="button" @click="menuOpen = false; fund.mode = 'withdraw'; fund.open = true" class="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-ink hover:bg-surface">
+                                    <i data-lucide="banknote" class="h-4 w-4"></i> Withdraw
+                                </button>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+
+            {% elif other_user %}
                 <a href="{% url 'profile_user' other_user.username %}" class="focus-ring flex min-w-0 flex-1 items-center gap-3">
                     {% if other_user.avatar %}
                         <img src="{{ other_user.avatar.url }}" alt="" class="h-10 w-10 shrink-0 rounded-full object-cover">
@@ -103,8 +148,18 @@
         </div>
     </div>
 
+    {% if is_group and ledger %}
+        <!-- Group balance -->
+        <div class="shrink-0 border-b border-line bg-accent-50">
+            <div class="mx-auto flex max-w-3xl items-center justify-between px-4 py-1.5 text-[12px]">
+                <span class="text-ink/70">Group balance</span>
+                <span class="font-semibold text-accent-700">{{ ledger.currency.symbol }}{{ ledger.balance|floatformat:2 }}</span>
+            </div>
+        </div>
+    {% endif %}
+
     <!-- ============================================================ MESSAGES -->
-    <div class="relative flex-1 overflow-hidden">
+    <div class="relative min-h-0 flex-1 overflow-hidden">
         <div x-ref="scroll" class="chat-wallpaper relative h-full overflow-y-auto py-3"
              @scroll="onScroll()"
              @click="onAreaClick($event)"
@@ -146,7 +201,7 @@
                              data-mine="{% if message.sender_id == current_user.id %}1{% else %}0{% endif %}"
                              data-type="{{ message.message_type }}"
                              data-text="{{ message.content }}"
-                             data-sender-name="{% if message.sender_id == current_user.id %}You{% else %}{{ other_user.first_name|default:other_user.username }}{% endif %}">
+                             data-sender-name="{% if message.sender_id == current_user.id %}You{% elif is_group %}{{ message.sender.first_name|default:message.sender.username }}{% else %}{{ other_user.first_name|default:other_user.username }}{% endif %}">
 
                             <div class="bubble relative max-w-[82%] rounded-lg px-2 pb-1.5 pt-1.5 text-[14px] leading-[1.35] text-ink shadow-sm lg:max-w-[65%]
                                         {% if message.sender_id == current_user.id %}bubble-out{% else %}bubble-in{% endif %} {% ifchanged message.sender_id %}tail{% endifchanged %}">
@@ -154,6 +209,9 @@
                                 <button type="button" class="bubble-chevron" aria-label="Message options">
                                     <i data-lucide="chevron-down" class="h-4 w-4"></i>
                                 </button>
+
+                                {# ---- group: sender name above the first bubble of a run ---- #}
+                                {% ifchanged message.sender_id %}{% if is_group and message.sender and message.sender_id != current_user.id %}<p class="mb-0.5 text-[12.5px] font-semibold text-accent-600">{{ message.sender.first_name|default:message.sender.username }}</p>{% endif %}{% endifchanged %}
 
                                 {# ---- quoted reply ---- #}
                                 {% if message.reply_to %}
@@ -242,16 +300,16 @@
                                 {% if message.message_type == "voice" or message.message_type == "file" or message.message_type == "payment" or message.message_type == "hire" %}<div class="h-3.5"></div>{% endif %}
                                 {% if message.message_type == "video" and not message.content %}<div class="h-3.5"></div>{% endif %}
 
-                                {# ---- time + ticks ---- #}
+                                {# ---- time + ticks (no ticks in groups) ---- #}
                                 {% if message.message_type == "image" and message.attachment and not message.content %}
                                     <span class="img-overlay absolute bottom-2.5 right-3.5 flex items-center gap-0.5 rounded-full bg-black/45 px-1.5 py-0.5 text-[10px] text-white">
                                         {{ message.created_at|date:"g:i A" }}
-                                        {% if message.sender_id == current_user.id %}<span class="tick-wrap {% if message.id in read_by_others %}is-read{% endif %}" data-state="{% if message.id in read_by_others %}read{% else %}sent{% endif %}"></span>{% endif %}
+                                        {% if message.sender_id == current_user.id and not is_group %}<span class="tick-wrap {% if message.id in read_by_others %}is-read{% endif %}" data-state="{% if message.id in read_by_others %}read{% else %}sent{% endif %}"></span>{% endif %}
                                     </span>
                                 {% else %}
                                     <span class="absolute bottom-1 right-2 flex items-center gap-0.5 text-[10.5px] text-ink/50">
                                         {{ message.created_at|date:"g:i A" }}
-                                        {% if message.sender_id == current_user.id %}<span class="tick-wrap {% if message.id in read_by_others %}is-read{% endif %}" data-state="{% if message.id in read_by_others %}read{% else %}sent{% endif %}"></span>{% endif %}
+                                        {% if message.sender_id == current_user.id and not is_group %}<span class="tick-wrap {% if message.id in read_by_others %}is-read{% endif %}" data-state="{% if message.id in read_by_others %}read{% else %}sent{% endif %}"></span>{% endif %}
                                     </span>
                                 {% endif %}
                             </div>
@@ -278,7 +336,7 @@
     </div>
 
     <!-- ============================================================ COMPOSER -->
-    <div class="border-t border-line bg-[#F4F0FB]" style="padding-bottom: env(safe-area-inset-bottom);">
+    <div class="shrink-0 border-t border-line bg-[#F4F0FB]" style="padding-bottom: env(safe-area-inset-bottom);">
         <div class="mx-auto max-w-3xl px-2 py-2 lg:px-4">
 
             <!-- Reply preview -->
@@ -321,7 +379,7 @@
             </div>
 
             <!-- Normal composer -->
-            <form method="post" action="{% url 'chat' conversation.id %}" enctype="multipart/form-data"
+            <form method="post" action="{% if is_group %}{% url 'group_chat' conversation.id %}{% else %}{% url 'chat' conversation.id %}{% endif %}" enctype="multipart/form-data"
                   x-ref="form" x-show="!recording" @submit.prevent="onFormSubmit()" class="flex items-end gap-2">
                 {% csrf_token %}
                 <input type="hidden" name="reply_to" x-model="replyId">
@@ -406,6 +464,32 @@
         </div>
     </div>
 
+    {% if is_group and ledger %}
+        <!-- ============================================================ GROUP: CONTRIBUTE / WITHDRAW -->
+        <div x-show="fund.open" x-cloak x-transition.opacity @click.self="fund.open = false" @keydown.escape.window="fund.open = false"
+             class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 lg:items-center">
+            <div class="w-full max-w-xs rounded-t-2xl bg-white p-4 shadow-popover lg:rounded-2xl">
+                <p class="text-[15px] font-semibold text-ink" x-text="fund.mode === 'contribute' ? 'Contribute to group' : 'Withdraw from group'"></p>
+                <p class="mt-0.5 text-[12px] text-muted">
+                    Group balance: {{ ledger.currency.symbol }}{{ ledger.balance|floatformat:2 }}
+                    <span x-show="fund.mode === 'withdraw'">&middot; fee {{ ledger.currency.symbol }}{{ ledger.withdrawal_fee|floatformat:2 }}</span>
+                </p>
+                <form method="post"
+                      :action="fund.mode === 'contribute' ? '{% url 'group_contribute' conversation.id %}' : '{% url 'group_withdraw' conversation.id %}'"
+                      class="mt-3 space-y-3">
+                    {% csrf_token %}
+                    <input type="number" name="amount" min="0.01" step="0.01" required inputmode="decimal" placeholder="Amount ({{ ledger.currency.code }})"
+                           class="w-full rounded-xl border border-line px-3 py-2.5 text-[15px] focus:border-accent-500 focus:outline-none">
+                    <div class="flex gap-2">
+                        <button type="button" @click="fund.open = false" class="flex-1 rounded-full border border-line px-4 py-2.5 text-[13px] font-medium text-ink hover:bg-surface">Cancel</button>
+                        <button type="submit" class="flex-1 rounded-full bg-accent-500 px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-accent-600"
+                                x-text="fund.mode === 'contribute' ? 'Contribute' : 'Withdraw'"></button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    {% endif %}
+
     <form id="delete-message-form" method="post" class="hidden">{% csrf_token %}</form>
 
     <!-- ============================================================ LIGHTBOX -->
@@ -425,8 +509,9 @@
 
     window.PHERAL_CHAT = {
         currentUserId: {{ current_user.id }},
+        isGroup: {% if is_group %}true{% else %}false{% endif %},
         wsPath: "/ws/chat/{{ conversation.id }}/",
-        postUrl: "{% url 'chat' conversation.id %}",
+        postUrl: "{% if is_group %}{% url 'group_chat' conversation.id %}{% else %}{% url 'chat' conversation.id %}{% endif %}",
         typingUrl: "{% url 'chat_typing' conversation.id %}",
         heartbeatUrl: "{% url 'presence_heartbeat' %}",
         deleteUrl: "{% url 'delete_message' 0 %}",
@@ -510,7 +595,8 @@
         return {
             content: '', replyId: '', replyName: '', replyPreview: '',
             attachmentName: '', attachmentPreview: '', attachmentIsImage: false,
-            typing: false, presenceText: '',
+            typing: false, typingUser: '', presenceText: '', isGroup: cfg.isGroup,
+            fund: { open: false, mode: 'contribute' },
             recording: false, recordingTime: '0:00',
             showJump: false, unseenCount: 0, lightboxUrl: null,
             emojiOpen: false, attachOpen: false, menuOpen: false,
@@ -582,7 +668,7 @@
                 sock.addEventListener('message', (ev) => {
                     let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
                     if (d.type === 'chat_message_event') this.onIncoming(d);
-                    else if (d.type === 'typing_event') this.typing = !!d.typing;
+                    else if (d.type === 'typing_event') { this.typing = !!d.typing; this.typingUser = d.username || ''; }
                     else if (d.type === 'read_receipt_event') this.onReadReceipt(d);
                 });
             },
@@ -681,6 +767,11 @@
                 chev.type = 'button'; chev.setAttribute('aria-label', 'Message options'); chev.innerHTML = CHEVRON_SVG;
                 bubble.appendChild(chev);
 
+                // group: sender name above the first bubble of a run
+                if (cfg.isGroup && !mine && !grouped) {
+                    bubble.appendChild(mk('p', 'mb-0.5 text-[12.5px] font-semibold text-accent-600', d.sender_first_name || d.sender_username || ''));
+                }
+
                 // quoted reply
                 if (d.reply_to_id) {
                     const q = mk('div', 'quote mb-1 overflow-hidden rounded-md border-l-4 border-accent-500 bg-black/5 px-2 py-1');
@@ -747,13 +838,13 @@
                 }
                 if (needsSpacerRow) bubble.appendChild(mk('div', 'h-3.5'));
 
-                // time + ticks
+                // time + ticks (no ticks in groups)
                 const time = d.created_at || new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
                 const stamp = overlayTime
                     ? mk('span', 'img-overlay absolute bottom-2.5 right-3.5 flex items-center gap-0.5 rounded-full bg-black/45 px-1.5 py-0.5 text-[10px] text-white')
                     : mk('span', 'absolute bottom-1 right-2 flex items-center gap-0.5 text-[10.5px] text-ink/50');
                 stamp.appendChild(document.createTextNode(time));
-                if (mine) {
+                if (mine && !cfg.isGroup) {
                     const t = mk('span', 'tick-wrap'); t.dataset.state = 'sent';
                     stamp.appendChild(t);
                 }
