@@ -1,4 +1,4 @@
-{% load static %}<!doctype html>
+<!doctype html>
 <html lang="en" class="h-full">
 <head>
     <meta charset="utf-8">
@@ -7,6 +7,8 @@
 
     {% url 'pwa_manifest' as manifest_url %}
     {% if manifest_url %}<link rel="manifest" href="{{ manifest_url }}">{% endif %}
+    <link rel="icon" href="/static/images/favicon-48.png">
+    <link rel="apple-touch-icon" href="/static/images/favicon-48.png">
     <meta name="theme-color" content="#FFFFFF">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
@@ -41,177 +43,428 @@
         html, body { height: 100%; }
         body { background: #fff; color: #1C1730; -webkit-tap-highlight-color: transparent; }
         .focus-ring:focus-visible { outline: 2px solid #7C3AED; outline-offset: 2px; }
+        kbd {
+            display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px;
+            padding: 0 5px; border-radius: 6px; border: 1px solid #E8E3F3; background: #F6F3FC;
+            font: 600 10.5px/1 ui-sans-serif, system-ui, sans-serif; color: #6B6485;
+        }
 
-        /* Header respects the phone's status bar / notch */
+        /* ---------------------------------------------------------------- layout frame
+           < 768px  : bottom tab bar
+           768-1279 : icon rail (76px)
+           >= 1280  : full sidebar (264px)                                                */
+        .app-frame { min-height: 100%; }
+        @media (min-width: 768px)  { .app-frame { padding-left: 76px; } }
+        @media (min-width: 1280px) { .app-frame { padding-left: 264px; } }
+
         .app-header { padding-top: env(safe-area-inset-top); }
-
-        /* Content clears the bottom nav (chat.html overrides this to 0) */
         .app-main { padding-bottom: calc(64px + env(safe-area-inset-bottom)); min-height: 100%; }
+        @media (min-width: 768px) { .app-main { padding-bottom: 0; } }
 
-        /* Bottom navigation */
+        /* ---------------------------------------------------------------- sidebar / rail */
+        .app-sidebar { width: 76px; padding-top: env(safe-area-inset-top); }
+        @media (min-width: 1280px) { .app-sidebar { width: 264px; } }
+
+        .side-link {
+            position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px;
+            padding: 9px 4px; border-radius: 14px; color: #6B6485;
+            font-size: 10.5px; font-weight: 500; line-height: 1.1; text-align: center;
+            transition: background-color .15s, color .15s;
+        }
+        .side-link:hover { background: #F6F3FC; color: #1C1730; }
+        .side-link[data-active="1"] { background: #EDE9FE; color: #5B21B6; font-weight: 600; }
+        .side-icon { position: relative; display: flex; }
+        @media (min-width: 1280px) {
+            .side-link { flex-direction: row; gap: 14px; padding: 11px 14px; font-size: 15px; text-align: left; }
+        }
+
+        .side-sub {
+            display: none; align-items: center; gap: 12px; padding: 8px 14px; border-radius: 12px;
+            font-size: 13.5px; color: #6B6485; transition: background-color .15s, color .15s;
+        }
+        .side-sub:hover { background: #F6F3FC; color: #1C1730; }
+        @media (min-width: 1280px) { .side-sub { display: flex; } }
+
+        /* ---------------------------------------------------------------- bottom tabs (phones) */
         .app-nav { padding-bottom: env(safe-area-inset-bottom); }
-        .nav-tab { color: #6B6485; transition: color .15s; }
+        .nav-tab { position: relative; color: #6B6485; transition: color .15s; }
         .nav-tab .nav-pill {
-            display: flex; height: 28px; width: 56px; align-items: center; justify-content: center;
+            position: relative; display: flex; height: 28px; width: 56px; align-items: center; justify-content: center;
             border-radius: 9999px; transition: background-color .15s;
         }
         .nav-tab[data-active="1"] { color: #6D28D9; font-weight: 600; }
         .nav-tab[data-active="1"] .nav-pill { background: #EDE9FE; }
         .nav-tab:active .nav-pill { background: #F6F3FC; }
+
+        /* unread badges (server-rendered, and live-updatable via PheralNav.setBadge) */
+        .nav-badge {
+            position: absolute; top: -6px; right: -9px; display: none; min-width: 18px; height: 18px; padding: 0 5px;
+            align-items: center; justify-content: center; border-radius: 9999px;
+            background: #7C3AED; color: #fff; font-size: 10px; font-weight: 700; line-height: 1;
+            box-shadow: 0 0 0 2px #fff;
+        }
+        .nav-badge.on { display: flex; }
+
+        /* ---------------------------------------------------------------- navigation progress bar */
+        #nav-progress {
+            position: fixed; top: 0; left: 0; z-index: 100; height: 3px; width: 0; opacity: 0;
+            background: linear-gradient(90deg, #A78BFA, #7C3AED); transition: width .45s ease, opacity .25s ease;
+        }
+        #nav-progress.run { opacity: 1; width: 82%; }
+        #nav-progress.done { opacity: 0; width: 100%; }
     </style>
 
     {% block extra_head %}{% endblock %}
 </head>
 
-<body class="bg-white text-ink antialiased">
-    {# URLs are resolved with "as", so a name that doesn't exist hides that link instead of crashing the page. #}
-    {% url 'chat_list' as u_inbox %}
-    {% url 'hire' as u_gigs %}
-    {% url 'wallet' as u_funds %}
-    {% url 'feed' as u_discover %}
-    {% url 'search' as u_search %}
-    {% url 'notifications' as u_notifications %}
-    {% url 'group_create' as u_group_create %}
-    {% url 'contacts' as u_contacts %}
-    {% url 'status_list' as u_status %}
-    {% url 'agent' as u_agent %}
-    {% url 'airtime_purchase' as u_airtime %}
-    {% url 'currency_converter' as u_converter %}
-    {% url 'cards_and_accounts' as u_cards %}
-    {% url 'bank_accounts' as u_banks %}
-    {% url 'profile' as u_profile %}
-    {% url 'profile_edit' as u_profile_edit %}
-    {% url 'logout_view' as u_logout %}
+<body class="bg-white text-ink antialiased"
+      data-view="{{ request.resolver_match.url_name }}"
+      data-section="{% block nav_section %}{% endblock %}">
+
+<div id="nav-progress"></div>
+
+{# URLs are resolved with "as", so a name that doesn't exist hides that link instead of crashing the page. #}
+{% url 'chat_list' as u_inbox %}
+{% url 'hire' as u_gigs %}
+{% url 'wallet' as u_funds %}
+{% url 'feed' as u_discover %}
+{% url 'search' as u_search %}
+{% url 'notifications' as u_notifications %}
+{% url 'group_create' as u_group_create %}
+{% url 'create_hire_job' as u_job_new %}
+{% url 'create_post' as u_post_new %}
+{% url 'create_status' as u_status_new %}
+{% url 'global_pay' as u_pay %}
+{% url 'contacts' as u_contacts %}
+{% url 'status_list' as u_status %}
+{% url 'agent' as u_agent %}
+{% url 'airtime_purchase' as u_airtime %}
+{% url 'currency_converter' as u_converter %}
+{% url 'cards_and_accounts' as u_cards %}
+{% url 'bank_accounts' as u_banks %}
+{% url 'profile' as u_profile %}
+{% url 'profile_edit' as u_profile_edit %}
+{% url 'logout_view' as u_logout %}
+{% url 'user_lookup' as u_lookup %}
+{% url 'start_chat' username='__U__' as u_start_chat %}
 
 {% if user.is_authenticated %}
 
     {# The existing PWA splash, if you have one, goes here: {% include "partials/pwa_splash.html" %} #}
 
-    <!-- ================================================================ TOP BAR -->
-    <header class="app-header sticky top-0 z-40 border-b border-line bg-white/95 backdrop-blur">
-        <div class="mx-auto flex h-14 max-w-3xl items-center gap-1 px-3">
+    <!-- ================================================================ OFFLINE BANNER -->
+    <div x-data="{ online: navigator.onLine }" @online.window="online = true" @offline.window="online = false">
+        <div x-show="!online" x-cloak x-transition
+             class="fixed inset-x-0 top-0 z-[90] bg-ink px-4 py-2 text-center text-[12.5px] font-medium text-white"
+             style="padding-top: calc(env(safe-area-inset-top) + 8px);" role="status">
+            You're offline. Messages will send again when you're back.
+        </div>
+    </div>
 
-            <h1 class="min-w-0 flex-1 truncate text-[20px] font-bold tracking-tight text-ink">
-                {% block page_title %}Pheral{% endblock %}
-            </h1>
+    <!-- ================================================================ SIDEBAR / RAIL (tablet + desktop) -->
+    <aside class="app-sidebar fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-line bg-white md:flex" aria-label="Primary">
 
-            {% block header_actions %}{% endblock %}
+        <a href="{{ u_inbox }}" class="focus-ring mx-auto mt-4 flex items-center gap-3 rounded-2xl px-2 py-1.5 xl:mx-0 xl:ml-4 xl:self-start">
+            <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-500 text-[19px] font-extrabold text-white shadow-sm">P</span>
+            <span class="hidden text-[20px] font-bold tracking-tight text-ink xl:block">Pheral</span>
+        </a>
 
-            {% if u_search %}
-                <a href="{{ u_search }}" class="focus-ring rounded-full p-2.5 text-ink transition hover:bg-surface" aria-label="Search">
-                    <i data-lucide="search" class="h-[22px] w-[22px]"></i>
+        <nav class="mt-5 flex flex-col gap-1 px-2.5 xl:px-3" aria-label="Sections">
+            <a href="{{ u_inbox }}" data-nav="inbox" class="side-link focus-ring">
+                <span class="side-icon"><i data-lucide="message-circle" class="h-[22px] w-[22px]"></i><span class="nav-badge{% if inbox_unread %} on{% endif %}" data-badge="inbox">{{ inbox_unread|default:"" }}</span></span>
+                <span>Inbox</span>
+            </a>
+            <a href="{{ u_gigs }}" data-nav="gigs" class="side-link focus-ring">
+                <span class="side-icon"><i data-lucide="briefcase" class="h-[22px] w-[22px]"></i><span class="nav-badge" data-badge="gigs"></span></span>
+                <span>Gigs</span>
+            </a>
+            <a href="{{ u_funds }}" data-nav="funds" class="side-link focus-ring">
+                <span class="side-icon"><i data-lucide="wallet" class="h-[22px] w-[22px]"></i><span class="nav-badge" data-badge="funds"></span></span>
+                <span>Funds</span>
+            </a>
+            <a href="{{ u_discover }}" data-nav="discover" class="side-link focus-ring">
+                <span class="side-icon"><i data-lucide="compass" class="h-[22px] w-[22px]"></i><span class="nav-badge" data-badge="discover"></span></span>
+                <span>Discover</span>
+            </a>
+        </nav>
+
+        {% if u_pay %}
+            <div class="mt-4 px-2.5 xl:px-4">
+                <a href="{{ u_pay }}" class="focus-ring flex items-center justify-center gap-2 rounded-2xl bg-accent-500 py-2.5 text-[13px] font-semibold text-white shadow-sm transition hover:bg-accent-600" title="Send money">
+                    <i data-lucide="send" class="h-[18px] w-[18px]"></i><span class="hidden xl:inline">Send money</span>
                 </a>
-            {% endif %}
+            </div>
+        {% endif %}
 
-            {% if u_notifications %}
-                <a href="{{ u_notifications }}" class="focus-ring relative rounded-full p-2.5 text-ink transition hover:bg-surface" aria-label="Notifications">
-                    <i data-lucide="bell" class="h-[22px] w-[22px]"></i>
-                    {% if unread_notifications %}
-                        <span class="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-accent-500 ring-2 ring-white"></span>
+        <!-- Shortcuts (full sidebar only) -->
+        <div class="mt-5 hidden min-h-0 flex-1 overflow-y-auto px-3 xl:block">
+            <p class="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted/80">Shortcuts</p>
+            {% if u_contacts %}<a href="{{ u_contacts }}" class="side-sub focus-ring"><i data-lucide="contact" class="h-[18px] w-[18px]"></i> Contacts</a>{% endif %}
+            {% if u_status %}<a href="{{ u_status }}" class="side-sub focus-ring"><i data-lucide="circle-dashed" class="h-[18px] w-[18px]"></i> Status</a>{% endif %}
+            {% if u_agent %}<a href="{{ u_agent }}" class="side-sub focus-ring"><i data-lucide="bot" class="h-[18px] w-[18px]"></i> Agent mode</a>{% endif %}
+            {% if u_airtime %}<a href="{{ u_airtime }}" class="side-sub focus-ring"><i data-lucide="smartphone" class="h-[18px] w-[18px]"></i> Airtime &amp; data</a>{% endif %}
+            {% if u_converter %}<a href="{{ u_converter }}" class="side-sub focus-ring"><i data-lucide="arrow-left-right" class="h-[18px] w-[18px]"></i> Currency converter</a>{% endif %}
+            {% if u_cards %}<a href="{{ u_cards }}" class="side-sub focus-ring"><i data-lucide="credit-card" class="h-[18px] w-[18px]"></i> Cards &amp; accounts</a>{% endif %}
+            {% if u_banks %}<a href="{{ u_banks }}" class="side-sub focus-ring"><i data-lucide="landmark" class="h-[18px] w-[18px]"></i> Bank accounts</a>{% endif %}
+        </div>
+        <div class="flex-1 xl:hidden"></div>
+
+        <!-- Search hint + account -->
+        <div class="border-t border-line p-2.5 xl:p-3">
+            <button type="button" @click="$dispatch('open-palette')"
+                    class="focus-ring mb-2 hidden w-full items-center gap-2.5 rounded-xl bg-surface px-3 py-2 text-left text-[13px] text-muted transition hover:bg-accent-50 xl:flex">
+                <i data-lucide="search" class="h-4 w-4"></i> <span class="flex-1">Search…</span> <kbd>Ctrl</kbd><kbd>K</kbd>
+            </button>
+
+            <div class="flex items-center gap-2 xl:px-1">
+                <a href="{{ u_profile }}" class="focus-ring flex min-w-0 flex-1 items-center justify-center gap-3 rounded-xl p-1.5 transition hover:bg-surface xl:justify-start" title="{{ user.display_name|default:user.username }}">
+                    {% if user.avatar %}
+                        <img src="{{ user.avatar.url }}" alt="" class="h-10 w-10 shrink-0 rounded-full object-cover">
+                    {% else %}
+                        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[14px] font-semibold text-accent-700">{{ user.first_name|default:user.username|first|upper }}</span>
                     {% endif %}
+                    <span class="hidden min-w-0 xl:block">
+                        <span class="block truncate text-[13.5px] font-semibold text-ink">{{ user.display_name|default:user.username }}</span>
+                        <span class="block truncate text-[11.5px] text-muted">@{{ user.username }}</span>
+                    </span>
                 </a>
-            {% endif %}
+                {% if u_logout %}
+                    <form method="post" action="{{ u_logout }}" class="hidden xl:block">
+                        {% csrf_token %}
+                        <button type="submit" class="focus-ring rounded-full p-2 text-muted transition hover:bg-red-50 hover:text-red-600" aria-label="Log out" title="Log out">
+                            <i data-lucide="log-out" class="h-[18px] w-[18px]"></i>
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+    </aside>
 
-            <!-- Global dropdown (WhatsApp style) -->
-            <div class="relative" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
-                <button type="button" @click="open = !open"
-                        class="focus-ring rounded-full p-2.5 text-ink transition hover:bg-surface"
-                        aria-label="More options" :aria-expanded="open">
-                    <i data-lucide="more-vertical" class="h-[22px] w-[22px]"></i>
+    <!-- ================================================================ FRAME -->
+    <div class="app-frame">
+
+        <!-- ============================================================ TOP BAR -->
+        <header class="app-header sticky top-0 z-30 border-b border-line bg-white/95 backdrop-blur">
+            <div class="flex h-14 items-center gap-1 px-3 md:h-16 md:gap-2 md:px-6">
+
+                <h1 class="min-w-0 flex-1 truncate text-[20px] font-bold tracking-tight text-ink md:text-[22px]">
+                    {% block page_title %}Pheral{% endblock %}
+                </h1>
+
+                {% block header_actions %}{% endblock %}
+
+                <!-- Search / command palette -->
+                <button type="button" @click="$dispatch('open-palette')"
+                        class="focus-ring hidden w-56 items-center gap-2.5 rounded-full bg-surface px-4 py-2 text-left text-[13.5px] text-muted transition hover:bg-accent-50 md:flex lg:w-80"
+                        aria-label="Search">
+                    <i data-lucide="search" class="h-4 w-4"></i>
+                    <span class="flex-1 truncate">Search people or jump to…</span>
+                    <span class="hidden items-center gap-1 lg:flex"><kbd>Ctrl</kbd><kbd>K</kbd></span>
+                </button>
+                <button type="button" @click="$dispatch('open-palette')"
+                        class="focus-ring rounded-full p-2.5 text-ink transition hover:bg-surface md:hidden" aria-label="Search">
+                    <i data-lucide="search" class="h-[22px] w-[22px]"></i>
                 </button>
 
-                <div x-show="open" x-cloak x-transition.origin.top.right
-                     class="absolute right-0 top-full z-50 mt-1 w-64 overflow-hidden rounded-2xl border border-line bg-white py-1.5 shadow-popover">
+                <!-- Quick create (tablet + desktop) -->
+                <div class="relative hidden md:block" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
+                    <button type="button" @click="open = !open"
+                            class="focus-ring flex items-center gap-1.5 rounded-full bg-accent-500 px-3.5 py-2 text-[13px] font-semibold text-white shadow-sm transition hover:bg-accent-600"
+                            :aria-expanded="open">
+                        <i data-lucide="plus" class="h-4 w-4"></i><span class="hidden lg:inline">New</span>
+                    </button>
+                    <div x-show="open" x-cloak x-transition.origin.top.right
+                         class="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-2xl border border-line bg-white py-1.5 shadow-popover">
+                        {% if u_group_create %}<a href="{{ u_group_create }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="users" class="h-[18px] w-[18px] text-muted"></i> New group</a>{% endif %}
+                        {% if u_job_new %}<a href="{{ u_job_new }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="briefcase" class="h-[18px] w-[18px] text-muted"></i> Post a job</a>{% endif %}
+                        {% if u_post_new %}<a href="{{ u_post_new }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="square-pen" class="h-[18px] w-[18px] text-muted"></i> New post</a>{% endif %}
+                        {% if u_status_new %}<a href="{{ u_status_new }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="circle-dashed" class="h-[18px] w-[18px] text-muted"></i> Add status</a>{% endif %}
+                        {% if u_pay %}<a href="{{ u_pay }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="send" class="h-[18px] w-[18px] text-muted"></i> Send money</a>{% endif %}
+                    </div>
+                </div>
 
-                    {% if u_profile %}
-                        <a href="{{ u_profile }}" class="flex items-center gap-3 px-4 py-3 hover:bg-surface">
-                            {% if user.avatar %}
-                                <img src="{{ user.avatar.url }}" alt="" class="h-10 w-10 shrink-0 rounded-full object-cover">
-                            {% else %}
-                                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[14px] font-semibold text-accent-700">
-                                    {{ user.first_name|default:user.username|first|upper }}
+                {% if u_notifications %}
+                    <a href="{{ u_notifications }}" class="focus-ring relative rounded-full p-2.5 text-ink transition hover:bg-surface" aria-label="Notifications">
+                        <i data-lucide="bell" class="h-[22px] w-[22px]"></i>
+                        {% if unread_notifications %}
+                            <span class="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-accent-500 ring-2 ring-white"></span>
+                        {% endif %}
+                    </a>
+                {% endif %}
+
+                <!-- Global dropdown (WhatsApp style) -->
+                <div class="relative" x-data="{ open: false }" @click.outside="open = false" @keydown.escape.window="open = false">
+                    <button type="button" @click="open = !open"
+                            class="focus-ring rounded-full p-2.5 text-ink transition hover:bg-surface"
+                            aria-label="More options" :aria-expanded="open">
+                        <i data-lucide="more-vertical" class="h-[22px] w-[22px]"></i>
+                    </button>
+
+                    <div x-show="open" x-cloak x-transition.origin.top.right
+                         class="absolute right-0 top-full z-50 mt-1 w-64 overflow-hidden rounded-2xl border border-line bg-white py-1.5 shadow-popover">
+
+                        {% if u_profile %}
+                            <a href="{{ u_profile }}" class="flex items-center gap-3 px-4 py-3 hover:bg-surface">
+                                {% if user.avatar %}
+                                    <img src="{{ user.avatar.url }}" alt="" class="h-10 w-10 shrink-0 rounded-full object-cover">
+                                {% else %}
+                                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[14px] font-semibold text-accent-700">{{ user.first_name|default:user.username|first|upper }}</span>
+                                {% endif %}
+                                <span class="min-w-0">
+                                    <span class="block truncate text-[14px] font-semibold text-ink">{{ user.display_name|default:user.username }}</span>
+                                    <span class="block truncate text-[12px] text-muted">@{{ user.username }}</span>
                                 </span>
-                            {% endif %}
-                            <span class="min-w-0">
-                                <span class="block truncate text-[14px] font-semibold text-ink">{{ user.display_name|default:user.username }}</span>
-                                <span class="block truncate text-[12px] text-muted">@{{ user.username }}</span>
-                            </span>
-                        </a>
+                            </a>
+                            <div class="my-1 border-t border-line"></div>
+                        {% endif %}
+
+                        {% if u_group_create %}<a href="{{ u_group_create }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="users" class="h-[18px] w-[18px] text-muted"></i> New group</a>{% endif %}
+                        {% if u_contacts %}<a href="{{ u_contacts }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="contact" class="h-[18px] w-[18px] text-muted"></i> Contacts</a>{% endif %}
+                        {% if u_status %}<a href="{{ u_status }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="circle-dashed" class="h-[18px] w-[18px] text-muted"></i> Status</a>{% endif %}
+
                         <div class="my-1 border-t border-line"></div>
-                    {% endif %}
 
-                    {% if u_group_create %}
-                        <a href="{{ u_group_create }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface">
-                            <i data-lucide="users" class="h-[18px] w-[18px] text-muted"></i> New group
-                        </a>
-                    {% endif %}
-                    {% if u_contacts %}
-                        <a href="{{ u_contacts }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface">
-                            <i data-lucide="contact" class="h-[18px] w-[18px] text-muted"></i> Contacts
-                        </a>
-                    {% endif %}
-                    {% if u_status %}
-                        <a href="{{ u_status }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface">
-                            <i data-lucide="circle-dashed" class="h-[18px] w-[18px] text-muted"></i> Status
-                        </a>
-                    {% endif %}
+                        {% if u_agent %}<a href="{{ u_agent }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="bot" class="h-[18px] w-[18px] text-muted"></i> Agent mode</a>{% endif %}
+                        {% if u_airtime %}<a href="{{ u_airtime }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="smartphone" class="h-[18px] w-[18px] text-muted"></i> Airtime &amp; data</a>{% endif %}
+                        {% if u_converter %}<a href="{{ u_converter }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="arrow-left-right" class="h-[18px] w-[18px] text-muted"></i> Currency converter</a>{% endif %}
+                        {% if u_cards %}<a href="{{ u_cards }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="credit-card" class="h-[18px] w-[18px] text-muted"></i> Cards &amp; accounts</a>{% endif %}
+                        {% if u_banks %}<a href="{{ u_banks }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="landmark" class="h-[18px] w-[18px] text-muted"></i> Bank accounts</a>{% endif %}
 
-                    <div class="my-1 border-t border-line"></div>
+                        <div class="my-1 border-t border-line"></div>
 
-                    {% if u_agent %}
-                        <a href="{{ u_agent }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface">
-                            <i data-lucide="bot" class="h-[18px] w-[18px] text-muted"></i> Agent mode
-                        </a>
-                    {% endif %}
-                    {% if u_airtime %}
-                        <a href="{{ u_airtime }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface">
-                            <i data-lucide="smartphone" class="h-[18px] w-[18px] text-muted"></i> Airtime &amp; data
-                        </a>
-                    {% endif %}
-                    {% if u_converter %}
-                        <a href="{{ u_converter }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface">
-                            <i data-lucide="arrow-left-right" class="h-[18px] w-[18px] text-muted"></i> Currency converter
-                        </a>
-                    {% endif %}
-                    {% if u_cards %}
-                        <a href="{{ u_cards }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface">
-                            <i data-lucide="credit-card" class="h-[18px] w-[18px] text-muted"></i> Cards &amp; accounts
-                        </a>
-                    {% endif %}
-                    {% if u_banks %}
-                        <a href="{{ u_banks }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface">
-                            <i data-lucide="landmark" class="h-[18px] w-[18px] text-muted"></i> Bank accounts
-                        </a>
-                    {% endif %}
+                        <button type="button" id="install-btn" class="hidden w-full items-center gap-3 px-4 py-2.5 text-left text-[14px] text-ink hover:bg-surface">
+                            <i data-lucide="download" class="h-[18px] w-[18px] text-muted"></i> Install app
+                        </button>
+                        <button type="button" @click="open = false; $dispatch('open-shortcuts')" class="hidden w-full items-center gap-3 px-4 py-2.5 text-left text-[14px] text-ink hover:bg-surface md:flex">
+                            <i data-lucide="keyboard" class="h-[18px] w-[18px] text-muted"></i> Keyboard shortcuts
+                        </button>
+                        {% if u_profile_edit %}<a href="{{ u_profile_edit }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="settings" class="h-[18px] w-[18px] text-muted"></i> Settings</a>{% endif %}
+                        {% if u_logout %}
+                            <form method="post" action="{{ u_logout }}">
+                                {% csrf_token %}
+                                <button type="submit" class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-[14px] text-red-600 hover:bg-red-50">
+                                    <i data-lucide="log-out" class="h-[18px] w-[18px]"></i> Log out
+                                </button>
+                            </form>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </header>
 
-                    <div class="my-1 border-t border-line"></div>
+{% endif %}
 
-                    {% if u_profile_edit %}
-                        <a href="{{ u_profile_edit }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface">
-                            <i data-lucide="settings" class="h-[18px] w-[18px] text-muted"></i> Settings
-                        </a>
-                    {% endif %}
-                    {% if u_logout %}
-                        <form method="post" action="{{ u_logout }}">
-                            {% csrf_token %}
-                            <button type="submit" class="flex w-full items-center gap-3 px-4 py-2.5 text-left text-[14px] text-red-600 hover:bg-red-50">
-                                <i data-lucide="log-out" class="h-[18px] w-[18px]"></i> Log out
-                            </button>
-                        </form>
-                    {% endif %}
+<!-- ================================================================ PAGE (one content block for logged-in AND logged-out pages) -->
+<main{% if user.is_authenticated %} class="app-main"{% endif %}>
+    {% block content %}{% endblock %}
+</main>
+
+{% if user.is_authenticated %}
+    </div>
+
+    <!-- ================================================================ BOTTOM TABS (phones) -->
+    <nav class="app-nav fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 backdrop-blur md:hidden" aria-label="Main">
+        <div class="mx-auto grid h-16 max-w-lg grid-cols-4">
+            <a href="{{ u_inbox }}" data-nav="inbox" class="nav-tab focus-ring flex flex-col items-center justify-center gap-0.5">
+                <span class="nav-pill"><i data-lucide="message-circle" class="h-[22px] w-[22px]"></i><span class="nav-badge{% if inbox_unread %} on{% endif %}" style="right: 8px; top: -4px;" data-badge="inbox">{{ inbox_unread|default:"" }}</span></span>
+                <span class="text-[11px] leading-4">Inbox</span>
+            </a>
+            <a href="{{ u_gigs }}" data-nav="gigs" class="nav-tab focus-ring flex flex-col items-center justify-center gap-0.5">
+                <span class="nav-pill"><i data-lucide="briefcase" class="h-[22px] w-[22px]"></i><span class="nav-badge" style="right: 8px; top: -4px;" data-badge="gigs"></span></span>
+                <span class="text-[11px] leading-4">Gigs</span>
+            </a>
+            <a href="{{ u_funds }}" data-nav="funds" class="nav-tab focus-ring flex flex-col items-center justify-center gap-0.5">
+                <span class="nav-pill"><i data-lucide="wallet" class="h-[22px] w-[22px]"></i><span class="nav-badge" style="right: 8px; top: -4px;" data-badge="funds"></span></span>
+                <span class="text-[11px] leading-4">Funds</span>
+            </a>
+            <a href="{{ u_discover }}" data-nav="discover" class="nav-tab focus-ring flex flex-col items-center justify-center gap-0.5">
+                <span class="nav-pill"><i data-lucide="compass" class="h-[22px] w-[22px]"></i><span class="nav-badge" style="right: 8px; top: -4px;" data-badge="discover"></span></span>
+                <span class="text-[11px] leading-4">Discover</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- ================================================================ COMMAND PALETTE + SHORTCUTS -->
+    <div x-data="palette()" @keydown.window="onKey($event)" @open-palette.window="show()" @open-shortcuts.window="help = true">
+
+        <div x-show="open" x-cloak x-transition.opacity @click.self="hide()"
+             class="fixed inset-0 z-[70] flex items-start justify-center bg-black/40 p-3 pt-[10vh] md:p-4 md:pt-[14vh]">
+            <div class="w-full max-w-xl overflow-hidden rounded-2xl bg-white shadow-popover" role="dialog" aria-modal="true" aria-label="Search and jump to">
+                <div class="flex items-center gap-3 border-b border-line px-4">
+                    <i data-lucide="search" class="h-[18px] w-[18px] shrink-0 text-muted"></i>
+                    <input x-ref="input" x-model="q" @input="onInput()" type="text" autocomplete="off" spellcheck="false"
+                           placeholder="Search people, or jump to a page…"
+                           class="h-14 min-w-0 flex-1 bg-transparent text-[15px] text-ink placeholder-muted outline-none"
+                           @keydown.arrow-down.prevent="move(1)" @keydown.arrow-up.prevent="move(-1)"
+                           @keydown.enter.prevent="go()" @keydown.escape.prevent="hide()">
+                    <kbd class="hidden md:inline-flex">esc</kbd>
+                </div>
+
+                <ul x-ref="list" class="max-h-[52vh] overflow-y-auto py-1.5">
+                    <template x-for="(r, n) in results" :key="r.g + '|' + r.t + '|' + n">
+                        <li>
+                            <template x-if="n === 0 || results[n - 1].g !== r.g">
+                                <p class="px-4 pb-1 pt-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted" x-text="r.g"></p>
+                            </template>
+                            <a :href="r.u" :data-idx="n" @mouseenter="idx = n" @click="hide()"
+                               class="mx-1.5 flex items-center gap-3 rounded-xl px-3 py-2.5" :class="idx === n ? 'bg-accent-50' : ''">
+                                <template x-if="r.avatar">
+                                    <img :src="r.avatar" alt="" class="h-8 w-8 shrink-0 rounded-full object-cover">
+                                </template>
+                                <template x-if="!r.avatar">
+                                    <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[15px]" x-text="r.e || (r.t || '?').charAt(0).toUpperCase()"></span>
+                                </template>
+                                <span class="min-w-0 flex-1">
+                                    <span class="block truncate text-[14px] font-medium text-ink" x-text="r.t"></span>
+                                    <span class="block truncate text-[12px] text-muted" x-show="r.s" x-text="r.s"></span>
+                                </span>
+                                <kbd class="hidden md:inline-flex" x-show="r.n" x-text="'g ' + r.n"></kbd>
+                            </a>
+                        </li>
+                    </template>
+                    <li x-show="results.length === 0" class="px-4 py-8 text-center text-[13px] text-muted">
+                        <span x-show="!loadingPeople">No matches for "<span x-text="q"></span>".</span>
+                        <span x-show="loadingPeople">Searching…</span>
+                    </li>
+                </ul>
+
+                <div class="hidden items-center gap-4 border-t border-line bg-surface px-4 py-2 text-[11.5px] text-muted md:flex">
+                    <span class="flex items-center gap-1.5"><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+                    <span class="flex items-center gap-1.5"><kbd>↵</kbd> open</span>
+                    <span class="flex items-center gap-1.5"><kbd>esc</kbd> close</span>
                 </div>
             </div>
         </div>
-    </header>
+
+        <!-- Keyboard shortcuts -->
+        <div x-show="help" x-cloak x-transition.opacity @click.self="help = false" @keydown.escape.window="help = false"
+             class="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
+            <div class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-popover" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+                <div class="mb-3 flex items-center justify-between">
+                    <h2 class="text-[16px] font-semibold text-ink">Keyboard shortcuts</h2>
+                    <button type="button" @click="help = false" class="rounded-full p-1.5 text-muted hover:bg-surface" aria-label="Close">&times;</button>
+                </div>
+                <dl class="space-y-2.5 text-[13.5px]">
+                    <div class="flex items-center justify-between"><dt class="text-ink/80">Search / jump to</dt><dd class="flex gap-1"><kbd>Ctrl</kbd><kbd>K</kbd></dd></div>
+                    <div class="flex items-center justify-between"><dt class="text-ink/80">Search (alternative)</dt><dd><kbd>/</kbd></dd></div>
+                    <div class="flex items-center justify-between"><dt class="text-ink/80">Go to Inbox</dt><dd class="flex gap-1"><kbd>g</kbd><kbd>i</kbd></dd></div>
+                    <div class="flex items-center justify-between"><dt class="text-ink/80">Go to Gigs</dt><dd class="flex gap-1"><kbd>g</kbd><kbd>g</kbd></dd></div>
+                    <div class="flex items-center justify-between"><dt class="text-ink/80">Go to Funds</dt><dd class="flex gap-1"><kbd>g</kbd><kbd>f</kbd></dd></div>
+                    <div class="flex items-center justify-between"><dt class="text-ink/80">Go to Discover</dt><dd class="flex gap-1"><kbd>g</kbd><kbd>d</kbd></dd></div>
+                    <div class="flex items-center justify-between"><dt class="text-ink/80">Show this help</dt><dd><kbd>?</kbd></dd></div>
+                </dl>
+            </div>
+        </div>
+    </div>
 
 {% endif %}
 
 <!-- ================================================================ FLASH MESSAGES -->
 {% if messages %}
-    <div class="pointer-events-none fixed inset-x-0 {% if user.is_authenticated %}top-16{% else %}top-4{% endif %} z-[60] flex flex-col items-center gap-2 px-4">
+    <div class="pointer-events-none fixed inset-x-0 {% if user.is_authenticated %}top-16 md:top-20{% else %}top-4{% endif %} z-[80] flex flex-col items-center gap-2 px-4 md:inset-x-auto md:right-6 md:w-96 md:items-stretch md:px-0">
         {% for message in messages %}
             <div x-data="{ show: true }" x-init="setTimeout(() => show = false, 5000)" x-show="show" x-cloak x-transition
-                 class="pointer-events-auto flex w-full max-w-md items-start gap-2.5 rounded-xl px-4 py-3 text-[13.5px] shadow-popover
+                 class="pointer-events-auto flex w-full max-w-md items-start gap-2.5 rounded-xl px-4 py-3 text-[13.5px] shadow-popover md:max-w-none
                         {% if message.tags == 'error' %}bg-red-600 text-white
                         {% elif message.tags == 'warning' %}bg-amber-500 text-white
                         {% elif message.tags == 'success' %}bg-emerald-600 text-white
@@ -224,44 +477,206 @@
     </div>
 {% endif %}
 
-<!-- ================================================================ PAGE -->
-<main{% if user.is_authenticated %} class="app-main"{% endif %}>
-    {% block content %}{% endblock %}
-</main>
-
 {% if user.is_authenticated %}
-    <!-- ================================================================ BOTTOM NAV -->
-    {% with n=request.resolver_match.url_name %}
-    <nav class="app-nav fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 backdrop-blur" aria-label="Main">
-        <div class="mx-auto grid h-16 max-w-3xl grid-cols-4">
+<script>
+    /* ---------------------------------------------------------------- active section (single source of truth)
+       Pages can force it with {% templatetag openblock %} block nav_section {% templatetag closeblock %}funds{% templatetag openblock %} endblock {% templatetag closeblock %}. */
+    window.PheralNav = (function () {
+        var SECTIONS = {
+            inbox: ['chat', 'chat_list', 'start_chat', 'group_chat', 'group_list', 'group_create', 'group_profile',
+                    'group_add_member', 'status_list', 'status_detail', 'create_status', 'contacts', 'agent'],
+            gigs: ['hire', 'hire_job_detail', 'create_hire_job', 'send_hire_request'],
+            funds: ['wallet', 'top_up', 'transfer', 'withdraw', 'pay_user', 'global_pay', 'currency_converter',
+                    'bank_accounts', 'airtime_purchase', 'data_purchase', 'cards_and_accounts', 'receipt_detail'],
+            discover: ['feed', 'search', 'create_post', 'profile', 'profile_user', 'profile_edit', 'notifications']
+        };
 
-            <a href="{{ u_inbox }}" class="nav-tab focus-ring flex flex-col items-center justify-center gap-0.5"
-               data-active="{% if n == 'chat' or n == 'chat_list' or n == 'start_chat' or n == 'group_chat' or n == 'group_list' or n == 'group_create' or n == 'group_profile' or n == 'group_add_member' or n == 'status_list' or n == 'status_detail' or n == 'create_status' or n == 'contacts' %}1{% endif %}">
-                <span class="nav-pill"><i data-lucide="message-circle" class="h-[22px] w-[22px]"></i></span>
-                <span class="text-[11px] leading-4">Inbox</span>
-            </a>
+        function activeSection() {
+            var explicit = (document.body.dataset.section || '').trim();
+            if (explicit) return explicit;
+            var view = document.body.dataset.view || '';
+            for (var key in SECTIONS) if (SECTIONS[key].indexOf(view) > -1) return key;
+            return '';
+        }
 
-            <a href="{{ u_gigs }}" class="nav-tab focus-ring flex flex-col items-center justify-center gap-0.5"
-               data-active="{% if n == 'hire' or n == 'hire_job_detail' or n == 'create_hire_job' or n == 'send_hire_request' %}1{% endif %}">
-                <span class="nav-pill"><i data-lucide="briefcase" class="h-[22px] w-[22px]"></i></span>
-                <span class="text-[11px] leading-4">Gigs</span>
-            </a>
+        var active = activeSection();
+        document.querySelectorAll('[data-nav]').forEach(function (el) {
+            var on = el.dataset.nav === active;
+            el.dataset.active = on ? '1' : '';
+            if (on) el.setAttribute('aria-current', 'page'); else el.removeAttribute('aria-current');
+        });
 
-            <a href="{{ u_funds }}" class="nav-tab focus-ring flex flex-col items-center justify-center gap-0.5"
-               data-active="{% if n == 'wallet' or n == 'top_up' or n == 'transfer' or n == 'withdraw' or n == 'pay_user' or n == 'global_pay' or n == 'currency_converter' or n == 'bank_accounts' or n == 'airtime_purchase' or n == 'data_purchase' or n == 'cards_and_accounts' or n == 'receipt_detail' %}1{% endif %}">
-                <span class="nav-pill"><i data-lucide="wallet" class="h-[22px] w-[22px]"></i></span>
-                <span class="text-[11px] leading-4">Funds</span>
-            </a>
+        return {
+            active: active,
+            /* PheralNav.setBadge('inbox', 3)  -> shows 3 on every Inbox tab; 0 / null hides it */
+            setBadge: function (name, count) {
+                document.querySelectorAll('[data-badge="' + name + '"]').forEach(function (el) {
+                    var n = parseInt(count, 10) || 0;
+                    el.textContent = n > 99 ? '99+' : (n > 0 ? String(n) : '');
+                    el.classList.toggle('on', n > 0);
+                });
+            }
+        };
+    })();
 
-            <a href="{{ u_discover }}" class="nav-tab focus-ring flex flex-col items-center justify-center gap-0.5"
-               data-active="{% if n == 'feed' or n == 'search' or n == 'create_post' or n == 'profile' or n == 'profile_user' or n == 'profile_edit' %}1{% endif %}">
-                <span class="nav-pill"><i data-lucide="compass" class="h-[22px] w-[22px]"></i></span>
-                <span class="text-[11px] leading-4">Discover</span>
-            </a>
-        </div>
-    </nav>
-    {% endwith %}
+    /* ---------------------------------------------------------------- command palette data (only links that exist) */
+    window.PHERAL_NAV = [
+        {% if u_inbox %}{ g: "Go to", t: "Inbox", u: "{{ u_inbox }}", e: "💬", n: "i", k: "chats messages conversations" },{% endif %}
+        {% if u_gigs %}{ g: "Go to", t: "Gigs", u: "{{ u_gigs }}", e: "💼", n: "g", k: "hire jobs work freelance" },{% endif %}
+        {% if u_funds %}{ g: "Go to", t: "Funds", u: "{{ u_funds }}", e: "💰", n: "f", k: "wallet balance money transactions" },{% endif %}
+        {% if u_discover %}{ g: "Go to", t: "Discover", u: "{{ u_discover }}", e: "🧭", n: "d", k: "feed posts explore" },{% endif %}
+        {% if u_notifications %}{ g: "Go to", t: "Notifications", u: "{{ u_notifications }}", e: "🔔", k: "alerts" },{% endif %}
+        {% if u_contacts %}{ g: "Go to", t: "Contacts", u: "{{ u_contacts }}", e: "👥", k: "people friends" },{% endif %}
+        {% if u_status %}{ g: "Go to", t: "Status", u: "{{ u_status }}", e: "⭕", k: "stories updates" },{% endif %}
+        {% if u_agent %}{ g: "Go to", t: "Agent mode", u: "{{ u_agent }}", e: "🤖", k: "assistant commands" },{% endif %}
+        {% if u_group_create %}{ g: "Create", t: "New group", u: "{{ u_group_create }}", e: "➕", k: "create group chat" },{% endif %}
+        {% if u_job_new %}{ g: "Create", t: "Post a job", u: "{{ u_job_new }}", e: "➕", k: "hire new gig" },{% endif %}
+        {% if u_post_new %}{ g: "Create", t: "New post", u: "{{ u_post_new }}", e: "✍️", k: "write feed" },{% endif %}
+        {% if u_status_new %}{ g: "Create", t: "Add status", u: "{{ u_status_new }}", e: "➕", k: "story" },{% endif %}
+        {% if u_pay %}{ g: "Money", t: "Send money", u: "{{ u_pay }}", e: "💸", k: "pay transfer" },{% endif %}
+        {% if u_airtime %}{ g: "Money", t: "Airtime & data", u: "{{ u_airtime }}", e: "📱", k: "recharge bundle topup" },{% endif %}
+        {% if u_converter %}{ g: "Money", t: "Currency converter", u: "{{ u_converter }}", e: "🔁", k: "exchange fx rate" },{% endif %}
+        {% if u_cards %}{ g: "Money", t: "Cards & accounts", u: "{{ u_cards }}", e: "💳", k: "virtual card account number" },{% endif %}
+        {% if u_banks %}{ g: "Money", t: "Bank accounts", u: "{{ u_banks }}", e: "🏦", k: "withdraw saved" },{% endif %}
+        {% if u_profile %}{ g: "You", t: "My profile", u: "{{ u_profile }}", e: "🙂", k: "account" },{% endif %}
+        {% if u_profile_edit %}{ g: "You", t: "Settings", u: "{{ u_profile_edit }}", e: "⚙️", k: "edit profile preferences" },{% endif %}
+    ];
+    window.PHERAL_PEOPLE = { lookup: "{{ u_lookup }}", chat: "{{ u_start_chat }}" };
 
+    document.addEventListener('alpine:init', function () {
+        Alpine.data('palette', function () {
+            return {
+                open: false, help: false, q: '', idx: 0,
+                people: [], loadingPeople: false, _timer: null, _seq: 0,
+                gPending: false, _gTimer: null,
+                items: window.PHERAL_NAV || [],
+
+                get results() {
+                    var q = this.q.trim().toLowerCase();
+                    var base = !q ? this.items : this.items.filter(function (i) {
+                        return (i.t + ' ' + (i.k || '') + ' ' + i.g).toLowerCase().indexOf(q) > -1;
+                    });
+                    var chat = (window.PHERAL_PEOPLE || {}).chat || '';
+                    var people = chat ? this.people.map(function (p) {
+                        return {
+                            g: 'People', t: p.display_name || p.username, s: '@' + p.username,
+                            u: chat.replace('__U__', encodeURIComponent(p.username)), avatar: p.avatar || ''
+                        };
+                    }) : [];
+                    return people.concat(base);
+                },
+
+                show() {
+                    this.help = false; this.open = true; this.q = ''; this.idx = 0; this.people = [];
+                    this.$nextTick(() => { if (this.$refs.input) this.$refs.input.focus(); });
+                },
+                hide() { this.open = false; },
+
+                onInput() {
+                    this.idx = 0;
+                    clearTimeout(this._timer);
+                    var q = this.q.trim();
+                    var lookup = (window.PHERAL_PEOPLE || {}).lookup;
+                    if (q.length < 2 || !lookup) { this.people = []; this.loadingPeople = false; return; }
+                    this.loadingPeople = true;
+                    var seq = ++this._seq;
+                    this._timer = setTimeout(() => {
+                        fetch(lookup + '?q=' + encodeURIComponent(q), {
+                            credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                        })
+                            .then(function (r) { return r.json(); })
+                            .then((d) => { if (seq === this._seq) { this.people = (d.results || []).slice(0, 6); } })
+                            .catch(() => { if (seq === this._seq) this.people = []; })
+                            .finally(() => { if (seq === this._seq) this.loadingPeople = false; });
+                    }, 220);
+                },
+
+                move(step) {
+                    var count = this.results.length;
+                    if (!count) return;
+                    this.idx = (this.idx + step + count) % count;
+                    this.$nextTick(() => {
+                        var el = this.$refs.list.querySelector('[data-idx="' + this.idx + '"]');
+                        if (el) el.scrollIntoView({ block: 'nearest' });
+                    });
+                },
+                go() {
+                    var r = this.results[this.idx];
+                    if (!r) return;
+                    this.hide();
+                    window.location.href = r.u;
+                },
+
+                onKey(e) {
+                    var key = (e.key || '').toLowerCase();
+
+                    if ((e.ctrlKey || e.metaKey) && key === 'k') {
+                        e.preventDefault();
+                        this.open ? this.hide() : this.show();
+                        return;
+                    }
+                    if (key === 'escape') { this.hide(); this.help = false; return; }
+
+                    var t = e.target || {};
+                    var tag = (t.tagName || '').toLowerCase();
+                    var typing = tag === 'input' || tag === 'textarea' || tag === 'select' || t.isContentEditable;
+                    if (typing || this.open || e.ctrlKey || e.metaKey || e.altKey) return;
+
+                    if (this.gPending) {
+                        this.gPending = false; clearTimeout(this._gTimer);
+                        var target = this.items.filter(function (i) { return i.n === key; })[0];
+                        if (target) { e.preventDefault(); window.location.href = target.u; }
+                        return;
+                    }
+                    if (key === '/') { e.preventDefault(); this.show(); return; }
+                    if (e.key === '?') { e.preventDefault(); this.help = true; return; }
+                    if (key === 'g') {
+                        this.gPending = true;
+                        clearTimeout(this._gTimer);
+                        this._gTimer = setTimeout(() => { this.gPending = false; }, 1200);
+                    }
+                }
+            };
+        });
+    });
+
+    /* ---------------------------------------------------------------- install-app button (PWA) */
+    (function () {
+        var deferred = null;
+        var btn = document.getElementById('install-btn');
+        window.addEventListener('beforeinstallprompt', function (e) {
+            e.preventDefault();
+            deferred = e;
+            if (btn) { btn.classList.remove('hidden'); btn.classList.add('flex'); }
+        });
+        window.addEventListener('appinstalled', function () {
+            deferred = null;
+            if (btn) { btn.classList.add('hidden'); btn.classList.remove('flex'); }
+        });
+        if (btn) btn.addEventListener('click', function () {
+            if (!deferred) return;
+            deferred.prompt();
+            deferred.userChoice.finally(function () { deferred = null; btn.classList.add('hidden'); btn.classList.remove('flex'); });
+        });
+    })();
+
+    /* ---------------------------------------------------------------- top progress bar on page navigation */
+    (function () {
+        var bar = document.getElementById('nav-progress');
+        if (!bar) return;
+        function start() { bar.classList.remove('done'); bar.classList.add('run'); }
+        document.addEventListener('click', function (e) {
+            if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            var a = e.target.closest ? e.target.closest('a[href]') : null;
+            if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
+            var href = a.getAttribute('href') || '';
+            if (!href || href.charAt(0) === '#' || href.indexOf('javascript:') === 0) return;
+            if (a.origin && a.origin !== location.origin) return;
+            start();
+        });
+        window.addEventListener('pageshow', function () { bar.classList.remove('run'); bar.classList.add('done'); });
+    })();
+</script>
 {% endif %}
 
 <script>
