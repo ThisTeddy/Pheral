@@ -1,124 +1,262 @@
 {% extends "base.html" %}
 
-{% block title %}Hire · Pheral{% endblock %}
-{% block page_title %}Hire{% endblock %}
+{% block title %}Gigs · Pheral{% endblock %}
+{% block page_title %}Gigs{% endblock %}
+
+{% block header_actions %}
+    {% url 'create_hire_job' as u_job_new %}
+    {% if u_job_new %}
+        <a href="{{ u_job_new }}" class="focus-ring hidden items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-[13px] font-semibold text-accent-700 transition hover:bg-accent-50 md:flex">
+            <i data-lucide="plus" class="h-4 w-4"></i> Post a job
+        </a>
+    {% endif %}
+{% endblock %}
 
 {% block extra_head %}
-<style>[x-cloak] { display: none !important; }</style>
+<style>
+    .list-sticky { top: calc(56px + env(safe-area-inset-top)); }
+    @media (min-width: 768px) { .list-sticky { top: calc(64px + env(safe-area-inset-top)); } }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { scrollbar-width: none; }
+    .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .job-card { transition: box-shadow .15s, transform .15s, border-color .15s; }
+    .job-card:hover { box-shadow: 0 8px 24px -12px rgba(28,23,48,.25); border-color: #C4B5FD; transform: translateY(-1px); }
+</style>
 {% endblock %}
 
 {% block content %}
-<div class="mx-auto w-full max-w-5xl" x-data="{ q: '', sort: 'newest' }">
+{% url 'create_hire_job' as u_job_new %}
 
-    <div class="flex items-center justify-between px-4 pt-3 lg:px-7 lg:pt-6">
-        <h1 class="text-lg font-bold tracking-tight text-ink lg:hidden">Hire</h1>
-        <a href="{% url 'create_hire_job' %}" class="focus-ring hidden items-center gap-1.5 rounded-full bg-accent-500 px-3.5 py-1.5 text-[12px] font-semibold text-white transition hover:bg-accent-600 lg:ml-auto lg:inline-flex">
-            <i data-lucide="plus" class="h-3.5 w-3.5"></i> Post a job
-        </a>
+<div x-data="gigsBoard()" class="mx-auto max-w-5xl pb-28 md:pb-12">
+
+    <!-- ============================================================ HERO -->
+    <section class="px-4 pt-4 md:px-6 md:pt-6">
+        <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-accent-600 via-accent-500 to-accent-400 px-5 py-6 text-white shadow-sm md:px-8 md:py-8">
+            <div class="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/10"></div>
+            <div class="pointer-events-none absolute -bottom-16 right-24 h-40 w-40 rounded-full bg-white/10"></div>
+
+            <div class="relative flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                <div class="max-w-md">
+                    <h2 class="text-[22px] font-bold leading-tight tracking-tight md:text-[26px]">Find work. Hire talent.</h2>
+                    <p class="mt-1.5 text-[14px] text-white/85">Browse open jobs from people on Pheral, or post your own and get paid or pay securely from your wallet.</p>
+                    {% if u_job_new %}
+                        <a href="{{ u_job_new }}" class="focus-ring mt-4 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[13.5px] font-semibold text-accent-700 shadow-sm transition hover:bg-accent-50">
+                            <i data-lucide="plus" class="h-4 w-4"></i> Post a job
+                        </a>
+                    {% endif %}
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 md:w-72">
+                    <div class="rounded-2xl bg-white/15 px-4 py-3 backdrop-blur-sm">
+                        <p class="text-[26px] font-bold leading-none">{{ open_count }}</p>
+                        <p class="mt-1 text-[12px] text-white/85">Open job{{ open_count|pluralize }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white/15 px-4 py-3 backdrop-blur-sm">
+                        <p class="text-[26px] font-bold leading-none">{{ recent_count }}</p>
+                        <p class="mt-1 text-[12px] text-white/85">New this week</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ============================================================ SEARCH / FILTERS / SORT -->
+    <div class="list-sticky sticky z-20 mt-4 border-y border-line bg-white/95 backdrop-blur">
+        <div class="flex flex-col gap-2.5 px-4 py-2.5 md:flex-row md:items-center md:px-6">
+            <label class="flex flex-1 items-center gap-2.5 rounded-full bg-surface px-4 py-2 text-muted focus-within:ring-2 focus-within:ring-accent-300">
+                <i data-lucide="search" class="h-4 w-4 shrink-0"></i>
+                <input type="search" x-model="q" placeholder="Search jobs, skills or people" autocomplete="off"
+                       class="min-w-0 flex-1 bg-transparent text-[14px] text-ink placeholder-muted outline-none">
+                <button type="button" x-show="q" x-cloak @click="q = ''" class="text-[18px] leading-none text-muted hover:text-ink" aria-label="Clear search">&times;</button>
+            </label>
+
+            <div class="flex items-center gap-2">
+                <div class="no-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto" x-show="currencies.length > 1" x-cloak>
+                    <button type="button" @click="cur = 'all'" :class="cur === 'all' ? 'bg-accent-500 text-white' : 'bg-surface text-ink/80 hover:bg-accent-50'"
+                            class="shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition">All</button>
+                    <template x-for="c in currencies" :key="c">
+                        <button type="button" @click="cur = c" :class="cur === c ? 'bg-accent-500 text-white' : 'bg-surface text-ink/80 hover:bg-accent-50'"
+                                class="shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition" x-text="c"></button>
+                    </template>
+                </div>
+
+                <label class="ml-auto flex shrink-0 items-center gap-1.5 text-[12.5px] text-muted">
+                    <i data-lucide="arrow-up-down" class="h-4 w-4"></i>
+                    <select x-model="sort" class="rounded-full border-0 bg-surface py-1.5 pl-3 pr-7 text-[12.5px] font-medium text-ink focus:ring-2 focus:ring-accent-300">
+                        <option value="newest">Newest</option>
+                        <option value="oldest">Oldest</option>
+                        <option value="budget">Highest budget</option>
+                    </select>
+                </label>
+            </div>
+        </div>
     </div>
 
-    <div class="px-4 pt-3 lg:px-7">
+    <!-- ============================================================ JOB CARDS -->
+    <div class="grid grid-cols-1 gap-3 px-4 pt-4 md:grid-cols-2 md:gap-4 md:px-6 xl:grid-cols-3" id="job-grid">
+        {% for job in jobs %}
+            <article x-data="{ id: '{{ job.pk }}' }" x-show="show(id)" :style="{ order: rank(id) }"
+                     data-job
+                     data-id="{{ job.pk }}"
+                     data-title="{{ job.title|escape }}"
+                     data-desc="{{ job.description|truncatechars:300|escape }}"
+                     data-employer="{{ job.employer.display_name|default:job.employer.username|escape }} {{ job.employer.username|escape }}"
+                     data-currency="{{ job.currency.code }}"
+                     data-budget="{{ job.budget|stringformat:'f' }}"
+                     data-ts="{{ job.created_at|date:'c' }}"
+                     class="job-card relative flex flex-col rounded-2xl border border-line bg-white p-4">
 
-        <div class="mb-3 grid grid-cols-3 gap-2 lg:max-w-md">
-            <div class="rounded-xl border border-line bg-white px-3 py-2.5 text-center shadow-card">
-                <p class="text-[15px] font-bold text-ink">{{ open_count }}</p>
-                <p class="text-[10px] text-muted">Open jobs</p>
-            </div>
-            <div class="rounded-xl border border-line bg-white px-3 py-2.5 text-center shadow-card">
-                <p class="text-[15px] font-bold text-ink">{{ recent_count }}</p>
-                <p class="text-[10px] text-muted">Posted this week</p>
-            </div>
-            <a href="{% url 'create_hire_job' %}" class="focus-ring flex flex-col items-center justify-center gap-0.5 rounded-xl bg-accent-500 px-3 py-2.5 text-center transition hover:bg-accent-600 lg:hidden">
-                <i data-lucide="plus" class="h-3.5 w-3.5 text-white"></i>
-                <p class="text-[10px] font-semibold text-white">Post a job</p>
-            </a>
-        </div>
-
-        <div class="mb-2.5 flex h-9 items-center gap-2 rounded-xl bg-surface px-3 lg:h-10 lg:max-w-md">
-            <i data-lucide="search" class="h-3.5 w-3.5 shrink-0 text-muted"></i>
-            <input type="text" x-model="q" placeholder="Search open jobs" autocomplete="off" class="w-full bg-transparent text-[12px] text-ink placeholder-muted focus:outline-none">
-        </div>
-
-        <div class="mb-4 flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-            <button @click="sort = 'newest'" :class="sort === 'newest' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">Newest</button>
-            <button @click="sort = 'budget_high'" :class="sort === 'budget_high' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">Highest budget</button>
-            <button @click="sort = 'budget_low'" :class="sort === 'budget_low' ? 'bg-accent-500 text-white' : 'bg-surface text-muted hover:text-ink'" class="focus-ring shrink-0 rounded-full px-3.5 py-1 text-[11px] font-medium transition">Lowest budget</button>
-        </div>
-
-        {% if jobs %}
-            <div
-                x-data="{
-                    jobs: [
-                        {% for job in jobs %}
-                        { id: {{ job.id }}, title: '{{ job.title|escapejs }}', description: '{{ job.description|truncatechars:140|escapejs }}',
-                          budget: {{ job.budget }}, currency: '{{ job.currency.symbol|escapejs }}', currencyCode: '{{ job.currency.code|escapejs }}',
-                          employer: '{{ job.employer.username|escapejs }}', employerName: '{{ job.employer.display_name|default:job.employer.username|escapejs }}',
-                          createdAgo: '{{ job.created_at|timesince|escapejs }}', timestamp: {{ job.created_at|date:'U' }} },
-                        {% endfor %}
-                    ],
-                    get filtered() {
-                        let list = this.jobs.filter(j => this.q === '' || j.title.toLowerCase().includes(this.q.toLowerCase()) || j.employerName.toLowerCase().includes(this.q.toLowerCase()));
-                        if (this.sort === 'budget_high') list = [...list].sort((a, b) => b.budget - a.budget);
-                        else if (this.sort === 'budget_low') list = [...list].sort((a, b) => a.budget - b.budget);
-                        else list = [...list].sort((a, b) => b.timestamp - a.timestamp);
-                        return list;
-                    },
-                }"
-                class="grid grid-cols-1 gap-2.5 lg:grid-cols-2 xl:grid-cols-3"
-            >
-                <template x-for="job in filtered" :key="job.id">
-                    <a :href="'{% url 'hire' %}job/' + job.id + '/'"
-                       class="focus-ring flex items-start gap-3 rounded-2xl border border-line bg-white p-3.5 shadow-card transition hover:border-accent-200 hover:bg-surface">
-                        <span class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-50 text-accent-600"><i data-lucide="briefcase" class="h-4.5 w-4.5"></i></span>
-                        <div class="min-w-0 flex-1">
-                            <div class="flex items-start justify-between gap-2">
-                                <p class="truncate text-[13px] font-semibold leading-5 text-ink" x-text="job.title"></p>
-                                <span class="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-semibold text-emerald-600">Open</span>
-                            </div>
-                            <p class="mt-0.5 truncate text-[11px] leading-4 text-muted" x-text="job.description"></p>
-                            <div class="mt-2 flex items-center justify-between gap-2">
-                                <span class="flex items-center gap-1 text-[11px] font-semibold text-ink">
-                                    <span x-text="job.currency"></span><span x-text="job.budget.toLocaleString(undefined, {minimumFractionDigits: 2})"></span>
-                                    <span class="font-normal text-muted" x-text="job.currencyCode"></span>
-                                </span>
-                                <span class="flex items-center gap-1 text-[10px] text-muted">
-                                    <span x-text="'@' + job.employer"></span><span class="h-0.5 w-0.5 rounded-full bg-line"></span><span x-text="job.createdAgo + ' ago'"></span>
-                                </span>
-                            </div>
-                        </div>
+                <div class="flex items-center gap-2.5">
+                    <a href="{% url 'profile_user' job.employer.username %}" class="focus-ring shrink-0 rounded-full">
+                        {% if job.employer.avatar %}
+                            <img src="{{ job.employer.avatar.url }}" alt="" loading="lazy" class="h-9 w-9 rounded-full object-cover">
+                        {% else %}
+                            <span class="flex h-9 w-9 items-center justify-center rounded-full bg-accent-100 text-[13px] font-semibold text-accent-700">{{ job.employer.first_name|default:job.employer.username|first|upper }}</span>
+                        {% endif %}
                     </a>
-                </template>
-
-                <div x-show="filtered.length === 0" x-cloak class="col-span-full flex flex-col items-center gap-2 py-14 text-center">
-                    <div class="flex h-12 w-12 items-center justify-center rounded-full bg-accent-50"><i data-lucide="search-x" class="h-5 w-5 text-accent-500"></i></div>
-                    <p class="text-[12px] font-semibold text-ink">No jobs match your search</p>
-                    <p class="text-[11px] text-muted">Try a different keyword or clear the search.</p>
+                    <div class="min-w-0 flex-1 leading-tight">
+                        <a href="{% url 'profile_user' job.employer.username %}" class="block truncate text-[13px] font-medium text-ink hover:underline">{{ job.employer.display_name|default:job.employer.username }}</a>
+                        <span class="text-[11.5px] text-muted" data-ago>{{ job.created_at|date:"j M" }}</span>
+                    </div>
+                    <span x-show="isNew(id)" x-cloak class="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-emerald-700">New</span>
                 </div>
-            </div>
 
-            {% if page_obj.paginator.num_pages > 1 %}
-                <div class="mt-5 flex items-center justify-center gap-2">
-                    {% if page_obj.has_previous %}
-                        <a href="?page={{ page_obj.previous_page_number }}" class="focus-ring rounded-full border border-line px-3.5 py-1.5 text-[11px] font-medium text-ink transition hover:bg-surface">Previous</a>
-                    {% endif %}
-                    <span class="text-[11px] text-muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
-                    {% if page_obj.has_next %}
-                        <a href="?page={{ page_obj.next_page_number }}" class="focus-ring rounded-full border border-line px-3.5 py-1.5 text-[11px] font-medium text-ink transition hover:bg-surface">Next</a>
-                    {% endif %}
+                <h3 class="mt-3 text-[16px] font-semibold leading-snug text-ink">
+                    <a href="{% url 'hire_job_detail' job.pk %}" class="after:absolute after:inset-0 after:content-[''] focus-ring rounded">{{ job.title }}</a>
+                </h3>
+
+                {% if job.description %}
+                    <p class="clamp-2 mt-1.5 text-[13.5px] leading-relaxed text-muted">{{ job.description }}</p>
+                {% endif %}
+
+                <div class="mt-4 flex items-end justify-between gap-3 pt-1">
+                    <div>
+                        <p class="text-[11px] font-medium uppercase tracking-wide text-muted/80">Budget</p>
+                        <p class="text-[18px] font-bold leading-tight text-accent-700">{{ job.currency.symbol }}{{ job.budget|floatformat:"2g" }}</p>
+                    </div>
+                    <span class="inline-flex items-center gap-1 rounded-full bg-accent-50 px-3.5 py-1.5 text-[12.5px] font-semibold text-accent-700">
+                        View <i data-lucide="arrow-right" class="h-3.5 w-3.5"></i>
+                    </span>
                 </div>
-            {% endif %}
-        {% else %}
-            <div class="flex flex-col items-center gap-2 py-20 text-center">
-                <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50"><i data-lucide="briefcase" class="h-6 w-6 text-accent-500"></i></div>
-                <p class="text-[13px] font-semibold text-ink">No open jobs right now</p>
-                <p class="max-w-xs text-[11px] leading-5 text-muted">Be the first to post a job and find someone to hire.</p>
-                <a href="{% url 'create_hire_job' %}" class="focus-ring mt-1 rounded-full bg-accent-500 px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-accent-600">Post a job</a>
-            </div>
-        {% endif %}
+            </article>
+        {% endfor %}
     </div>
-</div>
 
-<a href="{% url 'create_hire_job' %}" class="focus-ring fixed bottom-20 right-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-accent-500 text-white shadow-lg transition hover:bg-accent-600 lg:hidden" aria-label="Post a job">
-    <i data-lucide="plus" class="h-5 w-5"></i>
-</a>
+    <!-- ============================================================ EMPTY STATES -->
+    {% if not jobs %}
+        <div class="flex flex-col items-center px-6 py-16 text-center">
+            <span class="flex h-16 w-16 items-center justify-center rounded-full bg-accent-100 text-accent-600"><i data-lucide="briefcase" class="h-8 w-8"></i></span>
+            <h2 class="mt-4 text-[18px] font-semibold text-ink">No open jobs right now</h2>
+            <p class="mt-1 max-w-xs text-[14px] text-muted">Be the first to post one and let people on Pheral apply.</p>
+            {% if u_job_new %}<a href="{{ u_job_new }}" class="focus-ring mt-5 rounded-full bg-accent-500 px-5 py-2.5 text-[13.5px] font-semibold text-white hover:bg-accent-600">Post a job</a>{% endif %}
+        </div>
+    {% else %}
+        <div x-show="visibleCount() === 0" x-cloak class="px-6 py-14 text-center">
+            <p class="text-[15px] font-medium text-ink">No jobs match your search on this page.</p>
+            <button type="button" @click="q = ''; cur = 'all'" class="mt-3 text-[13.5px] font-medium text-accent-600 hover:underline">Clear filters</button>
+            {% if page_obj.has_next %}<p class="mt-2 text-[12.5px] text-muted">Try the next page: filters only cover the jobs shown here.</p>{% endif %}
+        </div>
+    {% endif %}
+
+    <!-- ============================================================ PAGINATION -->
+    {% if page_obj.paginator.num_pages > 1 %}
+        <nav class="mt-8 flex items-center justify-center gap-2 px-4" aria-label="Pagination">
+            {% if page_obj.has_previous %}
+                <a href="?page={{ page_obj.previous_page_number }}" class="focus-ring flex items-center gap-1 rounded-full border border-line px-4 py-2 text-[13px] font-medium text-ink hover:bg-surface">
+                    <i data-lucide="chevron-left" class="h-4 w-4"></i> Previous
+                </a>
+            {% endif %}
+            <span class="px-2 text-[13px] text-muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+            {% if page_obj.has_next %}
+                <a href="?page={{ page_obj.next_page_number }}" class="focus-ring flex items-center gap-1 rounded-full border border-line px-4 py-2 text-[13px] font-medium text-ink hover:bg-surface">
+                    Next <i data-lucide="chevron-right" class="h-4 w-4"></i>
+                </a>
+            {% endif %}
+        </nav>
+    {% endif %}
+
+    <!-- ============================================================ POST A JOB (phones) -->
+    {% if u_job_new %}
+        <a href="{{ u_job_new }}" class="focus-ring fixed bottom-20 right-4 z-30 flex h-14 items-center gap-2 rounded-2xl bg-accent-500 px-5 text-[14px] font-semibold text-white shadow-popover transition hover:bg-accent-600 active:scale-95 md:hidden" aria-label="Post a job">
+            <i data-lucide="plus" class="h-5 w-5"></i> Post a job
+        </a>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('alpine:init', function () {
+        Alpine.data('gigsBoard', function () {
+            return {
+                q: '', sort: 'newest', cur: 'all',
+                jobs: {},
+                currencies: [],
+
+                init() {
+                    var jobs = {}, cur = {};
+                    document.querySelectorAll('[data-job]').forEach(function (el) {
+                        var d = el.dataset;
+                        jobs[d.id] = {
+                            hay: (d.title + ' ' + d.desc + ' ' + d.employer).toLowerCase(),
+                            cur: d.currency,
+                            budget: parseFloat(d.budget) || 0,
+                            ts: new Date(d.ts).getTime() || 0
+                        };
+                        cur[d.currency] = true;
+
+                        var ago = el.querySelector('[data-ago]');
+                        if (ago) ago.textContent = window.__agoText(d.ts);
+                    });
+                    this.jobs = jobs;
+                    this.currencies = Object.keys(cur).sort();
+                    this.$nextTick(function () { if (window.lucide) lucide.createIcons(); });
+                },
+
+                show(id) {
+                    var j = this.jobs[id];
+                    if (!j) return true;
+                    if (this.cur !== 'all' && j.cur !== this.cur) return false;
+                    var q = this.q.trim().toLowerCase();
+                    return !q || j.hay.indexOf(q) > -1;
+                },
+                visibleCount() {
+                    var n = 0;
+                    for (var id in this.jobs) if (this.show(id)) n++;
+                    return n;
+                },
+
+                /* position of a job in the chosen sort order (CSS `order`) */
+                rank(id) {
+                    var jobs = this.jobs, sort = this.sort;
+                    var ids = Object.keys(jobs).sort(function (a, b) {
+                        var x = jobs[a], y = jobs[b];
+                        if (sort === 'oldest') return x.ts - y.ts;
+                        if (sort === 'budget') {
+                            if (x.cur !== y.cur) return x.cur < y.cur ? -1 : 1;   // budgets only compare within a currency
+                            return y.budget - x.budget;
+                        }
+                        return y.ts - x.ts;
+                    });
+                    return ids.indexOf(id);
+                },
+                isNew(id) {
+                    var j = this.jobs[id];
+                    return !!j && (Date.now() - j.ts) < 48 * 3600 * 1000;
+                }
+            };
+        });
+    });
+
+    window.__agoText = function (iso) {
+        var t = new Date(iso).getTime();
+        if (!t) return '';
+        var s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+        if (s < 60) return 'Just now';
+        var m = Math.floor(s / 60); if (m < 60) return m + 'm ago';
+        var h = Math.floor(m / 60); if (h < 24) return h + 'h ago';
+        var d = Math.floor(h / 24); if (d < 7) return d + 'd ago';
+        return new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short' });
+    };
+</script>
 {% endblock %}
