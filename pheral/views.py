@@ -43,7 +43,7 @@ from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Exists, OuterRef, Prefetch, Q
+from django.db.models import Case, Count, Exists, IntegerField, OuterRef, Prefetch, Q, Value, When
 from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -51,7 +51,8 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
-from .consumers import broadcast_message, broadcast_read
+from .consumers import broadcast_job_event, broadcast_message, broadcast_read, notify_user, serialize_job
+from .geo import CITY_SUGGESTIONS, STATE_CHOICES, guess_state, normalize_state, state_label
 from .models import (
     AgentActivity,
     AgentCommand,
@@ -1648,52 +1649,136 @@ def group_create(request):
     return redirect("group_chat", conversation_id=conversation.pk)
 
 
+def _save_posted_message(request, conversation, participant):
+    """
+    Saves the message in a chat form POST (text, attachment or voice note, with an
+    optional reply) and pushes it live over the socket. Returns the Message, or
+    None if the form was empty. Used by the group chat; the direct chat() view
+    has the same logic inline.
+    """
+    content = request.POST.get("content", "").strip()
+    attachment = request.FILES.get("attachment")
+    voice_note = request.FILES.get("voice_note")
+    reply_to_id = request.POST.get("reply_to")
+
+    reply_to = None
+    if reply_to_id:
+        reply_to = Message.objects.filter(
+            pk=reply_to_id, conversation=conversation, is_deleted=False,
+        ).first()
+
+    message_type = Message.MessageType.TEXT
+    uploaded_file = None
+
+    if voice_note:
+        uploaded_file = voice_note
+        message_type = Message.MessageType.VOICE
+    elif attachment:
+        uploaded_file = attachment
+        content_type = (getattr(attachment, "content_type", "") or "").lower()
+        if content_type.startswith("image/"):
+            message_type = Message.MessageType.IMAGE
+        elif content_type.startswith("video/"):
+            message_type = Message.MessageType.VIDEO
+        else:
+            message_type = Message.MessageType.FILE
+
+    if not (content or uploaded_file):
+        return None
+
+    message = Message.objects.create(
+        conversation=conversation, sender=request.user, message_type=message_type,
+        content=content, attachment=uploaded_file, reply_to=reply_to,
+    )
+    now = timezone.now()
+    conversation.updated_at = now
+    conversation.save(update_fields=["updated_at"])
+    participant.last_read_at = now
+    participant.save(update_fields=["last_read_at"])
+    push_message(message)
+    return message
+
+
 @login_required
 def group_chat(request, conversation_id):
+    """
+    Group conversations use the SAME template and socket as direct chats
+    (chat.html with is_group=True). Text goes over the socket; files, voice notes
+    and the no-JS fallback come through this POST handler.
+    """
     conversation = get_object_or_404(
-        Conversation, pk=conversation_id,
+        Conversation.objects.filter(participants__user=request.user, is_active=True).distinct(),
+        pk=conversation_id,
         conversation_type=Conversation.ConversationType.GROUP,
-        participants__user=request.user,
     )
     participant = get_object_or_404(ConversationParticipant, conversation=conversation, user=request.user)
 
+    # ------------------------------------------------------------ send
     if request.method == "POST":
-        content = request.POST.get("content", "").strip()
+        message = _save_posted_message(request, conversation, participant)
 
-        if content:
-            message = Message.objects.create(
-                conversation=conversation, sender=request.user,
-                message_type=Message.MessageType.TEXT, content=content,
-            )
-            conversation.updated_at = timezone.now()
-            conversation.save(update_fields=["updated_at"])
-            push_message(message)
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            if message is None:
+                return JsonResponse({"ok": False}, status=400)
+            return JsonResponse({"ok": True, "id": message.id})
 
         return redirect("group_chat", conversation_id=conversation.pk)
 
-    ledger = GroupLedger.objects.filter(conversation=conversation).first()
+    # ------------------------------------------------------------ ledger (created on first visit if missing)
+    ledger = GroupLedger.objects.select_related("currency").filter(conversation=conversation).first()
     if ledger is None:
         currency = get_default_currency(request.user)
         if currency:
             ledger = GroupLedger.objects.create(conversation=conversation, currency=currency)
 
-    chat_messages = (
+    # ------------------------------------------------------------ messages
+    chat_messages = list(
         Message.objects.filter(conversation=conversation, is_deleted=False)
-        .select_related("sender", "transaction", "receipt").order_by("created_at")
+        .select_related("sender", "reply_to", "reply_to__sender", "receipt", "transaction")
+        .order_by("created_at")
     )
 
-    ledger_entries = (
-        GroupLedgerEntry.objects.filter(ledger=ledger).select_related("user").order_by("-created_at")[:15]
-        if ledger else []
-    )
+    # Unread divider: computed BEFORE last_read_at moves forward.
+    previous_read = participant.last_read_at
+    incoming = [
+        m for m in chat_messages
+        if m.sender_id != request.user.id and m.message_type != "system"
+    ]
+    unread = [m for m in incoming if previous_read is None or m.created_at > previous_read]
+    first_unread_id = unread[0].id if unread else None
+    unread_count = len(unread)
 
-    return render(request, "group_chat.html", {
+    # Mark incoming as read.
+    already_read = set(
+        MessageRead.objects.filter(user=request.user, message__conversation=conversation)
+        .values_list("message_id", flat=True)
+    )
+    to_mark = [m for m in incoming if m.id not in already_read]
+    if to_mark:
+        MessageRead.objects.bulk_create(
+            [MessageRead(message=m, user=request.user) for m in to_mark],
+            ignore_conflicts=True,
+        )
+        broadcast_read(conversation.pk, request.user.id, to_mark[-1].id)
+
+    participant.last_read_at = timezone.now()
+    participant.save(update_fields=["last_read_at"])
+
+    return render(request, "chat.html", {
         "conversation": conversation,
-        "chat_messages": chat_messages,
-        "ledger": ledger,
-        "ledger_entries": ledger_entries,
+        "is_group": True,
+        "other_user": None,
+        "other_presence": None,
+        "other_online": False,
         "participant": participant,
         "participant_count": conversation.participants.count(),
+        "is_admin": participant.is_admin,
+        "ledger": ledger,
+        "chat_messages": chat_messages,
+        "current_user": request.user,
+        "first_unread_id": first_unread_id,
+        "unread_count": unread_count,
+        "read_by_others": set(),  # no read ticks in groups
     })
 
 
@@ -4233,6 +4318,11 @@ def comment_post(request, post_id):
 # Accepting auto-declines every other pending request on that job and moves the
 # job to IN_PROGRESS (one hire per job, matching HirePayment's one-to-one link).
 # Payment happens only in complete_hire_request().
+#
+# GIGS (location + instant accept): a job carries a state/city and/or a remote flag.
+# It is pushed live to people in that state (and to everyone, if remote). The first
+# person to tap Accept wins (row lock), the job moves to IN_PROGRESS, both sides get
+# a chat, and every other feed removes the card live.
 # ============================================================
 
 HIRE_JOBS_PER_PAGE = 24
@@ -4245,54 +4335,346 @@ def _hire_responder(hire_request):
     return hire_request.worker
 
 
-@login_required
-def hire(request):
-    jobs_qs = (
+HIRE_REQUIRE_FUNDS = getattr(settings, "HIRE_REQUIRE_FUNDS", True)
+
+
+def _display(user):
+    return getattr(user, "display_name", None) or user.get_full_name() or user.username
+
+
+def _wallet_balance(user, currency):
+    """Balance without creating a wallet row as a side effect."""
+    wallet_row = Wallet.objects.filter(user=user, currency=currency).first()
+    return wallet_row.balance if wallet_row else Decimal("0.00")
+
+
+def _open_jobs_for(user):
+    return (
         HireJob.objects.filter(status=HireJob.Status.OPEN)
-        .select_related("employer", "currency").order_by("-created_at")
+        .exclude(employer=user)
+        .select_related("employer", "currency")
     )
 
-    paginator = Paginator(jobs_qs, HIRE_JOBS_PER_PAGE)
-    page_obj = paginator.get_page(request.GET.get("page"))
 
-    open_count = jobs_qs.count()
-    recent_count = jobs_qs.filter(created_at__gte=timezone.now() - timedelta(days=7)).count()
+def _annotate_proximity(qs, user):
+    """
+    proximity: 0 = same city, 1 = same state, 2 = remote, 3 = elsewhere.
+    The sort key for the feed (then newest first).
+    """
+    city = (getattr(user, "home_city", "") or "").strip()
+    state = getattr(user, "home_state", "") or ""
+
+    whens = []
+    if city:
+        city_match = Q(loc_city__iexact=city)
+        if state:
+            city_match &= Q(loc_state=state) | Q(loc_state="")
+        whens.append(When(city_match, then=Value(0)))
+    if state:
+        whens.append(When(loc_state=state, then=Value(1)))
+    whens.append(When(is_remote=True, then=Value(2)))
+
+    return qs.annotate(proximity=Case(*whens, default=Value(3), output_field=IntegerField()))
+
+
+@login_required
+def hire(request):
+    """The live gig board: jobs near you first, then remote, then everything else."""
+    user = request.user
+    scope = request.GET.get("scope", "for-you")
+    if scope not in ("for-you", "near", "remote"):
+        scope = "for-you"
+
+    base_qs = _open_jobs_for(user)
+    qs = _annotate_proximity(base_qs, user)
+    if scope == "near":
+        qs = qs.filter(proximity__lte=1)
+    elif scope == "remote":
+        qs = qs.filter(is_remote=True)
+    qs = qs.order_by("proximity", "-created_at")
+
+    page_obj = Paginator(qs, HIRE_JOBS_PER_PAGE).get_page(request.GET.get("page"))
+
+    jobs_data = []
+    for job in page_obj.object_list:
+        card = serialize_job(job)
+        card["proximity"] = job.proximity
+        jobs_data.append(card)
+
+    near_count = _annotate_proximity(base_qs, user).filter(proximity__lte=1).count()
+    recent_count = base_qs.filter(created_at__gte=timezone.now() - timedelta(days=7)).count()
+
+    active_jobs = []
+    for job in (
+        HireJob.objects.filter(status=HireJob.Status.IN_PROGRESS)
+        .filter(Q(employer=user) | Q(accepted_by=user))
+        .select_related("employer", "accepted_by", "currency")
+        .order_by("-accepted_at", "-updated_at")[:5]
+    ):
+        as_employer = job.employer_id == user.pk
+        other = job.accepted_by if as_employer else job.employer
+        active_jobs.append({
+            "id": job.pk, "title": job.title, "role": "employer" if as_employer else "worker",
+            "other": _display(other) if other else "",
+            "budget": f"{job.currency.symbol}{job.budget:,.2f}",
+            "url": reverse("hire_job_detail", args=[job.pk]),
+        })
+
+    my_open_jobs = [
+        {"id": j.pk, "title": j.title, "budget": f"{j.currency.symbol}{j.budget:,.2f}",
+         "url": reverse("hire_job_detail", args=[j.pk])}
+        for j in HireJob.objects.filter(employer=user, status=HireJob.Status.OPEN)
+        .select_related("currency").order_by("-created_at")[:5]
+    ]
+
+    my_state = getattr(user, "home_state", "") or ""
+    my_city = getattr(user, "home_city", "") or ""
+    label = ", ".join(part for part in (my_city, state_label(my_state) if my_state else "") if part)
 
     return render(request, "hire.html", {
-        "jobs": page_obj.object_list,
+        "jobs_data": jobs_data,
+        "gig_config": {
+            "me": user.pk, "state": my_state, "city": my_city,
+            "scope": scope, "page": page_obj.number,
+        },
         "page_obj": page_obj,
-        "open_count": open_count,
+        "scope": scope,
+        "open_count": base_qs.count(),
+        "near_count": near_count,
         "recent_count": recent_count,
+        "my_state": my_state,
+        "my_city": my_city,
+        "my_location_label": label,
+        "states": STATE_CHOICES,
+        "cities": CITY_SUGGESTIONS,
+        "active_jobs": active_jobs,
+        "my_open_jobs": my_open_jobs,
     })
 
 
 @login_required
+@require_POST
+def set_my_location(request):
+    """Saves the user's home state/city (used to rank the gig feed). Returns JSON."""
+    city = request.POST.get("city", "").strip()[:60].title()
+    raw_state = request.POST.get("state", "").strip()
+
+    state = normalize_state(raw_state) if raw_state else guess_state(city)
+
+    if raw_state and not state:
+        return JsonResponse({"ok": False, "error": "Choose a state from the list."}, status=400)
+    if not state:
+        message = "We couldn't tell which state that city is in. Please pick your state." if city else "Choose your state."
+        return JsonResponse({"ok": False, "error": message}, status=400)
+
+    request.user.home_state = state
+    request.user.home_city = city
+    request.user.save(update_fields=["home_state", "home_city"])
+
+    return JsonResponse({"ok": True, "state": state, "label": state_label(state), "city": city})
+
+
+@login_required
 def create_hire_job(request):
-    currencies = Currency.objects.filter(is_active=True).order_by("code")
+    """Post a job. It goes live to people in its state (and everywhere, if remote)."""
+    user = request.user
+    currencies = list(Currency.objects.filter(is_active=True).order_by("code"))
+    for currency in currencies:
+        currency.my_balance = _wallet_balance(user, currency)
+
+    default_currency = get_default_currency(user)
+    form = {
+        "title": "", "description": "", "budget": "",
+        "currency": str(default_currency.pk) if default_currency else "",
+        "state": getattr(user, "home_state", "") or "",
+        "city": getattr(user, "home_city", "") or "",
+        "is_remote": False,
+    }
+
+    def page(error=None):
+        if error:
+            messages.error(request, error)
+        return render(request, "create_hire_job.html", {
+            "currencies": currencies, "form": form,
+            "states": STATE_CHOICES, "cities": CITY_SUGGESTIONS,
+            "balances": {str(c.pk): {"code": c.code, "symbol": c.symbol, "balance": str(c.my_balance)} for c in currencies},
+        })
 
     if request.method != "POST":
-        return render(request, "create_hire_job.html", {"currencies": currencies})
+        return page()
 
-    title = request.POST.get("title", "").strip()
-    description = request.POST.get("description", "").strip()
-    amount = parse_amount(request.POST.get("budget"))
-    currency = Currency.objects.filter(pk=request.POST.get("currency"), is_active=True).first()
+    form.update({
+        "title": request.POST.get("title", "").strip()[:150],
+        "description": request.POST.get("description", "").strip()[:2000],
+        "budget": request.POST.get("budget", "").strip(),
+        "currency": request.POST.get("currency", "").strip(),
+        "city": request.POST.get("city", "").strip()[:60].title(),
+        "is_remote": request.POST.get("is_remote") == "on",
+    })
+    raw_state = request.POST.get("state", "").strip()
+    state = normalize_state(raw_state) if raw_state else ""
+    if not state and form["city"]:
+        state = guess_state(form["city"])
+    form["state"] = state
 
-    def fail(message):
-        messages.error(request, message)
-        return render(request, "create_hire_job.html", {"currencies": currencies})
+    amount = parse_amount(form["budget"])
+    currency = next((c for c in currencies if str(c.pk) == form["currency"]), None)
 
-    if not title:
-        return fail("Job title is required.")
-    if not amount:
-        return fail("Enter a valid budget.")
-    if not currency:
-        return fail("Select a valid currency.")
+    if not form["title"]:
+        return page("Give the job a title.")
+    if amount is None:
+        return page("Enter a valid budget.")
+    if currency is None:
+        return page("Choose a currency.")
+    if raw_state and not normalize_state(raw_state):
+        return page("Choose a state from the list.")
+    if not state and not form["is_remote"]:
+        return page("Add where the job is (state and city), or mark it as remote.")
 
-    job = HireJob.objects.create(
-        employer=request.user, title=title, description=description, budget=amount, currency=currency,
-    )
+    if HIRE_REQUIRE_FUNDS and currency.my_balance < amount:
+        return page(
+            f"Your {currency.code} wallet has {currency.symbol}{currency.my_balance:,.2f}. "
+            f"Top up at least {currency.symbol}{amount - currency.my_balance:,.2f} more so the worker is guaranteed to be paid."
+        )
+
+    with transaction.atomic():
+        job = HireJob.objects.create(
+            employer=user, title=form["title"], description=form["description"],
+            budget=amount, currency=currency,
+            loc_state=state, loc_city=form["city"], is_remote=form["is_remote"],
+        )
+        job = HireJob.objects.select_related("employer", "currency").get(pk=job.pk)
+        transaction.on_commit(lambda: broadcast_job_event("gig_new", job))
+
+    # Remember where they are for next time (only fills a blank profile location).
+    if state and not getattr(user, "home_state", ""):
+        user.home_state = state
+        user.home_city = form["city"]
+        user.save(update_fields=["home_state", "home_city"])
+
+    messages.success(request, "Your job is live. People nearby can see it right now.")
     return redirect("hire_job_detail", job_id=job.pk)
+
+
+class _GigRefused(Exception):
+    def __init__(self, reason):
+        super().__init__(reason)
+        self.reason = reason
+
+
+_GIG_REFUSALS = {
+    "taken": "Someone else just took this job.",
+    "closed": "This job is no longer open.",
+    "own": "You can't accept your own job.",
+    "unfunded": "The poster's wallet can't cover this budget right now, so it can't be accepted.",
+}
+
+
+@login_required
+@require_POST
+def accept_hire_job(request, job_id):
+    """
+    Instant accept, first come first served. The job row is locked, so two people
+    tapping at once can never both win. On success the worker is taken to a chat
+    with the poster, and everyone else's feed drops the card live.
+    """
+    user = request.user
+    ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    def refuse(reason):
+        message = _GIG_REFUSALS.get(reason, "This job can't be accepted.")
+        if ajax:
+            return JsonResponse({"ok": False, "reason": reason, "message": message}, status=409)
+        messages.error(request, message)
+        return redirect("hire")
+
+    try:
+        with transaction.atomic():
+            job = (
+                HireJob.objects.select_for_update(of=("self",))
+                .select_related("employer", "currency")
+                .get(pk=job_id)
+            )
+
+            if job.employer_id == user.pk:
+                raise _GigRefused("own")
+            if job.status != HireJob.Status.OPEN:
+                raise _GigRefused("taken" if job.status == HireJob.Status.IN_PROGRESS else "closed")
+            if _wallet_balance(job.employer, job.currency) < job.budget:
+                raise _GigRefused("unfunded")
+
+            job.status = HireJob.Status.IN_PROGRESS
+            job.accepted_by = user
+            job.accepted_at = timezone.now()
+            job.save(update_fields=["status", "accepted_by", "accepted_at", "updated_at"])
+
+            hire_request = HireRequest.objects.filter(job=job, worker=user).first()
+            if hire_request:
+                hire_request.requester = user
+                hire_request.status = HireRequest.Status.ACCEPTED
+                hire_request.save(update_fields=["requester", "status", "updated_at"])
+            else:
+                hire_request = HireRequest.objects.create(
+                    job=job, requester=user, worker=user, status=HireRequest.Status.ACCEPTED,
+                )
+
+            # One hire per job: close out every other pending offer / application.
+            for pending in (
+                HireRequest.objects.filter(job=job, status=HireRequest.Status.PENDING)
+                .exclude(pk=hire_request.pk).select_related("requester", "worker")
+            ):
+                pending.status = HireRequest.Status.DECLINED
+                pending.save(update_fields=["status", "updated_at"])
+                other = pending.requester if pending.requester_id != pending.worker_id else pending.worker
+                Notification.objects.create(
+                    user=other, notification_type=Notification.NotificationType.HIRE,
+                    title="Hire request closed", body=f"\"{job.title}\" has been filled.",
+                    link=reverse("hire_job_detail", args=[job.pk]),
+                )
+
+            conversation = get_or_create_direct_conversation(job.employer, user)
+            chat_message = Message.objects.create(
+                conversation=conversation, sender=user,
+                message_type=Message.MessageType.HIRE, content=f"Accepted: {job.title}",
+            )
+            conversation.updated_at = timezone.now()
+            conversation.save(update_fields=["updated_at"])
+            push_message(chat_message)
+
+            Notification.objects.create(
+                user=job.employer, notification_type=Notification.NotificationType.HIRE,
+                title="Your job was accepted",
+                body=f"{_display(user)} accepted \"{job.title}\".",
+                link=reverse("chat", args=[conversation.pk]),
+            )
+
+            chat_url = reverse("chat", args=[conversation.pk])
+            worker_name = _display(user)
+            employer_id = job.employer_id
+            job_title = job.title
+            job_pk = job.pk
+
+            transaction.on_commit(lambda: broadcast_job_event("gig_taken", job))
+            transaction.on_commit(lambda: notify_user(
+                employer_id, "gig_accepted",
+                job_id=job_pk, title=job_title, worker=worker_name, chat_url=chat_url,
+            ))
+
+    except HireJob.DoesNotExist:
+        if ajax:
+            return JsonResponse({"ok": False, "reason": "missing", "message": "That job no longer exists."}, status=404)
+        raise Http404
+    except _GigRefused as refused:
+        return refuse(refused.reason)
+
+    if ajax:
+        return JsonResponse({
+            "ok": True, "chat_url": chat_url,
+            "job_url": reverse("hire_job_detail", args=[job_pk]),
+        })
+
+    messages.success(request, "Job accepted. Say hi in the chat.")
+    return redirect(chat_url)
 
 
 @login_required
@@ -4452,7 +4834,10 @@ def respond_hire_request(request, request_id, action):
 
             if job.status == HireJob.Status.OPEN:
                 job.status = HireJob.Status.IN_PROGRESS
-                job.save(update_fields=["status", "updated_at"])
+                job.accepted_by = hire_request.worker
+                job.accepted_at = timezone.now()
+                job.save(update_fields=["status", "accepted_by", "accepted_at", "updated_at"])
+                transaction.on_commit(lambda: broadcast_job_event("gig_taken", job))
 
             # One hire per job: everything else still waiting on an answer is moot now.
             other_pending = HireRequest.objects.filter(
@@ -4579,6 +4964,7 @@ def close_hire_job(request, job_id):
     with transaction.atomic():
         job.status = HireJob.Status.CANCELLED
         job.save(update_fields=["status", "updated_at"])
+        transaction.on_commit(lambda: broadcast_job_event("gig_closed", job))
 
         pending = HireRequest.objects.filter(job=job, status=HireRequest.Status.PENDING).select_related(
             "requester", "worker",
@@ -4836,124 +5222,3 @@ self.addEventListener("fetch", event => {
     response = HttpResponse(javascript, content_type="application/javascript")
     response["Cache-Control"] = "no-cache"
     return response
-
-
-
-
-
-def _save_posted_message(request, conversation, participant):
-    """Saves a chat form POST (text, file or voice note, optional reply) and pushes it live."""
-    content = request.POST.get("content", "").strip()
-    attachment = request.FILES.get("attachment")
-    voice_note = request.FILES.get("voice_note")
-    reply_to_id = request.POST.get("reply_to")
-
-    reply_to = None
-    if reply_to_id:
-        reply_to = Message.objects.filter(
-            pk=reply_to_id, conversation=conversation, is_deleted=False,
-        ).first()
-
-    message_type = Message.MessageType.TEXT
-    uploaded_file = None
-
-    if voice_note:
-        uploaded_file = voice_note
-        message_type = Message.MessageType.VOICE
-    elif attachment:
-        uploaded_file = attachment
-        content_type = (getattr(attachment, "content_type", "") or "").lower()
-        if content_type.startswith("image/"):
-            message_type = Message.MessageType.IMAGE
-        elif content_type.startswith("video/"):
-            message_type = Message.MessageType.VIDEO
-        else:
-            message_type = Message.MessageType.FILE
-
-    if not (content or uploaded_file):
-        return None
-
-    message = Message.objects.create(
-        conversation=conversation, sender=request.user, message_type=message_type,
-        content=content, attachment=uploaded_file, reply_to=reply_to,
-    )
-    now = timezone.now()
-    conversation.updated_at = now
-    conversation.save(update_fields=["updated_at"])
-    participant.last_read_at = now
-    participant.save(update_fields=["last_read_at"])
-    push_message(message)
-    return message
-
-
-@login_required
-def group_chat(request, conversation_id):
-    conversation = get_object_or_404(
-        Conversation.objects.filter(participants__user=request.user, is_active=True).distinct(),
-        pk=conversation_id,
-        conversation_type=Conversation.ConversationType.GROUP,
-    )
-    participant = get_object_or_404(ConversationParticipant, conversation=conversation, user=request.user)
-
-    if request.method == "POST":
-        message = _save_posted_message(request, conversation, participant)
-
-        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            if message is None:
-                return JsonResponse({"ok": False}, status=400)
-            return JsonResponse({"ok": True, "id": message.id})
-
-        return redirect("group_chat", conversation_id=conversation.pk)
-
-    ledger = GroupLedger.objects.select_related("currency").filter(conversation=conversation).first()
-    if ledger is None:
-        currency = get_default_currency(request.user)
-        if currency:
-            ledger = GroupLedger.objects.create(conversation=conversation, currency=currency)
-
-    chat_messages = list(
-        Message.objects.filter(conversation=conversation, is_deleted=False)
-        .select_related("sender", "reply_to", "reply_to__sender", "receipt", "transaction")
-        .order_by("created_at")
-    )
-
-    previous_read = participant.last_read_at
-    incoming = [
-        m for m in chat_messages
-        if m.sender_id != request.user.id and m.message_type != "system"
-    ]
-    unread = [m for m in incoming if previous_read is None or m.created_at > previous_read]
-    first_unread_id = unread[0].id if unread else None
-    unread_count = len(unread)
-
-    already_read = set(
-        MessageRead.objects.filter(user=request.user, message__conversation=conversation)
-        .values_list("message_id", flat=True)
-    )
-    to_mark = [m for m in incoming if m.id not in already_read]
-    if to_mark:
-        MessageRead.objects.bulk_create(
-            [MessageRead(message=m, user=request.user) for m in to_mark],
-            ignore_conflicts=True,
-        )
-        broadcast_read(conversation.pk, request.user.id, to_mark[-1].id)
-
-    participant.last_read_at = timezone.now()
-    participant.save(update_fields=["last_read_at"])
-
-    return render(request, "chat.html", {
-        "conversation": conversation,
-        "is_group": True,
-        "other_user": None,
-        "other_presence": None,
-        "other_online": False,
-        "participant": participant,
-        "participant_count": conversation.participants.count(),
-        "is_admin": participant.is_admin,
-        "ledger": ledger,
-        "chat_messages": chat_messages,
-        "current_user": request.user,
-        "first_unread_id": first_unread_id,
-        "unread_count": unread_count,
-        "read_by_others": set(),
-    })

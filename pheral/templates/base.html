@@ -13,6 +13,30 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
 
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+
+    {# Sidebar open/collapsed state is set BEFORE first paint so there is no flicker. Desktop (>=1280px) only. #}
+    <script>
+        (function () {
+            var root = document.documentElement, KEY = 'pheral.sidebar';
+            function pref() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }
+            function apply() {
+                var wide = window.innerWidth >= 1280;
+                root.setAttribute('data-sb', wide && pref() !== 'rail' ? 'open' : 'rail');
+            }
+            apply();
+            window.addEventListener('resize', apply);
+            document.addEventListener('click', function (e) {
+                if (!e.target.closest || !e.target.closest('#sb-toggle')) return;
+                var open = root.getAttribute('data-sb') === 'open';
+                try { localStorage.setItem(KEY, open ? 'rail' : 'open'); } catch (x) {}
+                apply();
+            });
+        })();
+    </script>
+
     <script src="https://cdn.tailwindcss.com/3.4.17"></script>
     <script>
         tailwind.config = {
@@ -52,18 +76,39 @@
         /* ---------------------------------------------------------------- layout frame
            < 768px  : bottom tab bar
            768-1279 : icon rail (76px)
-           >= 1280  : full sidebar (264px)                                                */
-        .app-frame { min-height: 100%; }
-        @media (min-width: 768px)  { .app-frame { padding-left: 76px; } }
-        @media (min-width: 1280px) { .app-frame { padding-left: 264px; } }
+           >= 1280  : sidebar, collapsible (264px open / 76px collapsed, remembered)      */
+        .app-frame { min-height: 100%; transition: padding-left .2s ease; }
+        @media (min-width: 768px) { .app-frame { padding-left: 76px; } }
+        html[data-sb="open"] .app-frame { padding-left: 264px; }
 
         .app-header { padding-top: env(safe-area-inset-top); }
         .app-main { padding-bottom: calc(64px + env(safe-area-inset-bottom)); min-height: 100%; }
         @media (min-width: 768px) { .app-main { padding-bottom: 0; } }
 
         /* ---------------------------------------------------------------- sidebar / rail */
-        .app-sidebar { width: 76px; padding-top: env(safe-area-inset-top); }
-        @media (min-width: 1280px) { .app-sidebar { width: 264px; } }
+        .app-sidebar { width: 76px; padding-top: env(safe-area-inset-top); overflow: hidden; transition: width .2s ease; }
+        html[data-sb="open"] .app-sidebar { width: 264px; }
+
+        /* brand: image slot first, curvy wordmark as the fallback */
+        .sb-brand { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 6px 2px; }
+        html[data-sb="open"] .sb-brand { flex-direction: row; justify-content: space-between; padding: 16px 12px 2px 18px; }
+        .brand-link { display: flex; align-items: center; border-radius: 12px; padding: 2px 4px; min-width: 0; }
+        .brand-word { font-family: 'Pacifico', 'Brush Script MT', cursive; font-size: 17px; line-height: 1.25; color: #7C3AED; white-space: nowrap; }
+        html[data-sb="open"] .brand-word { font-size: 28px; }
+        .brand-img { display: none; height: 30px; width: auto; max-width: 56px; object-fit: contain; }
+        html[data-sb="open"] .brand-img { height: 38px; max-width: 150px; }
+
+        .sb-toggle {
+            display: none; height: 32px; width: 32px; align-items: center; justify-content: center;
+            border-radius: 10px; color: #6B6485; transition: background-color .15s, color .15s;
+        }
+        .sb-toggle:hover { background: #F6F3FC; color: #1C1730; }
+        @media (min-width: 1280px) { .sb-toggle { display: flex; } }
+        html[data-sb="rail"] .sb-toggle .ic-close { display: none; }
+        html[data-sb="open"] .sb-toggle .ic-open { display: none; }
+
+        .sb-nav { display: flex; flex-direction: column; gap: 4px; margin-top: 18px; padding: 0 10px; }
+        html[data-sb="open"] .sb-nav { padding: 0 12px; }
 
         .side-link {
             position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -74,16 +119,33 @@
         .side-link:hover { background: #F6F3FC; color: #1C1730; }
         .side-link[data-active="1"] { background: #EDE9FE; color: #5B21B6; font-weight: 600; }
         .side-icon { position: relative; display: flex; }
-        @media (min-width: 1280px) {
-            .side-link { flex-direction: row; gap: 14px; padding: 11px 14px; font-size: 15px; text-align: left; }
-        }
+        html[data-sb="open"] .side-link { flex-direction: row; gap: 14px; padding: 11px 14px; font-size: 15px; text-align: left; }
+
+        .sb-pay-wrap { margin-top: 16px; padding: 0 10px; }
+        html[data-sb="open"] .sb-pay-wrap { padding: 0 16px; }
+        .sb-text { display: none; }
+        html[data-sb="open"] .sb-text { display: inline; }
+
+        .sb-shortcuts { display: none; margin-top: 20px; min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: 0 12px; }
+        html[data-sb="open"] .sb-shortcuts { display: block; }
+        .sb-fill { flex: 1 1 auto; }
+        html[data-sb="open"] .sb-fill { display: none; }
 
         .side-sub {
-            display: none; align-items: center; gap: 12px; padding: 8px 14px; border-radius: 12px;
+            display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-radius: 12px;
             font-size: 13.5px; color: #6B6485; transition: background-color .15s, color .15s;
         }
         .side-sub:hover { background: #F6F3FC; color: #1C1730; }
-        @media (min-width: 1280px) { .side-sub { display: flex; } }
+
+        .sb-foot { border-top: 1px solid #E8E3F3; padding: 10px; }
+        html[data-sb="open"] .sb-foot { padding: 12px; }
+        .sb-search { display: none; }
+        html[data-sb="open"] .sb-search { display: flex; }
+        .sb-user { display: flex; align-items: center; justify-content: center; gap: 12px; min-width: 0; flex: 1 1 auto; }
+        html[data-sb="open"] .sb-user { justify-content: flex-start; }
+        .sb-user-text, .sb-logout { display: none; }
+        html[data-sb="open"] .sb-user-text { display: block; }
+        html[data-sb="open"] .sb-logout { display: block; }
 
         /* ---------------------------------------------------------------- bottom tabs (phones) */
         .app-nav { padding-bottom: env(safe-area-inset-bottom); }
@@ -127,12 +189,10 @@
 {% url 'chat_list' as u_inbox %}
 {% url 'hire' as u_gigs %}
 {% url 'wallet' as u_funds %}
-{% url 'feed' as u_discover %}
 {% url 'search' as u_search %}
 {% url 'notifications' as u_notifications %}
 {% url 'group_create' as u_group_create %}
 {% url 'create_hire_job' as u_job_new %}
-{% url 'create_post' as u_post_new %}
 {% url 'create_status' as u_status_new %}
 {% url 'global_pay' as u_pay %}
 {% url 'contacts' as u_contacts %}
@@ -164,40 +224,45 @@
     <!-- ================================================================ SIDEBAR / RAIL (tablet + desktop) -->
     <aside class="app-sidebar fixed inset-y-0 left-0 z-40 hidden flex-col border-r border-line bg-white md:flex" aria-label="Primary">
 
-        <a href="{{ u_inbox }}" class="focus-ring mx-auto mt-4 flex items-center gap-3 rounded-2xl px-2 py-1.5 xl:mx-0 xl:ml-4 xl:self-start">
-            <span class="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-500 text-[19px] font-extrabold text-white shadow-sm">P</span>
-            <span class="hidden text-[20px] font-bold tracking-tight text-ink xl:block">Pheral</span>
-        </a>
+        <!-- Brand. Drop your logo at static/images/logo.png and it replaces the wordmark automatically. -->
+        <div class="sb-brand">
+            <a href="{{ u_inbox }}" class="brand-link focus-ring" aria-label="Pheral home">
+                <img src="/static/images/logo.png" alt="Pheral" class="brand-img"
+                     onload="this.style.display='block';var w=this.parentNode.querySelector('.brand-word');if(w)w.style.display='none'"
+                     onerror="this.style.display='none'">
+                <span class="brand-word">Pheral</span>
+            </a>
+            <button type="button" id="sb-toggle" class="sb-toggle focus-ring" aria-label="Collapse or expand the sidebar" title="Collapse / expand">
+                <i data-lucide="panel-left-close" class="ic-close h-[18px] w-[18px]"></i>
+                <i data-lucide="panel-left-open" class="ic-open h-[18px] w-[18px]"></i>
+            </button>
+        </div>
 
-        <nav class="mt-5 flex flex-col gap-1 px-2.5 xl:px-3" aria-label="Sections">
-            <a href="{{ u_inbox }}" data-nav="inbox" class="side-link focus-ring">
-                <span class="side-icon"><i data-lucide="message-circle" class="h-[22px] w-[22px]"></i><span class="nav-badge{% if inbox_unread %} on{% endif %}" data-badge="inbox">{{ inbox_unread|default:"" }}</span></span>
+        <nav class="sb-nav" aria-label="Sections">
+            <a href="{{ u_inbox }}" data-nav="inbox" class="side-link focus-ring" title="Inbox">
+                <span class="side-icon"><i data-lucide="messages-square" class="h-[22px] w-[22px]"></i><span class="nav-badge{% if inbox_unread %} on{% endif %}" data-badge="inbox">{{ inbox_unread|default:"" }}</span></span>
                 <span>Inbox</span>
             </a>
-            <a href="{{ u_gigs }}" data-nav="gigs" class="side-link focus-ring">
+            <a href="{{ u_gigs }}" data-nav="gigs" class="side-link focus-ring" title="Gigs">
                 <span class="side-icon"><i data-lucide="briefcase" class="h-[22px] w-[22px]"></i><span class="nav-badge" data-badge="gigs"></span></span>
                 <span>Gigs</span>
             </a>
-            <a href="{{ u_funds }}" data-nav="funds" class="side-link focus-ring">
+            <a href="{{ u_funds }}" data-nav="funds" class="side-link focus-ring" title="Funds">
                 <span class="side-icon"><i data-lucide="wallet" class="h-[22px] w-[22px]"></i><span class="nav-badge" data-badge="funds"></span></span>
                 <span>Funds</span>
-            </a>
-            <a href="{{ u_discover }}" data-nav="discover" class="side-link focus-ring">
-                <span class="side-icon"><i data-lucide="compass" class="h-[22px] w-[22px]"></i><span class="nav-badge" data-badge="discover"></span></span>
-                <span>Discover</span>
             </a>
         </nav>
 
         {% if u_pay %}
-            <div class="mt-4 px-2.5 xl:px-4">
+            <div class="sb-pay-wrap">
                 <a href="{{ u_pay }}" class="focus-ring flex items-center justify-center gap-2 rounded-2xl bg-accent-500 py-2.5 text-[13px] font-semibold text-white shadow-sm transition hover:bg-accent-600" title="Send money">
-                    <i data-lucide="send" class="h-[18px] w-[18px]"></i><span class="hidden xl:inline">Send money</span>
+                    <i data-lucide="send" class="h-[18px] w-[18px]"></i><span class="sb-text">Send money</span>
                 </a>
             </div>
         {% endif %}
 
-        <!-- Shortcuts (full sidebar only) -->
-        <div class="mt-5 hidden min-h-0 flex-1 overflow-y-auto px-3 xl:block">
+        <!-- Shortcuts (visible when the sidebar is open) -->
+        <div class="sb-shortcuts">
             <p class="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted/80">Shortcuts</p>
             {% if u_contacts %}<a href="{{ u_contacts }}" class="side-sub focus-ring"><i data-lucide="contact" class="h-[18px] w-[18px]"></i> Contacts</a>{% endif %}
             {% if u_status %}<a href="{{ u_status }}" class="side-sub focus-ring"><i data-lucide="circle-dashed" class="h-[18px] w-[18px]"></i> Status</a>{% endif %}
@@ -207,29 +272,29 @@
             {% if u_cards %}<a href="{{ u_cards }}" class="side-sub focus-ring"><i data-lucide="credit-card" class="h-[18px] w-[18px]"></i> Cards &amp; accounts</a>{% endif %}
             {% if u_banks %}<a href="{{ u_banks }}" class="side-sub focus-ring"><i data-lucide="landmark" class="h-[18px] w-[18px]"></i> Bank accounts</a>{% endif %}
         </div>
-        <div class="flex-1 xl:hidden"></div>
+        <div class="sb-fill"></div>
 
         <!-- Search hint + account -->
-        <div class="border-t border-line p-2.5 xl:p-3">
+        <div class="sb-foot">
             <button type="button" @click="$dispatch('open-palette')"
-                    class="focus-ring mb-2 hidden w-full items-center gap-2.5 rounded-xl bg-surface px-3 py-2 text-left text-[13px] text-muted transition hover:bg-accent-50 xl:flex">
+                    class="sb-search focus-ring mb-2 w-full items-center gap-2.5 rounded-xl bg-surface px-3 py-2 text-left text-[13px] text-muted transition hover:bg-accent-50">
                 <i data-lucide="search" class="h-4 w-4"></i> <span class="flex-1">Search…</span> <kbd>Ctrl</kbd><kbd>K</kbd>
             </button>
 
-            <div class="flex items-center gap-2 xl:px-1">
-                <a href="{{ u_profile }}" class="focus-ring flex min-w-0 flex-1 items-center justify-center gap-3 rounded-xl p-1.5 transition hover:bg-surface xl:justify-start" title="{{ user.display_name|default:user.username }}">
+            <div class="flex items-center gap-2">
+                <a href="{{ u_profile }}" class="sb-user focus-ring rounded-xl p-1.5 transition hover:bg-surface" title="{{ user.display_name|default:user.username }}">
                     {% if user.avatar %}
                         <img src="{{ user.avatar.url }}" alt="" class="h-10 w-10 shrink-0 rounded-full object-cover">
                     {% else %}
                         <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[14px] font-semibold text-accent-700">{{ user.first_name|default:user.username|first|upper }}</span>
                     {% endif %}
-                    <span class="hidden min-w-0 xl:block">
+                    <span class="sb-user-text min-w-0">
                         <span class="block truncate text-[13.5px] font-semibold text-ink">{{ user.display_name|default:user.username }}</span>
                         <span class="block truncate text-[11.5px] text-muted">@{{ user.username }}</span>
                     </span>
                 </a>
                 {% if u_logout %}
-                    <form method="post" action="{{ u_logout }}" class="hidden xl:block">
+                    <form method="post" action="{{ u_logout }}" class="sb-logout">
                         {% csrf_token %}
                         <button type="submit" class="focus-ring rounded-full p-2 text-muted transition hover:bg-red-50 hover:text-red-600" aria-label="Log out" title="Log out">
                             <i data-lucide="log-out" class="h-[18px] w-[18px]"></i>
@@ -277,7 +342,6 @@
                          class="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-2xl border border-line bg-white py-1.5 shadow-popover">
                         {% if u_group_create %}<a href="{{ u_group_create }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="users" class="h-[18px] w-[18px] text-muted"></i> New group</a>{% endif %}
                         {% if u_job_new %}<a href="{{ u_job_new }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="briefcase" class="h-[18px] w-[18px] text-muted"></i> Post a job</a>{% endif %}
-                        {% if u_post_new %}<a href="{{ u_post_new }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="square-pen" class="h-[18px] w-[18px] text-muted"></i> New post</a>{% endif %}
                         {% if u_status_new %}<a href="{{ u_status_new }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="circle-dashed" class="h-[18px] w-[18px] text-muted"></i> Add status</a>{% endif %}
                         {% if u_pay %}<a href="{{ u_pay }}" class="flex items-center gap-3 px-4 py-2.5 text-[14px] text-ink hover:bg-surface"><i data-lucide="send" class="h-[18px] w-[18px] text-muted"></i> Send money</a>{% endif %}
                     </div>
@@ -364,9 +428,9 @@
 
     <!-- ================================================================ BOTTOM TABS (phones) -->
     <nav class="app-nav fixed inset-x-0 bottom-0 z-40 border-t border-line bg-white/95 backdrop-blur md:hidden" aria-label="Main">
-        <div class="mx-auto grid h-16 max-w-lg grid-cols-4">
+        <div class="mx-auto grid h-16 max-w-lg grid-cols-3">
             <a href="{{ u_inbox }}" data-nav="inbox" class="nav-tab focus-ring flex flex-col items-center justify-center gap-0.5">
-                <span class="nav-pill"><i data-lucide="message-circle" class="h-[22px] w-[22px]"></i><span class="nav-badge{% if inbox_unread %} on{% endif %}" style="right: 8px; top: -4px;" data-badge="inbox">{{ inbox_unread|default:"" }}</span></span>
+                <span class="nav-pill"><i data-lucide="messages-square" class="h-[22px] w-[22px]"></i><span class="nav-badge{% if inbox_unread %} on{% endif %}" style="right: 8px; top: -4px;" data-badge="inbox">{{ inbox_unread|default:"" }}</span></span>
                 <span class="text-[11px] leading-4">Inbox</span>
             </a>
             <a href="{{ u_gigs }}" data-nav="gigs" class="nav-tab focus-ring flex flex-col items-center justify-center gap-0.5">
@@ -376,10 +440,6 @@
             <a href="{{ u_funds }}" data-nav="funds" class="nav-tab focus-ring flex flex-col items-center justify-center gap-0.5">
                 <span class="nav-pill"><i data-lucide="wallet" class="h-[22px] w-[22px]"></i><span class="nav-badge" style="right: 8px; top: -4px;" data-badge="funds"></span></span>
                 <span class="text-[11px] leading-4">Funds</span>
-            </a>
-            <a href="{{ u_discover }}" data-nav="discover" class="nav-tab focus-ring flex flex-col items-center justify-center gap-0.5">
-                <span class="nav-pill"><i data-lucide="compass" class="h-[22px] w-[22px]"></i><span class="nav-badge" style="right: 8px; top: -4px;" data-badge="discover"></span></span>
-                <span class="text-[11px] leading-4">Discover</span>
             </a>
         </div>
     </nav>
@@ -450,7 +510,6 @@
                     <div class="flex items-center justify-between"><dt class="text-ink/80">Go to Inbox</dt><dd class="flex gap-1"><kbd>g</kbd><kbd>i</kbd></dd></div>
                     <div class="flex items-center justify-between"><dt class="text-ink/80">Go to Gigs</dt><dd class="flex gap-1"><kbd>g</kbd><kbd>g</kbd></dd></div>
                     <div class="flex items-center justify-between"><dt class="text-ink/80">Go to Funds</dt><dd class="flex gap-1"><kbd>g</kbd><kbd>f</kbd></dd></div>
-                    <div class="flex items-center justify-between"><dt class="text-ink/80">Go to Discover</dt><dd class="flex gap-1"><kbd>g</kbd><kbd>d</kbd></dd></div>
                     <div class="flex items-center justify-between"><dt class="text-ink/80">Show this help</dt><dd><kbd>?</kbd></dd></div>
                 </dl>
             </div>
@@ -488,7 +547,6 @@
             gigs: ['hire', 'hire_job_detail', 'create_hire_job', 'send_hire_request'],
             funds: ['wallet', 'top_up', 'transfer', 'withdraw', 'pay_user', 'global_pay', 'currency_converter',
                     'bank_accounts', 'airtime_purchase', 'data_purchase', 'cards_and_accounts', 'receipt_detail'],
-            discover: ['feed', 'search', 'create_post', 'profile', 'profile_user', 'profile_edit', 'notifications']
         };
 
         function activeSection() {
@@ -524,14 +582,12 @@
         {% if u_inbox %}{ g: "Go to", t: "Inbox", u: "{{ u_inbox }}", e: "💬", n: "i", k: "chats messages conversations" },{% endif %}
         {% if u_gigs %}{ g: "Go to", t: "Gigs", u: "{{ u_gigs }}", e: "💼", n: "g", k: "hire jobs work freelance" },{% endif %}
         {% if u_funds %}{ g: "Go to", t: "Funds", u: "{{ u_funds }}", e: "💰", n: "f", k: "wallet balance money transactions" },{% endif %}
-        {% if u_discover %}{ g: "Go to", t: "Discover", u: "{{ u_discover }}", e: "🧭", n: "d", k: "feed posts explore" },{% endif %}
         {% if u_notifications %}{ g: "Go to", t: "Notifications", u: "{{ u_notifications }}", e: "🔔", k: "alerts" },{% endif %}
         {% if u_contacts %}{ g: "Go to", t: "Contacts", u: "{{ u_contacts }}", e: "👥", k: "people friends" },{% endif %}
         {% if u_status %}{ g: "Go to", t: "Status", u: "{{ u_status }}", e: "⭕", k: "stories updates" },{% endif %}
         {% if u_agent %}{ g: "Go to", t: "Agent mode", u: "{{ u_agent }}", e: "🤖", k: "assistant commands" },{% endif %}
         {% if u_group_create %}{ g: "Create", t: "New group", u: "{{ u_group_create }}", e: "➕", k: "create group chat" },{% endif %}
         {% if u_job_new %}{ g: "Create", t: "Post a job", u: "{{ u_job_new }}", e: "➕", k: "hire new gig" },{% endif %}
-        {% if u_post_new %}{ g: "Create", t: "New post", u: "{{ u_post_new }}", e: "✍️", k: "write feed" },{% endif %}
         {% if u_status_new %}{ g: "Create", t: "Add status", u: "{{ u_status_new }}", e: "➕", k: "story" },{% endif %}
         {% if u_pay %}{ g: "Money", t: "Send money", u: "{{ u_pay }}", e: "💸", k: "pay transfer" },{% endif %}
         {% if u_airtime %}{ g: "Money", t: "Airtime & data", u: "{{ u_airtime }}", e: "📱", k: "recharge bundle topup" },{% endif %}

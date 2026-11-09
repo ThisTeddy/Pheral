@@ -138,5 +138,9 @@ urlpatterns = [
     # Flutterwave webhook (csrf-exempt, signature-checked)
     path("flutterwave/webhook/", views.flutterwave_webhook, name="flutterwave_webhook"),
     path("check-phone/", views.check_phone, name="check_phone"),
+    
+
+    path("hire/jobs/<int:job_id>/accept/", views.accept_hire_job, name="accept_hire_job"),
+    path("hire/location/", views.set_my_location, name="set_my_location"),
 
 ]

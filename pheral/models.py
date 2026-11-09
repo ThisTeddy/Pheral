@@ -36,6 +36,8 @@ class User(AbstractUser):
     is_phone_verified = models.BooleanField(default=False)
     is_active_user = models.BooleanField(default=True)
     last_seen = models.DateTimeField(null=True, blank=True)
+    home_state = models.CharField(max_length=40, blank=True, db_index=True)
+    home_city = models.CharField(max_length=60, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -539,7 +541,7 @@ class PostComment(models.Model):
 # ============================================================
 # HIRE JOB
 # ============================================================
-
+from django.conf import settings
 class HireJob(models.Model):
 
     class Status(models.TextChoices):
@@ -548,6 +550,19 @@ class HireJob(models.Model):
         COMPLETED = "completed", "Completed"
         CANCELLED = "cancelled", "Cancelled"
 
+    home_state = models.CharField(max_length=40, blank=True, db_index=True)
+    home_city = models.CharField(max_length=60, blank=True)
+ 
+ 
+    loc_state = models.CharField(max_length=40, blank=True, db_index=True)
+    loc_city = models.CharField(max_length=60, blank=True)
+    is_remote = models.BooleanField(default=False, db_index=True)
+    accepted_by = models.ForeignKey(
+         settings.AUTH_USER_MODEL, null=True, blank=True,
+         on_delete=models.SET_NULL, related_name="accepted_hire_jobs",
+    )
+    accepted_at = models.DateTimeField(null=True, blank=True)
+ 
     employer = models.ForeignKey(User, on_delete=models.CASCADE, related_name="hire_jobs")
     title = models.CharField(max_length=200)
     description = models.TextField(max_length=5000)
@@ -1257,3 +1272,4 @@ class WaitlistEntry(models.Model):
  
     def __str__(self):
         return self.contact
+

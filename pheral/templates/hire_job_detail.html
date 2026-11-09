@@ -1,303 +1,233 @@
 {% extends "base.html" %}
 
 {% block title %}{{ job.title }} · Pheral{% endblock %}
-{% block page_title %}Job Details{% endblock %}
-
-{% block extra_head %}<style>[x-cloak] { display: none !important; }</style>{% endblock %}
+{% block page_title %}Job{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-2xl px-4 pb-10 pt-4 md:pt-6">
+{% url 'hire' as u_hire %}
+{% url 'accept_hire_job' job.pk as u_accept %}
+{% url 'close_hire_job' job.pk as u_close %}
+{% url 'top_up' as u_topup %}
+{% url 'profile_user' job.employer.username as u_employer %}
 
-    <div class="mb-5 flex items-center gap-2 md:hidden">
-        <a href="{% url 'hire' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink">
-            <i data-lucide="chevron-left" class="h-5 w-5"></i>
-        </a>
-        <h1 class="text-2xl font-bold tracking-tight text-ink">Job Details</h1>
-    </div>
+<div x-data="jobPage()" data-job-id="{{ job.pk }}" data-can-accept="{% if can_accept %}1{% endif %}" data-is-employer="{% if is_employer %}1{% endif %}"
+     class="mx-auto max-w-2xl px-4 pb-28 pt-5 md:px-6 md:pb-12 md:pt-8">
 
-    {% if messages %}
-        <div class="mb-4 space-y-2">
-            {% for message in messages %}
-                <p class="rounded-xl px-3.5 py-2.5 text-sm {% if message.tags == 'error' %}bg-red-50 text-red-700{% elif message.tags == 'success' %}bg-emerald-50 text-emerald-700{% else %}bg-accent-50 text-accent-700{% endif %}">
-                    {{ message }}
-                </p>
-            {% endfor %}
-        </div>
+    <a href="{{ u_hire }}" class="mb-4 inline-flex items-center gap-1 text-[13px] font-medium text-muted hover:text-ink">
+        <i data-lucide="arrow-left" class="h-4 w-4"></i> Back to gigs
+    </a>
+
+    <!-- ============================================================ STATUS STEPS -->
+    {% if job_cancelled %}
+        <div class="mb-4 rounded-2xl bg-surface px-4 py-3 text-[13.5px] font-medium text-muted">This job was closed by the poster.</div>
+    {% else %}
+        <ol class="mb-5 grid grid-cols-3 gap-2 text-center text-[11.5px] font-medium">
+            <li class="rounded-xl bg-accent-500 px-2 py-2 text-white">1 · Posted</li>
+            <li class="rounded-xl px-2 py-2 {% if job_in_progress or job_completed %}bg-accent-500 text-white{% else %}bg-surface text-muted{% endif %}">2 · Accepted</li>
+            <li class="rounded-xl px-2 py-2 {% if job_completed %}bg-emerald-500 text-white{% else %}bg-surface text-muted{% endif %}">3 · Paid</li>
+        </ol>
     {% endif %}
 
-    <!-- ============================================================
-         JOB CARD
-    ============================================================= -->
-    <div class="mb-6 rounded-2xl border border-line bg-white p-5">
+    <!-- ============================================================ LIVE BANNER (job taken while viewing) -->
+    <div x-show="taken" x-cloak x-transition class="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-[13.5px] font-medium text-amber-900">
+        Someone just took this job.
+    </div>
 
-        <div class="mb-4 flex items-start justify-between gap-3">
-            <div class="min-w-0 flex-1">
-                <h2 class="text-lg font-bold leading-snug text-ink">{{ job.title }}</h2>
-                <a href="{% url 'profile_user' username=job.employer.username %}"
-                   class="mt-1 flex items-center gap-1.5 text-sm text-muted hover:text-accent-600">
-                    {% if job.employer.avatar %}
-                        <img src="{{ job.employer.avatar.url }}" alt="" class="h-5 w-5 rounded-full object-cover">
-                    {% else %}
-                        <span class="flex h-5 w-5 items-center justify-center rounded-full bg-accent-100 text-[10px] font-semibold text-accent-700">
-                            {{ job.employer.username|first|upper }}
-                        </span>
-                    {% endif %}
-                    Posted by @{{ job.employer.username }}
-                </a>
+    <!-- ============================================================ JOB CARD -->
+    <article class="rounded-3xl border border-line bg-white p-5 shadow-sm md:p-6">
+        <div class="flex items-center gap-3">
+            <a href="{{ u_employer }}" class="shrink-0">
+                {% if job.employer.avatar %}
+                    <img src="{{ job.employer.avatar.url }}" alt="" class="h-11 w-11 rounded-full object-cover">
+                {% else %}
+                    <span class="flex h-11 w-11 items-center justify-center rounded-full bg-accent-100 text-[15px] font-semibold text-accent-700">{{ job.employer.first_name|default:job.employer.username|first|upper }}</span>
+                {% endif %}
+            </a>
+            <div class="min-w-0 flex-1 leading-tight">
+                <a href="{{ u_employer }}" class="block truncate text-[14.5px] font-semibold text-ink hover:underline">{{ job.employer.display_name|default:job.employer.username }}</a>
+                <span class="text-[12px] text-muted">Posted {{ job.created_at|timesince }} ago</span>
             </div>
-
-            <span class="shrink-0 rounded-full px-3 py-1 text-xs font-semibold
-                         {% if job.status == 'open' %}bg-emerald-50 text-emerald-600
-                         {% elif job.status == 'in_progress' %}bg-amber-50 text-amber-600
-                         {% elif job.status == 'completed' %}bg-accent-50 text-accent-600
-                         {% else %}bg-red-50 text-red-600{% endif %}">
-                {{ job.get_status_display }}
-            </span>
+            <span class="shrink-0 rounded-full bg-accent-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-accent-700">{{ job.get_status_display }}</span>
         </div>
 
-        <div class="mb-4 rounded-2xl bg-surface px-4 py-3.5">
-            <p class="text-xs font-medium uppercase tracking-wide text-muted">Budget</p>
-            <p class="mt-0.5 text-2xl font-extrabold text-ink">
-                {{ job.currency.symbol }}{{ job.budget|floatformat:2 }}
-                <span class="text-sm font-medium text-muted">{{ job.currency.code }}</span>
-            </p>
+        <h2 class="mt-4 text-[22px] font-bold leading-snug tracking-tight text-ink">{{ job.title }}</h2>
+
+        <div class="mt-3 flex flex-wrap gap-2 text-[12.5px]">
+            {% if place_label %}
+                <span class="inline-flex items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 text-ink/80">
+                    <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                    {{ place_label }}
+                </span>
+            {% endif %}
+            {% if job.is_remote %}<span class="inline-flex items-center rounded-full bg-sky-50 px-3 py-1.5 font-medium text-sky-700">Remote OK</span>{% endif %}
+        </div>
+
+        <div class="mt-5 rounded-2xl bg-accent-50 px-4 py-3.5">
+            <p class="text-[11px] font-medium uppercase tracking-wide text-accent-700/80">Budget</p>
+            <p class="text-[26px] font-bold leading-tight text-accent-700">{{ job.currency.symbol }}{{ job.budget|floatformat:"2g" }}</p>
         </div>
 
         {% if job.description %}
-            <div>
-                <p class="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted">Description</p>
-                <p class="whitespace-pre-wrap text-sm leading-relaxed text-ink">{{ job.description }}</p>
+            <div class="mt-5">
+                <h3 class="text-[12px] font-semibold uppercase tracking-wide text-muted">Details</h3>
+                <p class="mt-1.5 text-[14.5px] leading-relaxed text-ink/90">{{ job.description|linebreaksbr }}</p>
             </div>
         {% endif %}
+    </article>
 
-        <div class="mt-4 flex items-center justify-between">
-            <p class="text-xs text-muted">Posted {{ job.created_at|timesince }} ago</p>
-            {% if can_close %}
-                <form method="post" action="{% url 'close_hire_job' job_id=job.id %}"
-                      onsubmit="return confirm('Close this job listing? Any pending requests will be cancelled.');">
+    <!-- ============================================================ ACTIONS -->
+    <section class="mt-5 space-y-3">
+
+        {# ---- someone else's open job: instant accept ---- #}
+        {% if can_accept %}
+            <div x-show="!taken" class="rounded-3xl border border-accent-200 bg-white p-5 shadow-sm">
+                <h3 class="text-[16px] font-semibold text-ink">Want this job?</h3>
+                <p class="mt-1 text-[13.5px] text-muted">First to accept gets it. You'll be connected with {{ job.employer.first_name|default:job.employer.username }} in chat straight away, and the {{ job.currency.symbol }}{{ job.budget|floatformat:"2g" }} is already in their wallet.</p>
+                <form method="post" action="{{ u_accept }}" class="mt-4" @submit="if (!confirm('Accept this job?')) $event.preventDefault()">
                     {% csrf_token %}
-                    <button type="submit" class="focus-ring text-xs font-medium text-red-600 hover:underline">Close job</button>
+                    <button type="submit" class="focus-ring w-full rounded-full bg-accent-500 px-6 py-3.5 text-[15px] font-semibold text-white shadow-sm transition hover:bg-accent-600 active:scale-[.99]">Accept job</button>
                 </form>
-            {% endif %}
-        </div>
-    </div>
-
-    <!-- ============================================================
-         APPLY (worker, open job, hasn't already applied/been invited)
-    ============================================================= -->
-    {% if can_apply %}
-        <div class="mb-6 rounded-2xl border border-line bg-white p-5">
-            <p class="mb-3 flex items-center gap-1.5 text-sm font-semibold text-ink">
-                <i data-lucide="hand" class="h-4 w-4 text-accent-500"></i> Apply for this job
-            </p>
-            <form method="post" action="{% url 'apply_to_hire_job' job_id=job.id %}" class="space-y-3">
-                {% csrf_token %}
-                <textarea name="message" rows="3" maxlength="2000" placeholder="Introduce yourself and say why you're a fit (optional)"
-                          class="w-full resize-none rounded-2xl border border-line bg-surface px-3.5 py-2.5 text-sm text-ink placeholder-muted focus:border-accent-400 focus:outline-none"></textarea>
-                <div class="flex items-center gap-2 rounded-2xl border border-line bg-surface px-3.5 py-2.5">
-                    <span class="text-sm font-semibold text-muted">{{ job.currency.symbol }}</span>
-                    <input type="number" name="proposed_amount" step="0.01" min="0.01" placeholder="Your rate (optional, defaults to the budget)"
-                           class="w-full bg-transparent text-sm text-ink placeholder-muted focus:outline-none">
-                </div>
-                <button type="submit" class="focus-ring w-full rounded-full bg-accent-500 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-600">
-                    Send application
-                </button>
-            </form>
-        </div>
-    {% elif my_request %}
-        <div class="mb-6 flex items-center gap-2.5 rounded-2xl border border-line bg-surface p-4">
-            <i data-lucide="info" class="h-4 w-4 shrink-0 text-accent-500"></i>
-            <p class="text-sm text-ink">
-                You applied to this job —
-                <span class="font-semibold">{{ my_request.get_status_display|lower }}</span>.
-            </p>
-        </div>
-    {% endif %}
-
-    <!-- ============================================================
-         HIRE SOMEONE (employer only, job still open)
-    ============================================================= -->
-    {% if is_employer and job.status == "open" %}
-        <div class="mb-6 rounded-2xl border border-line bg-white p-5" x-data="{ q: '', results: [], loading: false }">
-            <p class="mb-3 flex items-center gap-1.5 text-sm font-semibold text-ink">
-                <i data-lucide="user-plus" class="h-4 w-4 text-accent-500"></i> Hire someone for this job
-            </p>
-
-            <div class="relative">
-                <div class="flex items-center gap-2 rounded-2xl bg-surface px-4 py-2.5">
-                    <i data-lucide="search" class="h-4 w-4 shrink-0 text-muted"></i>
-                    <input
-                        type="text" x-model="q" autocomplete="off" placeholder="Search by username"
-                        @input.debounce.300ms="
-                            if (q.trim().length < 2) { results = []; return; }
-                            loading = true;
-                            fetch('{% url 'user_lookup' %}?q=' + encodeURIComponent(q))
-                                .then(r => r.json())
-                                .then(data => { results = data.results; loading = false; })
-                                .catch(() => { loading = false; });
-                        "
-                        class="w-full bg-transparent text-sm text-ink placeholder-muted focus:outline-none">
-                </div>
-
-                <div x-show="results.length > 0" x-cloak
-                     class="absolute z-20 mt-1.5 w-full overflow-hidden rounded-2xl border border-line bg-white shadow-lg">
-                    <template x-for="user in results" :key="user.username">
-                        <a :href="'{% url 'hire_job_detail' job_id=job.id %}' + 'request/' + user.username + '/'"
-                           class="flex items-center gap-2.5 px-3.5 py-2.5 transition hover:bg-surface">
-                            <template x-if="user.avatar">
-                                <img :src="user.avatar" alt="" class="h-8 w-8 rounded-full object-cover">
-                            </template>
-                            <template x-if="!user.avatar">
-                                <span class="flex h-8 w-8 items-center justify-center rounded-full bg-accent-100 text-xs font-semibold text-accent-700"
-                                      x-text="user.username.charAt(0).toUpperCase()"></span>
-                            </template>
-                            <span class="min-w-0 flex-1">
-                                <span class="block truncate text-sm font-medium text-ink" x-text="user.display_name || user.username"></span>
-                                <span class="block truncate text-xs text-muted" x-text="'@' + user.username"></span>
-                            </span>
-                        </a>
-                    </template>
-                </div>
             </div>
-        </div>
-    {% endif %}
-
-    <!-- ============================================================
-         HIRE REQUESTS
-    ============================================================= -->
-    <div class="mb-3 flex items-center justify-between">
-        <h2 class="text-base font-semibold text-ink">
-            {% if is_employer %}Requests & applicants{% else %}Your requests{% endif %}
-        </h2>
-        {% if hire_requests %}
-            <span class="text-xs text-muted">{{ hire_requests|length }} total</span>
         {% endif %}
-    </div>
 
-    {% if hire_requests %}
-        <div class="space-y-3">
-            {% for hire_request in hire_requests %}
-                {% if is_employer or hire_request.is_mine %}
-                    <div class="rounded-2xl border border-line bg-white p-4">
-                        <div class="flex items-start gap-3">
-
-                            {% with profile_user=hire_request.worker %}
-                            <a href="{% url 'profile_user' username=profile_user.username %}" class="shrink-0">
-                                {% if profile_user.avatar %}
-                                    <img src="{{ profile_user.avatar.url }}" alt="" class="h-10 w-10 rounded-full object-cover">
-                                {% else %}
-                                    <div class="flex h-10 w-10 items-center justify-center rounded-full bg-accent-100 text-sm font-semibold text-accent-700">
-                                        {{ profile_user.username|first|upper }}
-                                    </div>
-                                {% endif %}
-                            </a>
-                            {% endwith %}
-
-                            <div class="min-w-0 flex-1">
-                                <div class="flex items-start justify-between gap-2">
-                                    <div class="min-w-0">
-                                        <a href="{% url 'profile_user' username=hire_request.worker.username %}"
-                                           class="truncate text-sm font-semibold text-ink hover:text-accent-600">
-                                            {{ hire_request.worker.display_name|default:hire_request.worker.username }}
-                                        </a>
-                                        <p class="text-xs text-muted">
-                                            {% if hire_request.requester_id == hire_request.worker_id %}
-                                                Applied
-                                            {% elif hire_request.requester == request.user %}
-                                                Invited by you
-                                            {% else %}
-                                                Invited by @{{ hire_request.requester.username }}
-                                            {% endif %}
-                                            · {{ hire_request.created_at|timesince }} ago
-                                        </p>
-                                    </div>
-
-                                    <span class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold
-                                                 {% if hire_request.status == 'pending' %}bg-amber-50 text-amber-600
-                                                 {% elif hire_request.status == 'accepted' %}bg-emerald-50 text-emerald-600
-                                                 {% elif hire_request.status == 'completed' %}bg-accent-50 text-accent-600
-                                                 {% elif hire_request.status == 'declined' %}bg-red-50 text-red-600
-                                                 {% else %}bg-surface text-muted{% endif %}">
-                                        {% if hire_request.status == 'completed' %}Paid
-                                        {% elif hire_request.status == 'cancelled' %}Cancelled
-                                        {% else %}{{ hire_request.get_status_display }}{% endif %}
-                                    </span>
-                                </div>
-
-                                {% if hire_request.message %}
-                                    <p class="mt-2 whitespace-pre-wrap rounded-xl bg-surface px-3 py-2 text-sm text-ink">
-                                        {{ hire_request.message }}
-                                    </p>
-                                {% endif %}
-
-                                {% if hire_request.proposed_amount %}
-                                    <p class="mt-2 flex items-center gap-1 text-sm font-semibold text-ink">
-                                        <i data-lucide="banknote" class="h-3.5 w-3.5 text-accent-500"></i>
-                                        {{ job.currency.symbol }}{{ hire_request.proposed_amount|floatformat:2 }} proposed
-                                    </p>
-                                {% endif %}
-
-                                <!-- Actions -->
-                                <div class="mt-3 flex flex-wrap items-center gap-2">
-                                    {% if hire_request.can_respond %}
-                                        <form method="post" action="{% url 'respond_hire_request' request_id=hire_request.id action='accept' %}">
-                                            {% csrf_token %}
-                                            <button type="submit" class="focus-ring rounded-full bg-accent-500 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-accent-600">
-                                                Accept
-                                            </button>
-                                        </form>
-                                        <form method="post" action="{% url 'respond_hire_request' request_id=hire_request.id action='decline' %}">
-                                            {% csrf_token %}
-                                            <button type="submit" class="focus-ring rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-ink transition hover:bg-surface">
-                                                Decline
-                                            </button>
-                                        </form>
-                                    {% endif %}
-
-                                    {% if hire_request.can_cancel %}
-                                        <form method="post" action="{% url 'cancel_hire_request' request_id=hire_request.id %}">
-                                            {% csrf_token %}
-                                            <button type="submit" class="focus-ring rounded-full border border-line px-3.5 py-1.5 text-xs font-semibold text-muted transition hover:bg-surface">
-                                                Cancel request
-                                            </button>
-                                        </form>
-                                    {% endif %}
-
-                                    {% if hire_request.can_pay %}
-                                        <form method="post" action="{% url 'complete_hire_request' request_id=hire_request.id %}"
-                                              onsubmit="return confirm('Pay {{ job.currency.symbol }}{{ hire_request.proposed_amount|default:job.budget|floatformat:2 }} and mark this job complete?');">
-                                            {% csrf_token %}
-                                            <button type="submit" class="focus-ring rounded-full bg-accent-500 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-accent-600">
-                                                Mark complete & pay {{ job.currency.symbol }}{{ hire_request.proposed_amount|default:job.budget|floatformat:2 }}
-                                            </button>
-                                        </form>
-                                    {% endif %}
-
-                                    <a href="{% url 'chat_user' username=hire_request.requester.username|default:hire_request.worker.username %}"
-                                       class="inline-flex items-center gap-1 text-xs font-medium text-accent-600 hover:underline">
-                                        <i data-lucide="message-circle" class="h-3.5 w-3.5"></i> Message
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+        {# ---- poster: waiting ---- #}
+        {% if is_employer and job_is_open %}
+            <div class="rounded-3xl border border-line bg-white p-5 shadow-sm">
+                <div class="flex items-center gap-3">
+                    <span class="relative flex h-3 w-3"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span><span class="relative inline-flex h-3 w-3 rounded-full bg-emerald-500"></span></span>
+                    <h3 class="text-[16px] font-semibold text-ink">Live: waiting for someone to accept</h3>
+                </div>
+                <p class="mt-1.5 text-[13.5px] text-muted">People {% if job.loc_state %}in {{ place_label|default:"your area" }}{% endif %}{% if job.is_remote %}{% if job.loc_state %} and remote workers{% else %}who work remotely{% endif %}{% endif %} can see it right now. This page updates the moment someone accepts.</p>
+                {% if can_close and u_close %}
+                    <form method="post" action="{{ u_close }}" class="mt-4" @submit="if (!confirm('Close this job? It will disappear for everyone.')) $event.preventDefault()">
+                        {% csrf_token %}
+                        <button type="submit" class="focus-ring rounded-full border border-line px-5 py-2.5 text-[13px] font-medium text-red-600 hover:bg-red-50">Close this job</button>
+                    </form>
                 {% endif %}
-            {% endfor %}
-        </div>
-    {% else %}
-        <div class="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line bg-surface py-14 text-center">
-            <div class="flex h-14 w-14 items-center justify-center rounded-full bg-accent-50">
-                <i data-lucide="briefcase" class="h-6 w-6 text-accent-500"></i>
             </div>
-            <p class="text-sm font-semibold text-ink">No requests yet</p>
-            <p class="max-w-xs text-sm text-muted">
-                {% if is_employer %}
-                    Search for someone above to send them a hire request — or wait for applicants.
-                {% else %}
-                    Requests for this job will appear here.
+        {% endif %}
+
+        {# ---- in progress ---- #}
+        {% if job_in_progress and counterparty %}
+            <div class="rounded-3xl border border-emerald-200 bg-emerald-50 p-5">
+                <p class="text-[12px] font-semibold uppercase tracking-wide text-emerald-700">In progress</p>
+                <h3 class="mt-1 text-[17px] font-semibold text-emerald-950">
+                    {% if is_employer %}{{ counterparty.display_name|default:counterparty.username }} accepted your job{% else %}You're doing this job for {{ counterparty.display_name|default:counterparty.username }}{% endif %}
+                </h3>
+                {% if chat_url %}
+                    <a href="{{ chat_url }}" class="focus-ring mt-3 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[13.5px] font-semibold text-emerald-800 shadow-sm hover:bg-emerald-100">
+                        <i data-lucide="messages-square" class="h-4 w-4"></i> Message {{ counterparty.first_name|default:counterparty.username }}
+                    </a>
                 {% endif %}
-            </p>
-        </div>
-    {% endif %}
+            </div>
+        {% endif %}
+
+        {# ---- poster pays when the work is done ---- #}
+        {% if is_employer and job_in_progress and active_request and active_request.can_pay %}
+            {% url 'complete_hire_request' active_request.pk as u_complete %}
+            <div class="rounded-3xl border border-line bg-white p-5 shadow-sm">
+                <h3 class="text-[16px] font-semibold text-ink">Happy with the work?</h3>
+                <p class="mt-1 text-[13.5px] text-muted">Pay {{ job.currency.symbol }}{{ pay_amount|floatformat:"2g" }} from your wallet and mark the job complete.</p>
+
+                {% if short_by %}
+                    <p class="mt-3 rounded-xl bg-red-50 px-3.5 py-2.5 text-[13px] text-red-700">
+                        Your {{ job.currency.code }} wallet has {{ job.currency.symbol }}{{ my_balance|floatformat:"2g" }}. Top up {{ job.currency.symbol }}{{ short_by|floatformat:"2g" }} more to pay.
+                        {% if u_topup %}<a href="{{ u_topup }}" class="font-semibold underline">Top up</a>{% endif %}
+                    </p>
+                {% endif %}
+
+                <form method="post" action="{{ u_complete }}" class="mt-4" @submit="if (!confirm('Pay and complete this job?')) $event.preventDefault()">
+                    {% csrf_token %}
+                    <button type="submit" {% if short_by %}disabled{% endif %}
+                            class="focus-ring w-full rounded-full bg-emerald-600 px-6 py-3.5 text-[15px] font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+                        Pay {{ job.currency.symbol }}{{ pay_amount|floatformat:"2g" }} &amp; complete
+                    </button>
+                </form>
+            </div>
+        {% endif %}
+
+        {% if is_worker and job_in_progress %}
+            <p class="px-1 text-[13px] text-muted">When the work is done, tell {{ job.employer.first_name|default:job.employer.username }} in chat. They'll release the payment to your wallet.</p>
+        {% endif %}
+
+        {# ---- completed ---- #}
+        {% if job_completed %}
+            <div class="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 text-center">
+                <p class="text-[28px]">✅</p>
+                <h3 class="mt-1 text-[17px] font-semibold text-emerald-950">Paid and complete</h3>
+                <p class="mt-0.5 text-[13.5px] text-emerald-800">{{ job.currency.symbol }}{{ pay_amount|floatformat:"2g" }} was sent to {% if is_worker %}you{% else %}{{ counterparty.display_name|default:counterparty.username|default:"the worker" }}{% endif %}.</p>
+                {% if chat_url %}<a href="{{ chat_url }}" class="mt-3 inline-block text-[13px] font-semibold text-emerald-800 underline">Open chat</a>{% endif %}
+            </div>
+        {% endif %}
+    </section>
+
+    <!-- ============================================================ OLD-STYLE OFFERS (only shown if any are pending) -->
+    {% for hr in hire_requests %}
+        {% if hr.is_pending and hr.is_mine %}
+            {% if forloop.first or not shown_offers %}{% endif %}
+            <div class="mt-4 rounded-2xl border border-line bg-white p-4">
+                <p class="text-[12px] font-semibold uppercase tracking-wide text-muted">Pending {% if hr.requester == hr.worker %}application{% else %}offer{% endif %}</p>
+                <p class="mt-1 text-[14px] text-ink">
+                    {{ hr.worker.display_name|default:hr.worker.username }}{% if hr.proposed_amount %} · {{ job.currency.symbol }}{{ hr.proposed_amount|floatformat:"2g" }}{% endif %}
+                </p>
+                {% if hr.message %}<p class="mt-1 text-[13px] text-muted">{{ hr.message }}</p>{% endif %}
+
+                <div class="mt-3 flex flex-wrap gap-2">
+                    {% if hr.can_respond %}
+                        {% url 'respond_hire_request' hr.pk 'accept' as u_ok %}
+                        {% url 'respond_hire_request' hr.pk 'decline' as u_no %}
+                        <form method="post" action="{{ u_ok }}">{% csrf_token %}<button class="rounded-full bg-accent-500 px-4 py-2 text-[13px] font-semibold text-white hover:bg-accent-600">Accept</button></form>
+                        <form method="post" action="{{ u_no }}">{% csrf_token %}<button class="rounded-full border border-line px-4 py-2 text-[13px] font-medium text-ink hover:bg-surface">Decline</button></form>
+                    {% endif %}
+                    {% if hr.can_cancel %}
+                        {% url 'cancel_hire_request' hr.pk as u_cancel %}
+                        <form method="post" action="{{ u_cancel }}">{% csrf_token %}<button class="rounded-full border border-line px-4 py-2 text-[13px] font-medium text-red-600 hover:bg-red-50">Cancel</button></form>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    {% endfor %}
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('alpine:init', function () {
+        Alpine.data('jobPage', function () {
+            return {
+                taken: false, socket: null, delay: 1000, _t: null,
+
+                init() {
+                    this.connect();
+                    this.$nextTick(function () { if (window.lucide) lucide.createIcons(); });
+                },
+                connect() {
+                    clearTimeout(this._t);
+                    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    var jobId = parseInt(this.$el.dataset.jobId, 10);
+                    var isEmployer = !!this.$el.dataset.isEmployer;
+                    var canAccept = !!this.$el.dataset.canAccept;
+                    var sock;
+                    try { sock = new WebSocket(proto + '//' + location.host + '/ws/gigs/'); }
+                    catch (e) { return; }
+                    this.socket = sock;
+
+                    sock.addEventListener('open', () => { this.delay = 1000; });
+                    sock.addEventListener('close', (ev) => {
+                        if (this.socket !== sock || (ev.code >= 4000 && ev.code < 5000)) return;
+                        this._t = setTimeout(() => this.connect(), this.delay);
+                        this.delay = Math.min(this.delay * 2, 15000);
+                    });
+                    sock.addEventListener('message', (ev) => {
+                        var d; try { d = JSON.parse(ev.data); } catch (e) { return; }
+                        // the poster's page refreshes the moment someone accepts
+                        if (d.kind === 'gig_accepted' && d.job_id === jobId && isEmployer) { window.location.reload(); }
+                        // everyone else is told it's gone
+                        if ((d.kind === 'gig_taken' || d.kind === 'gig_closed') && d.job && d.job.id === jobId && canAccept) { this.taken = true; }
+                    });
+                }
+            };
+        });
+    });
+</script>
 {% endblock %}

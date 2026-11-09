@@ -6,7 +6,7 @@
 {% block header_actions %}
     {% url 'create_hire_job' as u_job_new %}
     {% if u_job_new %}
-        <a href="{{ u_job_new }}" class="focus-ring hidden items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-[13px] font-semibold text-accent-700 transition hover:bg-accent-50 md:flex">
+        <a href="{{ u_job_new }}" class="focus-ring hidden items-center gap-1.5 rounded-full bg-accent-500 px-4 py-2 text-[13px] font-semibold text-white shadow-sm transition hover:bg-accent-600 md:flex">
             <i data-lucide="plus" class="h-4 w-4"></i> Post a job
         </a>
     {% endif %}
@@ -14,249 +14,489 @@
 
 {% block extra_head %}
 <style>
-    .list-sticky { top: calc(56px + env(safe-area-inset-top)); }
-    @media (min-width: 768px) { .list-sticky { top: calc(64px + env(safe-area-inset-top)); } }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { scrollbar-width: none; }
     .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .job-card { transition: box-shadow .15s, transform .15s, border-color .15s; }
-    .job-card:hover { box-shadow: 0 8px 24px -12px rgba(28,23,48,.25); border-color: #C4B5FD; transform: translateY(-1px); }
+    .job-card { transition: box-shadow .15s, border-color .15s, opacity .4s, transform .4s; }
+    .job-card:hover { box-shadow: 0 8px 24px -12px rgba(28,23,48,.25); border-color: #C4B5FD; }
+    .job-card.is-gone { opacity: .45; transform: scale(.985); pointer-events: none; }
+    @keyframes gig-in { from { opacity: 0; transform: translateY(-10px) scale(.98); } to { opacity: 1; transform: none; } }
+    .gig-in { animation: gig-in .45s ease both; }
+    @keyframes live-pulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.5); } 100% { box-shadow: 0 0 0 8px rgba(16,185,129,0); } }
+    .live-dot { animation: live-pulse 1.6s infinite; }
 </style>
 {% endblock %}
 
 {% block content %}
 {% url 'create_hire_job' as u_job_new %}
+{% url 'accept_hire_job' 987654321 as u_accept %}
+{% url 'set_my_location' as u_setloc %}
 
-<div x-data="gigsBoard()" class="mx-auto max-w-5xl pb-28 md:pb-12">
+{{ jobs_data|json_script:"gig-data" }}
+{{ gig_config|json_script:"gig-config" }}
 
-    <!-- ============================================================ HERO -->
+<div x-data="gigBoard()" class="mx-auto max-w-5xl pb-28 md:pb-12">
+    {% csrf_token %}
+
+    <!-- ============================================================ TOP: location + live + post -->
     <section class="px-4 pt-4 md:px-6 md:pt-6">
-        <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-accent-600 via-accent-500 to-accent-400 px-5 py-6 text-white shadow-sm md:px-8 md:py-8">
-            <div class="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-white/10"></div>
-            <div class="pointer-events-none absolute -bottom-16 right-24 h-40 w-40 rounded-full bg-white/10"></div>
+        <div class="relative overflow-hidden rounded-3xl bg-gradient-to-br from-accent-600 via-accent-500 to-accent-400 px-5 py-5 text-white shadow-sm md:px-8 md:py-7">
+            <div class="pointer-events-none absolute -right-10 -top-12 h-44 w-44 rounded-full bg-white/10"></div>
+            <div class="pointer-events-none absolute -bottom-16 right-28 h-40 w-40 rounded-full bg-white/10"></div>
 
-            <div class="relative flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-                <div class="max-w-md">
-                    <h2 class="text-[22px] font-bold leading-tight tracking-tight md:text-[26px]">Find work. Hire talent.</h2>
-                    <p class="mt-1.5 text-[14px] text-white/85">Browse open jobs from people on Pheral, or post your own and get paid or pay securely from your wallet.</p>
-                    {% if u_job_new %}
-                        <a href="{{ u_job_new }}" class="focus-ring mt-4 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[13.5px] font-semibold text-accent-700 shadow-sm transition hover:bg-accent-50">
-                            <i data-lucide="plus" class="h-4 w-4"></i> Post a job
-                        </a>
-                    {% endif %}
+            <div class="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div class="min-w-0">
+                    <div class="flex items-center gap-2 text-[12px] font-medium text-white/90">
+                        <span class="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1">
+                            <span class="h-2 w-2 rounded-full" :class="live ? 'live-dot bg-emerald-300' : 'bg-amber-300'"></span>
+                            <span x-text="live ? 'Live' : 'Reconnecting…'"></span>
+                        </span>
+                        <span>{{ open_count }} open job{{ open_count|pluralize }} on Pheral</span>
+                    </div>
+                    <h2 class="mt-2 text-[22px] font-bold leading-tight tracking-tight md:text-[27px]">
+                        {% if my_location_label %}Jobs near {{ my_location_label }}{% else %}Jobs, live.{% endif %}
+                    </h2>
+                    <p class="mt-1 text-[14px] text-white/85">Post a job and people nearby see it instantly. First to accept gets it.</p>
+
+                    <div class="mt-3 flex flex-wrap items-center gap-2">
+                        <button type="button" @click="openLoc()"
+                                class="focus-ring inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3.5 py-1.5 text-[12.5px] font-semibold text-white transition hover:bg-white/25">
+                            <svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                            {% if my_location_label %}{{ my_location_label }} &middot; change{% else %}Set your location{% endif %}
+                        </button>
+                    </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-3 md:w-72">
-                    <div class="rounded-2xl bg-white/15 px-4 py-3 backdrop-blur-sm">
-                        <p class="text-[26px] font-bold leading-none">{{ open_count }}</p>
-                        <p class="mt-1 text-[12px] text-white/85">Open job{{ open_count|pluralize }}</p>
+                <div class="grid grid-cols-3 gap-2.5 md:w-80">
+                    <div class="rounded-2xl bg-white/15 px-3 py-2.5 backdrop-blur-sm">
+                        <p class="text-[22px] font-bold leading-none">{{ near_count }}</p>
+                        <p class="mt-1 text-[11px] text-white/85">Near you</p>
                     </div>
-                    <div class="rounded-2xl bg-white/15 px-4 py-3 backdrop-blur-sm">
-                        <p class="text-[26px] font-bold leading-none">{{ recent_count }}</p>
-                        <p class="mt-1 text-[12px] text-white/85">New this week</p>
+                    <div class="rounded-2xl bg-white/15 px-3 py-2.5 backdrop-blur-sm">
+                        <p class="text-[22px] font-bold leading-none">{{ recent_count }}</p>
+                        <p class="mt-1 text-[11px] text-white/85">This week</p>
+                    </div>
+                    <div class="rounded-2xl bg-white/15 px-3 py-2.5 backdrop-blur-sm">
+                        <p class="text-[22px] font-bold leading-none">{{ active_jobs|length }}</p>
+                        <p class="mt-1 text-[11px] text-white/85">Your active</p>
                     </div>
                 </div>
             </div>
         </div>
+
+        {% if not my_state %}
+            <button type="button" @click="openLoc()" class="focus-ring mt-3 flex w-full items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left">
+                <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                    <svg viewBox="0 0 24 24" class="h-[18px] w-[18px]" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                </span>
+                <span class="min-w-0 flex-1">
+                    <span class="block text-[13.5px] font-semibold text-amber-900">Tell us where you are</span>
+                    <span class="block text-[12.5px] text-amber-800/80">Set your state and city to see jobs near you first and get them live.</span>
+                </span>
+                <span class="shrink-0 text-[13px] font-semibold text-amber-900">Set</span>
+            </button>
+        {% endif %}
     </section>
 
-    <!-- ============================================================ SEARCH / FILTERS / SORT -->
-    <div class="list-sticky sticky z-20 mt-4 border-y border-line bg-white/95 backdrop-blur">
+    <!-- ============================================================ ACTIVE / MY OPEN -->
+    {% if active_jobs or my_open_jobs %}
+        <section class="no-scrollbar mt-4 flex gap-3 overflow-x-auto px-4 md:px-6" aria-label="Your jobs">
+            {% for a in active_jobs %}
+                <a href="{{ a.url }}" class="focus-ring flex w-64 shrink-0 items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 transition hover:border-emerald-300">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-[15px]">🛠️</span>
+                    <span class="min-w-0 flex-1">
+                        <span class="block truncate text-[13.5px] font-semibold text-emerald-950">{{ a.title }}</span>
+                        <span class="block truncate text-[12px] text-emerald-800">{% if a.role == "worker" %}You're doing this for {{ a.other }}{% else %}{{ a.other }} accepted · {{ a.budget }}{% endif %}</span>
+                    </span>
+                </a>
+            {% endfor %}
+            {% for m in my_open_jobs %}
+                <a href="{{ m.url }}" class="focus-ring flex w-64 shrink-0 items-center gap-3 rounded-2xl border border-line bg-white p-3 transition hover:border-accent-300">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[15px]">📣</span>
+                    <span class="min-w-0 flex-1">
+                        <span class="block truncate text-[13.5px] font-semibold text-ink">{{ m.title }}</span>
+                        <span class="block truncate text-[12px] text-muted">Waiting for someone · {{ m.budget }}</span>
+                    </span>
+                </a>
+            {% endfor %}
+        </section>
+    {% endif %}
+
+    <!-- ============================================================ SCOPE TABS + SEARCH -->
+    <div class="sticky z-20 mt-4 border-y border-line bg-white/95 backdrop-blur" style="top: calc(56px + env(safe-area-inset-top));">
         <div class="flex flex-col gap-2.5 px-4 py-2.5 md:flex-row md:items-center md:px-6">
-            <label class="flex flex-1 items-center gap-2.5 rounded-full bg-surface px-4 py-2 text-muted focus-within:ring-2 focus-within:ring-accent-300">
-                <i data-lucide="search" class="h-4 w-4 shrink-0"></i>
-                <input type="search" x-model="q" placeholder="Search jobs, skills or people" autocomplete="off"
-                       class="min-w-0 flex-1 bg-transparent text-[14px] text-ink placeholder-muted outline-none">
-                <button type="button" x-show="q" x-cloak @click="q = ''" class="text-[18px] leading-none text-muted hover:text-ink" aria-label="Clear search">&times;</button>
-            </label>
-
-            <div class="flex items-center gap-2">
-                <div class="no-scrollbar flex min-w-0 flex-1 gap-2 overflow-x-auto" x-show="currencies.length > 1" x-cloak>
-                    <button type="button" @click="cur = 'all'" :class="cur === 'all' ? 'bg-accent-500 text-white' : 'bg-surface text-ink/80 hover:bg-accent-50'"
-                            class="shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition">All</button>
-                    <template x-for="c in currencies" :key="c">
-                        <button type="button" @click="cur = c" :class="cur === c ? 'bg-accent-500 text-white' : 'bg-surface text-ink/80 hover:bg-accent-50'"
-                                class="shrink-0 rounded-full px-3.5 py-1.5 text-[12.5px] font-medium transition" x-text="c"></button>
-                    </template>
-                </div>
-
-                <label class="ml-auto flex shrink-0 items-center gap-1.5 text-[12.5px] text-muted">
-                    <i data-lucide="arrow-up-down" class="h-4 w-4"></i>
-                    <select x-model="sort" class="rounded-full border-0 bg-surface py-1.5 pl-3 pr-7 text-[12.5px] font-medium text-ink focus:ring-2 focus:ring-accent-300">
-                        <option value="newest">Newest</option>
-                        <option value="oldest">Oldest</option>
-                        <option value="budget">Highest budget</option>
-                    </select>
-                </label>
+            <div class="no-scrollbar flex gap-2 overflow-x-auto">
+                <a href="?scope=for-you" class="shrink-0 rounded-full px-4 py-1.5 text-[12.5px] font-medium transition {% if scope == 'for-you' %}bg-accent-500 text-white{% else %}bg-surface text-ink/80 hover:bg-accent-50{% endif %}">For you</a>
+                <a href="?scope=near" class="shrink-0 rounded-full px-4 py-1.5 text-[12.5px] font-medium transition {% if scope == 'near' %}bg-accent-500 text-white{% else %}bg-surface text-ink/80 hover:bg-accent-50{% endif %}">Near me{% if near_count %} · {{ near_count }}{% endif %}</a>
+                <a href="?scope=remote" class="shrink-0 rounded-full px-4 py-1.5 text-[12.5px] font-medium transition {% if scope == 'remote' %}bg-accent-500 text-white{% else %}bg-surface text-ink/80 hover:bg-accent-50{% endif %}">Remote</a>
             </div>
+            <label class="flex flex-1 items-center gap-2.5 rounded-full bg-surface px-4 py-2 text-muted focus-within:ring-2 focus-within:ring-accent-300 md:ml-auto md:w-72 md:flex-none">
+                <i data-lucide="search" class="h-4 w-4 shrink-0"></i>
+                <input type="search" x-model="q" placeholder="Search jobs on this page" autocomplete="off"
+                       class="min-w-0 flex-1 bg-transparent text-[14px] text-ink placeholder-muted outline-none">
+            </label>
         </div>
     </div>
 
-    <!-- ============================================================ JOB CARDS -->
-    <div class="grid grid-cols-1 gap-3 px-4 pt-4 md:grid-cols-2 md:gap-4 md:px-6 xl:grid-cols-3" id="job-grid">
-        {% for job in jobs %}
-            <article x-data="{ id: '{{ job.pk }}' }" x-show="show(id)" :style="{ order: rank(id) }"
-                     data-job
-                     data-id="{{ job.pk }}"
-                     data-title="{{ job.title|escape }}"
-                     data-desc="{{ job.description|truncatechars:300|escape }}"
-                     data-employer="{{ job.employer.display_name|default:job.employer.username|escape }} {{ job.employer.username|escape }}"
-                     data-currency="{{ job.currency.code }}"
-                     data-budget="{{ job.budget|stringformat:'f' }}"
-                     data-ts="{{ job.created_at|date:'c' }}"
-                     class="job-card relative flex flex-col rounded-2xl border border-line bg-white p-4">
+    <!-- ============================================================ LIVE JOB CARDS -->
+    <div class="grid grid-cols-1 gap-3 px-4 pt-4 md:grid-cols-2 md:gap-4 md:px-6">
+        <template x-for="job in list" :key="job.id">
+            <article class="job-card relative flex flex-col rounded-2xl border border-line bg-white p-4"
+                     :class="[job.fresh ? 'gig-in ring-2 ring-accent-300' : '', job.gone ? 'is-gone' : '']">
 
                 <div class="flex items-center gap-2.5">
-                    <a href="{% url 'profile_user' job.employer.username %}" class="focus-ring shrink-0 rounded-full">
-                        {% if job.employer.avatar %}
-                            <img src="{{ job.employer.avatar.url }}" alt="" loading="lazy" class="h-9 w-9 rounded-full object-cover">
-                        {% else %}
-                            <span class="flex h-9 w-9 items-center justify-center rounded-full bg-accent-100 text-[13px] font-semibold text-accent-700">{{ job.employer.first_name|default:job.employer.username|first|upper }}</span>
-                        {% endif %}
-                    </a>
+                    <template x-if="job.avatar">
+                        <img :src="job.avatar" alt="" loading="lazy" class="h-9 w-9 shrink-0 rounded-full object-cover">
+                    </template>
+                    <template x-if="!job.avatar">
+                        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-100 text-[13px] font-semibold text-accent-700" x-text="job.initial"></span>
+                    </template>
                     <div class="min-w-0 flex-1 leading-tight">
-                        <a href="{% url 'profile_user' job.employer.username %}" class="block truncate text-[13px] font-medium text-ink hover:underline">{{ job.employer.display_name|default:job.employer.username }}</a>
-                        <span class="text-[11.5px] text-muted" data-ago>{{ job.created_at|date:"j M" }}</span>
+                        <span class="block truncate text-[13px] font-medium text-ink" x-text="job.employer"></span>
+                        <span class="text-[11.5px] text-muted" x-text="ago(job.created)"></span>
                     </div>
-                    <span x-show="isNew(id)" x-cloak class="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-emerald-700">New</span>
+                    <span class="shrink-0 rounded-full px-2.5 py-1 text-[10.5px] font-semibold uppercase tracking-wide" :class="chipClass(job)" x-text="chipText(job)"></span>
                 </div>
 
                 <h3 class="mt-3 text-[16px] font-semibold leading-snug text-ink">
-                    <a href="{% url 'hire_job_detail' job.pk %}" class="after:absolute after:inset-0 after:content-[''] focus-ring rounded">{{ job.title }}</a>
+                    <a :href="job.url" class="rounded hover:underline" x-text="job.title"></a>
                 </h3>
 
-                {% if job.description %}
-                    <p class="clamp-2 mt-1.5 text-[13.5px] leading-relaxed text-muted">{{ job.description }}</p>
-                {% endif %}
+                <p x-show="job.description" class="clamp-2 mt-1.5 text-[13.5px] leading-relaxed text-muted" x-text="job.description"></p>
 
-                <div class="mt-4 flex items-end justify-between gap-3 pt-1">
+                <p class="mt-2.5 flex items-center gap-1.5 text-[12.5px] text-muted">
+                    <svg viewBox="0 0 24 24" class="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+                    <span x-text="placeText(job)"></span>
+                </p>
+
+                <div class="mt-4 flex items-end justify-between gap-3">
                     <div>
-                        <p class="text-[11px] font-medium uppercase tracking-wide text-muted/80">Budget</p>
-                        <p class="text-[18px] font-bold leading-tight text-accent-700">{{ job.currency.symbol }}{{ job.budget|floatformat:"2g" }}</p>
+                        <p class="text-[11px] font-medium uppercase tracking-wide text-muted/80">Pays</p>
+                        <p class="text-[19px] font-bold leading-tight text-accent-700" x-text="job.symbol + job.budget"></p>
                     </div>
-                    <span class="inline-flex items-center gap-1 rounded-full bg-accent-50 px-3.5 py-1.5 text-[12.5px] font-semibold text-accent-700">
-                        View <i data-lucide="arrow-right" class="h-3.5 w-3.5"></i>
-                    </span>
+                    <div class="flex items-center gap-2">
+                        <a :href="job.url" class="focus-ring rounded-full border border-line px-3.5 py-2 text-[12.5px] font-medium text-ink hover:bg-surface">Details</a>
+                        <button type="button" @click="ask(job)" :disabled="!!job.gone"
+                                class="focus-ring rounded-full bg-accent-500 px-4 py-2 text-[12.5px] font-semibold text-white shadow-sm transition hover:bg-accent-600 active:scale-95 disabled:opacity-50"
+                                x-text="job.gone ? job.gone : 'Accept job'"></button>
+                    </div>
                 </div>
             </article>
-        {% endfor %}
+        </template>
     </div>
 
     <!-- ============================================================ EMPTY STATES -->
-    {% if not jobs %}
-        <div class="flex flex-col items-center px-6 py-16 text-center">
-            <span class="flex h-16 w-16 items-center justify-center rounded-full bg-accent-100 text-accent-600"><i data-lucide="briefcase" class="h-8 w-8"></i></span>
-            <h2 class="mt-4 text-[18px] font-semibold text-ink">No open jobs right now</h2>
-            <p class="mt-1 max-w-xs text-[14px] text-muted">Be the first to post one and let people on Pheral apply.</p>
-            {% if u_job_new %}<a href="{{ u_job_new }}" class="focus-ring mt-5 rounded-full bg-accent-500 px-5 py-2.5 text-[13.5px] font-semibold text-white hover:bg-accent-600">Post a job</a>{% endif %}
+    <div x-show="jobs.length === 0" x-cloak class="flex flex-col items-center px-6 py-16 text-center">
+        <span class="flex h-16 w-16 items-center justify-center rounded-full bg-accent-100 text-[28px]">🧭</span>
+        <h2 class="mt-4 text-[18px] font-semibold text-ink">
+            {% if scope == 'near' %}Nothing near you yet{% elif scope == 'remote' %}No remote jobs yet{% else %}No open jobs right now{% endif %}
+        </h2>
+        <p class="mt-1 max-w-xs text-[14px] text-muted">Keep this page open: new jobs appear here the moment someone posts them.</p>
+        <div class="mt-5 flex flex-wrap justify-center gap-2">
+            {% if u_job_new %}<a href="{{ u_job_new }}" class="focus-ring rounded-full bg-accent-500 px-5 py-2.5 text-[13.5px] font-semibold text-white hover:bg-accent-600">Post a job</a>{% endif %}
+            {% if scope != 'for-you' %}<a href="?scope=for-you" class="focus-ring rounded-full border border-line px-5 py-2.5 text-[13.5px] font-medium text-ink hover:bg-surface">See all jobs</a>{% endif %}
         </div>
-    {% else %}
-        <div x-show="visibleCount() === 0" x-cloak class="px-6 py-14 text-center">
-            <p class="text-[15px] font-medium text-ink">No jobs match your search on this page.</p>
-            <button type="button" @click="q = ''; cur = 'all'" class="mt-3 text-[13.5px] font-medium text-accent-600 hover:underline">Clear filters</button>
-            {% if page_obj.has_next %}<p class="mt-2 text-[12.5px] text-muted">Try the next page: filters only cover the jobs shown here.</p>{% endif %}
-        </div>
-    {% endif %}
+    </div>
+    <div x-show="jobs.length > 0 && list.length === 0" x-cloak class="px-6 py-14 text-center">
+        <p class="text-[15px] font-medium text-ink">No jobs match "<span x-text="q"></span>" on this page.</p>
+        <button type="button" @click="q = ''" class="mt-3 text-[13.5px] font-medium text-accent-600 hover:underline">Clear search</button>
+    </div>
 
     <!-- ============================================================ PAGINATION -->
     {% if page_obj.paginator.num_pages > 1 %}
         <nav class="mt-8 flex items-center justify-center gap-2 px-4" aria-label="Pagination">
             {% if page_obj.has_previous %}
-                <a href="?page={{ page_obj.previous_page_number }}" class="focus-ring flex items-center gap-1 rounded-full border border-line px-4 py-2 text-[13px] font-medium text-ink hover:bg-surface">
+                <a href="?scope={{ scope }}&page={{ page_obj.previous_page_number }}" class="focus-ring flex items-center gap-1 rounded-full border border-line px-4 py-2 text-[13px] font-medium text-ink hover:bg-surface">
                     <i data-lucide="chevron-left" class="h-4 w-4"></i> Previous
                 </a>
             {% endif %}
             <span class="px-2 text-[13px] text-muted">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
             {% if page_obj.has_next %}
-                <a href="?page={{ page_obj.next_page_number }}" class="focus-ring flex items-center gap-1 rounded-full border border-line px-4 py-2 text-[13px] font-medium text-ink hover:bg-surface">
+                <a href="?scope={{ scope }}&page={{ page_obj.next_page_number }}" class="focus-ring flex items-center gap-1 rounded-full border border-line px-4 py-2 text-[13px] font-medium text-ink hover:bg-surface">
                     Next <i data-lucide="chevron-right" class="h-4 w-4"></i>
                 </a>
             {% endif %}
         </nav>
     {% endif %}
 
-    <!-- ============================================================ POST A JOB (phones) -->
+    <!-- ============================================================ POST BUTTON (phones) -->
     {% if u_job_new %}
         <a href="{{ u_job_new }}" class="focus-ring fixed bottom-20 right-4 z-30 flex h-14 items-center gap-2 rounded-2xl bg-accent-500 px-5 text-[14px] font-semibold text-white shadow-popover transition hover:bg-accent-600 active:scale-95 md:hidden" aria-label="Post a job">
             <i data-lucide="plus" class="h-5 w-5"></i> Post a job
         </a>
     {% endif %}
+
+    <!-- ============================================================ CONFIRM ACCEPT -->
+    <div x-show="confirmJob" x-cloak x-transition.opacity @click.self="confirmJob = null" @keydown.escape.window="confirmJob = null"
+         class="fixed inset-0 z-[75] flex items-end justify-center bg-black/40 p-0 md:items-center md:p-4">
+        <div class="w-full max-w-sm rounded-t-3xl bg-white p-5 shadow-popover md:rounded-3xl" role="dialog" aria-modal="true">
+            <template x-if="confirmJob">
+                <div>
+                    <p class="text-[12px] font-semibold uppercase tracking-wide text-accent-600">Accept this job?</p>
+                    <h3 class="mt-1 text-[18px] font-bold leading-snug text-ink" x-text="confirmJob.title"></h3>
+                    <p class="mt-1 text-[13.5px] text-muted">
+                        <span x-text="confirmJob.employer"></span> · <span x-text="placeText(confirmJob)"></span>
+                    </p>
+                    <div class="mt-4 rounded-2xl bg-accent-50 px-4 py-3">
+                        <p class="text-[11px] font-medium uppercase tracking-wide text-accent-700/80">You'll be paid</p>
+                        <p class="text-[22px] font-bold text-accent-700" x-text="confirmJob.symbol + confirmJob.budget"></p>
+                        <p class="mt-0.5 text-[12px] text-accent-800/80">The poster's wallet already covers this. You'll be connected in chat right away.</p>
+                    </div>
+                </div>
+            </template>
+            <div class="mt-5 flex gap-2.5">
+                <button type="button" @click="confirmJob = null" class="focus-ring flex-1 rounded-full border border-line px-4 py-3 text-[14px] font-medium text-ink hover:bg-surface">Not now</button>
+                <button type="button" @click="accept()" :disabled="accepting"
+                        class="focus-ring flex-1 rounded-full bg-accent-500 px-4 py-3 text-[14px] font-semibold text-white shadow-sm transition hover:bg-accent-600 disabled:opacity-60"
+                        x-text="accepting ? 'Accepting…' : 'Accept job'"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================ SET LOCATION -->
+    <div x-show="locOpen" x-cloak x-transition.opacity @click.self="locOpen = false" @keydown.escape.window="locOpen = false"
+         class="fixed inset-0 z-[75] flex items-end justify-center bg-black/40 p-0 md:items-center md:p-4">
+        <div class="w-full max-w-sm rounded-t-3xl bg-white p-5 shadow-popover md:rounded-3xl" role="dialog" aria-modal="true">
+            <h3 class="text-[18px] font-bold text-ink">Where are you?</h3>
+            <p class="mt-1 text-[13.5px] text-muted">We show you jobs in your city first, then your state, then remote jobs.</p>
+
+            <label class="mt-4 block text-[12.5px] font-medium text-ink/80">State</label>
+            <select x-model="locState" class="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2.5 text-[15px] text-ink focus:border-accent-500 focus:outline-none">
+                <option value="">Choose your state</option>
+                {% for value, label in states %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+            </select>
+
+            <label class="mt-3 block text-[12.5px] font-medium text-ink/80">City or area <span class="font-normal text-muted">(optional)</span></label>
+            <input x-model="locCity" list="gig-cities" type="text" placeholder="e.g. Port Harcourt" autocomplete="off"
+                   class="mt-1 w-full rounded-xl border border-line px-3 py-2.5 text-[15px] text-ink placeholder-muted focus:border-accent-500 focus:outline-none">
+            <datalist id="gig-cities">{% for c in cities %}<option value="{{ c }}">{% endfor %}</datalist>
+
+            <p x-show="locError" x-cloak class="mt-2 text-[12.5px] font-medium text-red-600" x-text="locError"></p>
+
+            <div class="mt-5 flex gap-2.5">
+                <button type="button" @click="locOpen = false" class="focus-ring flex-1 rounded-full border border-line px-4 py-3 text-[14px] font-medium text-ink hover:bg-surface">Cancel</button>
+                <button type="button" @click="saveLoc()" :disabled="locSaving"
+                        class="focus-ring flex-1 rounded-full bg-accent-500 px-4 py-3 text-[14px] font-semibold text-white shadow-sm hover:bg-accent-600 disabled:opacity-60"
+                        x-text="locSaving ? 'Saving…' : 'Save'"></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================ TOAST -->
+    <div x-show="toast" x-cloak x-transition
+         class="fixed inset-x-4 bottom-24 z-[80] mx-auto flex max-w-md items-center gap-3 rounded-2xl bg-ink px-4 py-3 text-[13.5px] font-medium text-white shadow-popover md:bottom-10" role="status">
+        <span class="flex-1" x-text="toast ? toast.text : ''"></span>
+        <a x-show="toast && toast.href" :href="toast ? toast.href : '#'" class="shrink-0 rounded-full bg-white/15 px-3 py-1.5 text-[12.5px] font-semibold hover:bg-white/25" x-text="toast ? toast.label : ''"></a>
+    </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
+    window.GIG_URLS = {
+        sentinel: "987654321",
+        accept: "{{ u_accept }}",
+        setLocation: "{{ u_setloc }}",
+        ws: "/ws/gigs/"
+    };
+
     document.addEventListener('alpine:init', function () {
-        Alpine.data('gigsBoard', function () {
+        Alpine.data('gigBoard', function () {
             return {
-                q: '', sort: 'newest', cur: 'all',
-                jobs: {},
-                currencies: [],
+                jobs: [], cfg: {}, q: '', live: false, now: Date.now(),
+                socket: null, reconnectDelay: 1000, _reconnect: null, _heartbeat: null,
+                toast: null, _toastTimer: null,
+                confirmJob: null, accepting: false,
+                locOpen: false, locState: '', locCity: '', locError: '', locSaving: false,
 
                 init() {
-                    var jobs = {}, cur = {};
-                    document.querySelectorAll('[data-job]').forEach(function (el) {
-                        var d = el.dataset;
-                        jobs[d.id] = {
-                            hay: (d.title + ' ' + d.desc + ' ' + d.employer).toLowerCase(),
-                            cur: d.currency,
-                            budget: parseFloat(d.budget) || 0,
-                            ts: new Date(d.ts).getTime() || 0
-                        };
-                        cur[d.currency] = true;
-
-                        var ago = el.querySelector('[data-ago]');
-                        if (ago) ago.textContent = window.__agoText(d.ts);
-                    });
-                    this.jobs = jobs;
-                    this.currencies = Object.keys(cur).sort();
-                    this.$nextTick(function () { if (window.lucide) lucide.createIcons(); });
+                    this.cfg = JSON.parse(document.getElementById('gig-config').textContent);
+                    this.jobs = JSON.parse(document.getElementById('gig-data').textContent);
+                    this.locState = this.cfg.state || '';
+                    this.locCity = this.cfg.city || '';
+                    setInterval(() => { this.now = Date.now(); }, 30000);
+                    this.connect();
+                    this.$nextTick(() => { if (window.lucide) lucide.createIcons(); });
                 },
 
-                show(id) {
-                    var j = this.jobs[id];
-                    if (!j) return true;
-                    if (this.cur !== 'all' && j.cur !== this.cur) return false;
+                /* ---------------------------------------------------------- display */
+                get list() {
                     var q = this.q.trim().toLowerCase();
-                    return !q || j.hay.indexOf(q) > -1;
+                    return this.jobs
+                        .filter(function (j) {
+                            return !q || (j.title + ' ' + j.description + ' ' + j.employer + ' ' + j.city + ' ' + j.state).toLowerCase().indexOf(q) > -1;
+                        })
+                        .slice()
+                        .sort(function (a, b) {
+                            if (a.proximity !== b.proximity) return a.proximity - b.proximity;
+                            return new Date(b.created) - new Date(a.created);
+                        });
                 },
-                visibleCount() {
-                    var n = 0;
-                    for (var id in this.jobs) if (this.show(id)) n++;
-                    return n;
+                prox(job) {
+                    var c = (this.cfg.city || '').toLowerCase(), s = this.cfg.state || '';
+                    if (c && (job.city || '').toLowerCase() === c && (!s || !job.state || job.state === s)) return 0;
+                    if (s && job.state === s) return 1;
+                    if (job.remote) return 2;
+                    return 3;
+                },
+                chipText(job) {
+                    return ['In your city', 'In your state', 'Remote', 'Elsewhere'][job.proximity] || '';
+                },
+                chipClass(job) {
+                    return [
+                        'bg-emerald-50 text-emerald-700',
+                        'bg-accent-50 text-accent-700',
+                        'bg-sky-50 text-sky-700',
+                        'bg-surface text-muted'
+                    ][job.proximity] || 'bg-surface text-muted';
+                },
+                placeText(job) {
+                    var place = [job.city, job.state === 'FCT' ? 'FCT (Abuja)' : job.state].filter(Boolean).join(', ');
+                    if (job.remote && place) return place + ' · or remote';
+                    if (job.remote) return 'Remote: work from anywhere';
+                    return place || 'Location not set';
+                },
+                ago(iso) {
+                    var t = new Date(iso).getTime();
+                    if (!t) return '';
+                    var s = Math.max(0, Math.floor((this.now - t) / 1000));
+                    if (s < 60) return 'Just now';
+                    var m = Math.floor(s / 60); if (m < 60) return m + 'm ago';
+                    var h = Math.floor(m / 60); if (h < 24) return h + 'h ago';
+                    var d = Math.floor(h / 24); if (d < 7) return d + 'd ago';
+                    return new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short' });
+                },
+                say(text, href, label) {
+                    this.toast = { text: text, href: href || '', label: label || '' };
+                    clearTimeout(this._toastTimer);
+                    this._toastTimer = setTimeout(() => { this.toast = null; }, href ? 9000 : 3800);
+                },
+                csrf() {
+                    var el = this.$root.querySelector('[name=csrfmiddlewaretoken]');
+                    return el ? el.value : '';
                 },
 
-                /* position of a job in the chosen sort order (CSS `order`) */
-                rank(id) {
-                    var jobs = this.jobs, sort = this.sort;
-                    var ids = Object.keys(jobs).sort(function (a, b) {
-                        var x = jobs[a], y = jobs[b];
-                        if (sort === 'oldest') return x.ts - y.ts;
-                        if (sort === 'budget') {
-                            if (x.cur !== y.cur) return x.cur < y.cur ? -1 : 1;   // budgets only compare within a currency
-                            return y.budget - x.budget;
-                        }
-                        return y.ts - x.ts;
+                /* ---------------------------------------------------------- live socket */
+                connect() {
+                    clearTimeout(this._reconnect);
+                    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    var sock;
+                    try { sock = new WebSocket(proto + '//' + location.host + window.GIG_URLS.ws); }
+                    catch (e) { this.scheduleReconnect(); return; }
+                    this.socket = sock;
+
+                    sock.addEventListener('open', () => {
+                        if (this.socket !== sock) return;
+                        this.live = true; this.reconnectDelay = 1000;
+                        clearInterval(this._heartbeat);
+                        this._heartbeat = setInterval(() => { try { sock.send('ping'); } catch (e) {} }, 45000);
                     });
-                    return ids.indexOf(id);
+                    sock.addEventListener('close', (ev) => {
+                        if (this.socket !== sock) return;
+                        this.live = false;
+                        clearInterval(this._heartbeat);
+                        if (ev.code >= 4000 && ev.code < 5000) return;
+                        this.scheduleReconnect();
+                    });
+                    sock.addEventListener('message', (ev) => {
+                        var d; try { d = JSON.parse(ev.data); } catch (e) { return; }
+                        if (d.kind === 'gig_new') this.onNew(d.job);
+                        else if (d.kind === 'gig_taken') this.onGone(d.job.id, 'Taken');
+                        else if (d.kind === 'gig_closed') this.onGone(d.job.id, 'Closed');
+                        else if (d.kind === 'gig_accepted') {
+                            this.say(d.worker + ' accepted "' + d.title + '"', d.chat_url, 'Open chat');
+                            if (navigator.vibrate) navigator.vibrate([30, 40, 30]);
+                        }
+                    });
                 },
-                isNew(id) {
-                    var j = this.jobs[id];
-                    return !!j && (Date.now() - j.ts) < 48 * 3600 * 1000;
+                scheduleReconnect() {
+                    clearTimeout(this._reconnect);
+                    this._reconnect = setTimeout(() => this.connect(), this.reconnectDelay);
+                    this.reconnectDelay = Math.min(this.reconnectDelay * 2, 15000);
+                },
+
+                inScope(job) {
+                    if (this.cfg.scope === 'near') return job.proximity <= 1;
+                    if (this.cfg.scope === 'remote') return !!job.remote;
+                    return true;
+                },
+                onNew(job) {
+                    if (job.employer_id === this.cfg.me) return;
+                    if (this.jobs.some(function (j) { return j.id === job.id; })) return;
+                    job.proximity = this.prox(job);
+                    if (this.cfg.page !== 1 || !this.inScope(job)) return;
+                    job.fresh = true;
+                    this.jobs.unshift(job);
+                    var near = job.proximity <= 1;
+                    this.say((near ? 'New job near you: ' : 'New job: ') + job.title + ' · ' + job.symbol + job.budget);
+                    if (near && navigator.vibrate) navigator.vibrate(40);
+                    setTimeout(() => {
+                        var j = this.jobs.find(function (x) { return x.id === job.id; });
+                        if (j) j.fresh = false;
+                    }, 6000);
+                },
+                onGone(id, label) {
+                    var j = this.jobs.find(function (x) { return x.id === id; });
+                    if (!j) return;
+                    if (this.confirmJob && this.confirmJob.id === id && !this.accepting) {
+                        this.confirmJob = null;
+                        this.say(label === 'Taken' ? 'Someone just took that job.' : 'That job was closed.');
+                    }
+                    j.gone = label;
+                    setTimeout(() => { this.jobs = this.jobs.filter(function (x) { return x.id !== id; }); }, 1600);
+                },
+
+                /* ---------------------------------------------------------- accept */
+                ask(job) { if (!job.gone) this.confirmJob = job; },
+                async accept() {
+                    var job = this.confirmJob;
+                    if (!job || this.accepting) return;
+                    this.accepting = true;
+                    try {
+                        var url = window.GIG_URLS.accept.replace(window.GIG_URLS.sentinel, job.id);
+                        var r = await fetch(url, {
+                            method: 'POST', credentials: 'same-origin',
+                            headers: { 'X-CSRFToken': this.csrf(), 'X-Requested-With': 'XMLHttpRequest' }
+                        });
+                        var d = await r.json();
+                        if (d.ok) { window.location.href = d.chat_url; return; }
+                        this.confirmJob = null;
+                        this.say(d.message || "Couldn't accept that job.");
+                        if (d.reason === 'taken' || d.reason === 'closed' || d.reason === 'missing') {
+                            this.onGone(job.id, d.reason === 'taken' ? 'Taken' : 'Closed');
+                        }
+                    } catch (e) {
+                        this.say("Couldn't reach the server. Check your connection and try again.");
+                    } finally {
+                        this.accepting = false;
+                    }
+                },
+
+                /* ---------------------------------------------------------- location */
+                openLoc() { this.locError = ''; this.locOpen = true; },
+                async saveLoc() {
+                    this.locError = '';
+                    if (!this.locState && !this.locCity.trim()) { this.locError = 'Choose your state.'; return; }
+                    this.locSaving = true;
+                    try {
+                        var fd = new FormData();
+                        fd.append('state', this.locState);
+                        fd.append('city', this.locCity.trim());
+                        var r = await fetch(window.GIG_URLS.setLocation, {
+                            method: 'POST', body: fd, credentials: 'same-origin',
+                            headers: { 'X-CSRFToken': this.csrf(), 'X-Requested-With': 'XMLHttpRequest' }
+                        });
+                        var d = await r.json();
+                        if (!r.ok || !d.ok) { this.locError = d.error || "Couldn't save your location."; return; }
+                        window.location.reload();
+                    } catch (e) {
+                        this.locError = "Couldn't reach the server. Try again.";
+                    } finally {
+                        this.locSaving = false;
+                    }
                 }
             };
         });
     });
-
-    window.__agoText = function (iso) {
-        var t = new Date(iso).getTime();
-        if (!t) return '';
-        var s = Math.max(0, Math.floor((Date.now() - t) / 1000));
-        if (s < 60) return 'Just now';
-        var m = Math.floor(s / 60); if (m < 60) return m + 'm ago';
-        var h = Math.floor(m / 60); if (h < 24) return h + 'h ago';
-        var d = Math.floor(h / 24); if (d < 7) return d + 'd ago';
-        return new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short' });
-    };
 </script>
 {% endblock %}

@@ -6,10 +6,12 @@ from asgiref.sync import async_to_sync
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.layers import get_channel_layer
+from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
 
 from .models import Conversation, ConversationParticipant, Message, MessageRead
+from .geo import state_slug
 
 logger = logging.getLogger("pheral")
 
@@ -141,7 +143,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             allowed = await self.user_is_participant(user.id, self.conversation_id)
         except Exception:
             logger.exception("Participant check failed")
-            await self.close(code=1011)
+            await self.close(code=3011)
             return
 
         if not allowed:
@@ -321,3 +323,156 @@ class ChatConsumer(AsyncWebsocketConsumer):
             conversation_id=self.conversation_id, user_id=user_id
         ).update(last_read_at=timezone.now())
         return True
+
+
+
+# ================================================================
+# GIGS: live job feed
+# ================================================================
+#
+# Every connected user joins:
+#   gigs_remote              - remote jobs, visible to everyone
+#   gigs_state_<their state> - jobs posted in their state
+#   gigs_user_<id>           - personal events (e.g. "someone accepted your job")
+# A job is broadcast to its state's group and, if remote, to gigs_remote.
+
+GIG_GROUP_REMOTE = "gigs_remote"
+
+
+def gig_state_group(state):
+    return "gigs_state_" + state_slug(state)
+
+
+def gig_user_group(user_id):
+    return f"gigs_user_{user_id}"
+
+
+def _display_name(user):
+    return getattr(user, "display_name", None) or user.get_full_name() or user.username
+
+
+def serialize_job(job):
+    """The JSON a gig card needs. Sync-only (touches the ORM)."""
+    employer = job.employer
+
+    avatar = ""
+    try:
+        if employer.avatar:
+            avatar = employer.avatar.url
+    except Exception:
+        avatar = ""
+
+    description = (job.description or "").strip()
+    return {
+        "id": job.pk,
+        "title": job.title,
+        "description": description[:260],
+        "budget": f"{job.budget:,.2f}",
+        "budget_raw": str(job.budget),
+        "symbol": job.currency.symbol,
+        "currency": job.currency.code,
+        "employer_id": employer.pk,
+        "employer": _display_name(employer),
+        "employer_username": employer.username,
+        "initial": (employer.first_name or employer.username or "?")[:1].upper(),
+        "avatar": avatar,
+        "state": job.loc_state,
+        "city": job.loc_city,
+        "remote": bool(job.is_remote),
+        "created": job.created_at.isoformat(),
+        "url": reverse("hire_job_detail", args=[job.pk]),
+    }
+
+
+def _job_groups(job):
+    groups = []
+    if job.loc_state:
+        groups.append(gig_state_group(job.loc_state))
+    if job.is_remote or not groups:
+        groups.append(GIG_GROUP_REMOTE)
+    return groups
+
+
+def broadcast_job_event(kind, job):
+    """
+    kind: "gig_new" | "gig_taken" | "gig_closed".
+    Use through transaction.on_commit() so nobody sees a job that rolled back.
+    """
+    layer = get_channel_layer()
+    if layer is None:
+        return
+    try:
+        payload = serialize_job(job) if kind == "gig_new" else {"id": job.pk}
+        for group in _job_groups(job):
+            async_to_sync(layer.group_send)(group, {"type": kind, "job": payload})
+    except Exception:
+        logger.exception("broadcast_job_event failed (%s, job %s)", kind, getattr(job, "pk", "?"))
+
+
+def notify_user(user_id, kind, **data):
+    """Personal live event, e.g. kind="gig_accepted"."""
+    layer = get_channel_layer()
+    if layer is None:
+        return
+    try:
+        async_to_sync(layer.group_send)(gig_user_group(user_id), {"type": kind, **data})
+    except Exception:
+        logger.exception("notify_user failed (%s, user %s)", kind, user_id)
+
+
+class GigsConsumer(AsyncWebsocketConsumer):
+    """Read-only live feed. The page POSTs to HTTP views to post/accept jobs."""
+
+    async def connect(self):
+        self.joined_groups = []
+        await self.accept()
+
+        user = self.scope.get("user")
+        if user is None or not user.is_authenticated:
+            await self.close(code=4001)
+            return
+
+        try:
+            state = await self.load_state(user.id)
+        except Exception:
+            logger.exception("Gigs: could not load user location")
+            await self.close(code=3011)
+            return
+
+        groups = [GIG_GROUP_REMOTE, gig_user_group(user.id)]
+        if state:
+            groups.append(gig_state_group(state))
+
+        for group in groups:
+            await self.channel_layer.group_add(group, self.channel_name)
+        self.joined_groups = groups
+
+    async def disconnect(self, close_code):
+        for group in getattr(self, "joined_groups", []):
+            await self.channel_layer.group_discard(group, self.channel_name)
+        self.joined_groups = []
+
+    async def receive(self, text_data=None, bytes_data=None):
+        # Clients only listen. A tiny "ping" keeps proxies from idling the socket out.
+        if text_data == "ping":
+            await self.send(text_data="pong")
+
+    # one handler per group_send "type"
+    async def gig_new(self, event):
+        await self.send(text_data=json.dumps({"kind": "gig_new", "job": event["job"]}))
+
+    async def gig_taken(self, event):
+        await self.send(text_data=json.dumps({"kind": "gig_taken", "job": event["job"]}))
+
+    async def gig_closed(self, event):
+        await self.send(text_data=json.dumps({"kind": "gig_closed", "job": event["job"]}))
+
+    async def gig_accepted(self, event):
+        data = {k: v for k, v in event.items() if k != "type"}
+        await self.send(text_data=json.dumps({"kind": "gig_accepted", **data}))
+
+    @database_sync_to_async
+    def load_state(self, user_id):
+        User = get_user_model()
+        row = User.objects.filter(pk=user_id).values("home_state").first()
+        return (row or {}).get("home_state") or ""

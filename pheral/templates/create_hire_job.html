@@ -4,59 +4,139 @@
 {% block page_title %}Post a job{% endblock %}
 
 {% block content %}
-<div class="mx-auto max-w-lg px-4 py-4" x-data="{ title: '', description: '', budget: '' }">
+{% url 'hire' as u_hire %}
+{% url 'top_up' as u_topup %}
+{{ balances|json_script:"gig-balances" }}
 
-    <div class="flex items-center justify-between">
-        <a href="{% url 'hire' %}" class="rounded-full p-1.5 text-muted transition hover:bg-surface hover:text-ink" aria-label="Cancel">
-            <i data-lucide="x" class="h-5 w-5"></i>
-        </a>
-        <h1 class="text-base font-semibold text-ink">Post a job</h1>
-        <span class="w-8"></span>
+<div x-data="postJob()" class="mx-auto max-w-2xl px-4 pb-28 pt-5 md:px-6 md:pb-12 md:pt-8">
+
+    <a href="{{ u_hire }}" class="mb-4 inline-flex items-center gap-1 text-[13px] font-medium text-muted hover:text-ink">
+        <i data-lucide="arrow-left" class="h-4 w-4"></i> Back to gigs
+    </a>
+
+    <div class="mb-6">
+        <h2 class="text-[24px] font-bold tracking-tight text-ink">What do you need done?</h2>
+        <p class="mt-1 text-[14px] text-muted">People nearby see it the second you post. The first to accept gets it, and you're connected in chat.</p>
     </div>
 
-    <form method="post" action="{% url 'create_hire_job' %}" class="mt-4 space-y-5">
+    <form method="post" class="space-y-5">
         {% csrf_token %}
 
-        <!-- Title -->
+        <!-- title -->
         <div>
-            <label class="mb-1.5 block text-sm font-medium text-ink">Job title</label>
-            <input type="text" name="title" x-model="title" required maxlength="200" placeholder="e.g. Fix my WordPress site"
-                   class="w-full rounded-2xl border border-line bg-white px-4 py-2.5 text-sm text-ink placeholder-muted focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100">
+            <label for="title" class="block text-[13px] font-semibold text-ink">Job title</label>
+            <input id="title" name="title" type="text" maxlength="150" required value="{{ form.title }}"
+                   placeholder="e.g. Fix my laptop screen, Deliver a parcel to Garki"
+                   class="mt-1.5 w-full rounded-xl border border-line px-4 py-3 text-[15px] text-ink placeholder-muted focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-accent-200">
         </div>
 
-        <!-- Description -->
+        <!-- description -->
         <div>
-            <label class="mb-1.5 block text-sm font-medium text-ink">Description</label>
-            <textarea name="description" x-model="description" rows="5" maxlength="5000" placeholder="What needs to be done, timeline, and any requirements"
-                      class="w-full resize-none rounded-2xl border border-line bg-white px-4 py-2.5 text-sm text-ink placeholder-muted focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100"></textarea>
-            <p class="mt-1 text-right text-xs text-muted" x-text="description.length + ' / 5000'"></p>
+            <label for="description" class="block text-[13px] font-semibold text-ink">Details <span class="font-normal text-muted">(optional)</span></label>
+            <textarea id="description" name="description" rows="4" maxlength="2000"
+                      placeholder="What exactly should the person do? Any deadline or tools needed?"
+                      class="mt-1.5 w-full resize-y rounded-xl border border-line px-4 py-3 text-[15px] text-ink placeholder-muted focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-accent-200">{{ form.description }}</textarea>
         </div>
 
-        <!-- Budget + currency -->
+        <!-- budget -->
         <div>
-            <label class="mb-1.5 block text-sm font-medium text-ink">Budget</label>
-            <div class="flex items-center gap-2">
-                <div class="flex flex-1 items-center gap-2 rounded-2xl border border-line bg-white px-4 py-3 focus-within:border-accent-400 focus-within:ring-2 focus-within:ring-accent-100">
-                    <input type="number" name="budget" x-model="budget" step="0.01" min="0.01" required placeholder="0.00"
-                           class="w-full bg-transparent text-sm font-medium text-ink placeholder-muted focus:outline-none">
-                </div>
-                <select name="currency" required
-                        class="shrink-0 rounded-2xl border border-line bg-white px-3 py-3 text-sm text-ink focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100">
-                    {% for currency in currencies %}
-                        <option value="{{ currency.id }}">{{ currency.code }}</option>
-                    {% endfor %}
+            <label for="budget" class="block text-[13px] font-semibold text-ink">Budget</label>
+            <div class="mt-1.5 flex gap-2">
+                <select name="currency" x-model="currency" class="w-28 shrink-0 rounded-xl border border-line bg-white px-3 py-3 text-[15px] font-medium text-ink focus:border-accent-500 focus:outline-none">
+                    {% for c in currencies %}<option value="{{ c.pk }}">{{ c.code }} ({{ c.symbol }})</option>{% endfor %}
                 </select>
+                <input id="budget" name="budget" type="number" inputmode="decimal" min="0.01" step="0.01" required x-model="budget"
+                       placeholder="0.00"
+                       class="min-w-0 flex-1 rounded-xl border border-line px-4 py-3 text-[15px] text-ink placeholder-muted focus:border-accent-500 focus:outline-none focus:ring-2 focus:ring-accent-200">
             </div>
+
+            <p class="mt-2 text-[12.5px]" :class="short ? 'text-red-600' : 'text-muted'">
+                <span x-show="!short">Your wallet: <b x-text="walletText"></b>. The budget must be in your wallet so the worker is guaranteed to be paid.</span>
+                <span x-show="short" x-cloak>
+                    Your wallet has <b x-text="walletText"></b>. You need <b x-text="shortText"></b> more.
+                    {% if u_topup %}<a href="{{ u_topup }}" class="font-semibold underline">Top up</a>{% endif %}
+                </span>
+            </p>
         </div>
 
-        <p class="rounded-2xl bg-surface px-4 py-3 text-xs text-muted">
-            Your job will be visible to everyone on Pheral until you mark it as filled or cancel it.
-        </p>
+        <!-- location -->
+        <fieldset class="rounded-2xl border border-line p-4">
+            <legend class="px-1 text-[13px] font-semibold text-ink">Where is the job?</legend>
 
-        <button type="submit" :disabled="!title.trim() || !budget"
-                class="w-full rounded-full bg-accent-500 py-3.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50">
+            <div class="grid gap-3 md:grid-cols-2">
+                <div>
+                    <label for="state" class="block text-[12.5px] font-medium text-ink/80">State</label>
+                    <select id="state" name="state" x-model="state"
+                            class="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2.5 text-[15px] text-ink focus:border-accent-500 focus:outline-none">
+                        <option value="">Choose a state</option>
+                        {% for value, label in states %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="city" class="block text-[12.5px] font-medium text-ink/80">City or area</label>
+                    <input id="city" name="city" type="text" list="post-cities" maxlength="60" autocomplete="off" x-model="city"
+                           placeholder="e.g. Port Harcourt"
+                           class="mt-1 w-full rounded-xl border border-line px-3 py-2.5 text-[15px] text-ink placeholder-muted focus:border-accent-500 focus:outline-none">
+                    <datalist id="post-cities">{% for c in cities %}<option value="{{ c }}">{% endfor %}</datalist>
+                </div>
+            </div>
+
+            <label class="mt-4 flex cursor-pointer items-start gap-3 rounded-xl bg-surface px-3.5 py-3">
+                <input type="checkbox" name="is_remote" x-model="remote" class="mt-0.5 h-[18px] w-[18px] rounded border-line text-accent-500 focus:ring-accent-300">
+                <span>
+                    <span class="block text-[14px] font-semibold text-ink">It can be done remotely</span>
+                    <span class="block text-[12.5px] text-muted">Also show it to people in other states, like Abuja or Lagos.</span>
+                </span>
+            </label>
+
+            <p class="mt-3 flex items-start gap-2 text-[12.5px] text-accent-700">
+                <span>📡</span>
+                <span x-text="reachText"></span>
+            </p>
+        </fieldset>
+
+        <button type="submit" :disabled="short"
+                class="focus-ring w-full rounded-full bg-accent-500 px-6 py-3.5 text-[15px] font-semibold text-white shadow-sm transition hover:bg-accent-600 active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-50">
             Post job
         </button>
     </form>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('alpine:init', function () {
+        Alpine.data('postJob', function () {
+            var balances = JSON.parse(document.getElementById('gig-balances').textContent);
+            return {
+                currency: "{{ form.currency|escapejs }}",
+                budget: "{{ form.budget|escapejs }}",
+                state: "{{ form.state|escapejs }}",
+                city: "{{ form.city|escapejs }}",
+                remote: {% if form.is_remote %}true{% else %}false{% endif %},
+
+                get wallet() { return balances[this.currency] || { symbol: '', code: '', balance: '0' }; },
+                get walletText() {
+                    return this.wallet.symbol + Number(this.wallet.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                },
+                get shortBy() {
+                    var need = parseFloat(this.budget);
+                    var have = parseFloat(this.wallet.balance);
+                    return isNaN(need) ? 0 : Math.max(0, need - have);
+                },
+                get short() { return this.shortBy > 0; },
+                get shortText() {
+                    return this.wallet.symbol + this.shortBy.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                },
+                get reachText() {
+                    var place = [this.city.trim(), this.state === 'FCT' ? 'FCT (Abuja)' : this.state].filter(Boolean).join(', ');
+                    if (this.remote && place) return 'Visible to people in ' + (this.state === 'FCT' ? 'FCT (Abuja)' : (this.state || 'your area')) + ' and to remote workers everywhere.';
+                    if (this.remote) return 'Visible to remote workers everywhere.';
+                    if (this.state) return 'Visible to people in ' + (this.state === 'FCT' ? 'FCT (Abuja)' : this.state) + ', with people in ' + (this.city.trim() || 'the state') + ' seeing it first.';
+                    return 'Choose a state, or mark the job remote, so the right people see it.';
+                }
+            };
+        });
+    });
+</script>
 {% endblock %}
